@@ -5,7 +5,7 @@
    "action": "waiting",
    "batch": "b20261123-155903-cc2e",
    "backend": "kaggle",
-   "status": "queued"
+   "status": "running"
   },
   {
    "action": "idle",
@@ -25,13 +25,13 @@
  },
  "kaggle_check": {
   "ok": true,
-  "output": "resource,used,remaining,total,refreshAt\nGPU,0.00h,30.00h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
+  "output": "resource,used,remaining,total,refreshAt\nGPU,0.05h,29.95h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
   "datasets list --mine": "0: ref                         title                   size  lastUpdated                 downloadCount  voteCount  usabilityRating  \n--------------------------  ----------------  ----------  --------------------------  -------------  ---------  ---------------  \npriyash11/mochizuki-inputs  mochizuki-inputs       11649  2026-11-23 15:59:05.860000              0          0  0.125",
-  "kernels list --mine": "0: ref                           title               author     lastRunTime                 totalVotes  \n----------------------------  ------------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker    mochizuki-worker    Priyash11  2026-11-23 15:59:09.030000           0  \npriyash11/mochizuki-test-gpu  mochizuki-test-gpu  Priyash11  2026-11-23 16:07:10.870000           0",
+  "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-23 16:51:54.310000           0",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
  "kaggle_log": [
-  "kaggle kernels status -> 0: priyash11/mochizuki-worker has status \"KernelWorkerStatus.QUEUED\""
+  "kaggle kernels status -> 0: priyash11/mochizuki-worker has status \"KernelWorkerStatus.RUNNING\""
  ],
  "uploaded": 0,
  "review": {
