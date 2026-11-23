@@ -1,1 +1,1 @@
-{"kind": "error", "text": "@Priyash Chapter 1: the Kaggle step stopped: dataset priyash11/mochizuki-inputs not ready after 900 s"}
+{"kind": "error", "text": "@Priyash Chapter 1: the Kaggle step stopped: kaggle datasets version -p failed: Invalid folder: /home/runner/work/mochizuki/mochizuki/media/batches/b20261123-102944-3a96/dataset"}

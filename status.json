@@ -3,7 +3,7 @@
  "actions": [
   {
    "action": "error",
-   "error": "dataset priyash11/mochizuki-inputs not ready after 900 s"
+   "error": "kaggle datasets version -p failed: Invalid folder: /home/runner/work/mochizuki/mochizuki/media/batches/b20261123-102944-3a96/dataset"
   }
  ],
  "reviews": {
@@ -15,13 +15,16 @@
   "ok": true,
   "output": "resource,used,remaining,total,refreshAt\nGPU,0.00h,30.00h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00"
  },
+ "kaggle_log": [
+  "kaggle datasets version -> 1: Invalid folder: /home/runner/work/mochizuki/mochizuki/media/batches/b20261123-102944-3a96/dataset"
+ ],
  "uploaded": 0,
  "review": {
   "items": 0
  },
  "notice": {
   "kind": "error",
-  "text": "@Priyash Chapter 1: the Kaggle step stopped: dataset priyash11/mochizuki-inputs not ready after 900 s"
+  "text": "@Priyash Chapter 1: the Kaggle step stopped: kaggle datasets version -p failed: Invalid folder: /home/runner/work/mochizuki/mochizuki/media/batches/b20261123-102944-3a96/dataset"
  },
  "status": {
   "todo": 27
