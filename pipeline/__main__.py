@@ -106,8 +106,14 @@ def main(argv=None) -> int:
             p.store = ReleaseStore()
         has_creds = os.environ.get("KAGGLE_USERNAME") and (
             os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY") or Path("~/.kaggle/kaggle.json").expanduser().exists())
-        backend_ = kaggle_backend(args.kaggle, p) if (has_creds or args.kaggle == "local") else None
-        out = ci.step(p, led, args.chapter or ci.chapter_of(state), state, backend_, engine_set=args.engine_set)
+        backends = []
+        if has_creds or args.kaggle == "local":
+            backends.append(kaggle_backend(args.kaggle, p))
+        if os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET") and \
+                p.config.get("modal", {}).get("enabled", True):
+            from .modal_backend import ModalBackend  # noqa: PLC0415
+            backends.append(ModalBackend(p))
+        out = ci.step(p, led, args.chapter or ci.chapter_of(state), state, backends, engine_set=args.engine_set)
         print(json.dumps(out["notice"], ensure_ascii=False))
         return 0
     if args.cmd == "gate":
@@ -163,8 +169,9 @@ def main(argv=None) -> int:
             week = kg.week_start()
             out["kaggle_gpu_hours_this_week"] = round(led.gpu_seconds_since(week) / 3600, 2)
             out["kaggle_weekly_cap_hours"] = p.config.get("kaggle", {}).get("weekly_gpu_hours")
-            b = led.active_batch()
-            out["open_batch"] = dict(b) if b else None
+            out["open_batches"] = [dict(b) for b in (led.active_batch("kaggle"), led.active_batch("modal")) if b]
+            out["modal_usd_this_month"] = round(led.gpu_seconds_since(kg.month_start(), "modal") / 3600
+                                                * p.config.get("modal", {}).get("usd_per_hour", 1.4), 2)
         elif args.cmd == "resolve":
             led.resolve(args.key, args.charged == "yes"); out = {"ok": True}
         elif args.cmd == "assemble":

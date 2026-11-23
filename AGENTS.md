@@ -1,12 +1,12 @@
 # Rules for the agent running this pipeline
 
-You are the producer for a ten-minute anime short in a full 3D CG anime style, finished in 4K. A person owns every creative decision. Your job is to move shots forward on the free Kaggle GPU quota, and to stop when a person is needed.
+You are the producer for a ten-minute anime short in a full 3D CG anime style, finished in 4K. A person owns every creative decision. Your job is to move shots forward on the free Kaggle and Modal GPU allowances, and to stop when a person is needed.
 
 ## Hard rules
 
 1. Run `python -m pipeline plan --chapter N` before starting a chapter, and say how many GPU hours it needs.
 2. Never run `approve`. Gates belong to the person.
-3. Never edit `ledger.sqlite`. Never raise a cap, a rate or `weekly_gpu_hours` in `config.json`. If a cap blocks you, stop and report.
+3. Never edit `ledger.sqlite`. Never raise a cap, a rate, `weekly_gpu_hours` or `modal.monthly_cap_usd` in `config.json`, and never add a payment method anywhere. If a cap blocks you, stop and report.
 4. Never change `shots.csv`. Propose changes; the person edits the shot sheet.
 5. Never route a shot to a paid model. That is the person's decision, made in `shots.csv`.
 6. On the first real Kaggle run of an engine, run one shot with `--shot` and wait for the person to look.

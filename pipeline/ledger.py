@@ -62,6 +62,10 @@ class Ledger:
         for col, ddl in (("batch", "TEXT"), ("gpu_seconds", "REAL")):
             if col not in cols:
                 self.db.execute(f"ALTER TABLE jobs ADD COLUMN {col} {ddl}")
+        bcols = {r[1] for r in self.db.execute("PRAGMA table_info(batches)")}
+        for col, ddl in (("backend", "TEXT NOT NULL DEFAULT 'kaggle'"), ("handle", "TEXT")):
+            if col not in bcols:
+                self.db.execute(f"ALTER TABLE batches ADD COLUMN {col} {ddl}")
         self.db.commit()
         self.total_cap = float(total_cap)
         self.chapter_caps = {int(k): float(v) for k, v in chapter_caps.items()}
@@ -181,9 +185,11 @@ class Ledger:
                                (chapter, gate)).fetchone() is not None
 
     # ---- Kaggle batches
-    def create_batch(self, batch_id: str, stage: str, chapter: int, est_seconds: float) -> None:
-        self.db.execute("INSERT INTO batches(id,stage,chapter,status,est_seconds,created_at)"
-                        " VALUES(?,?,?,'built',?,?)", (batch_id, stage, chapter, est_seconds, time.time()))
+    def create_batch(self, batch_id: str, stage: str, chapter: int, est_seconds: float,
+                     backend: str = "kaggle") -> None:
+        self.db.execute("INSERT INTO batches(id,stage,chapter,status,est_seconds,created_at,backend)"
+                        " VALUES(?,?,?,'built',?,?,?)",
+                        (batch_id, stage, chapter, est_seconds, time.time(), backend))
         self.db.commit()
 
     def batch(self, batch_id: str):
@@ -194,18 +200,24 @@ class Ledger:
         self.db.execute(f"UPDATE batches SET {cols} WHERE id=?", (*fields.values(), batch_id))
         self.db.commit()
 
-    def active_batch(self):
-        return self.db.execute("SELECT * FROM batches WHERE status IN ('built','submitted')"
-                               " ORDER BY created_at LIMIT 1").fetchone()
+    def active_batch(self, backend: str | None = None):
+        """The open batch (built or submitted), of one backend if given. One per backend at a time."""
+        q = "SELECT * FROM batches WHERE status IN ('built','submitted')"
+        args: tuple = ()
+        if backend:
+            q, args = q + " AND backend=?", (backend,)
+        return self.db.execute(q + " ORDER BY created_at LIMIT 1", args).fetchone()
 
     def batch_jobs(self, batch_id: str) -> list:
         return self.db.execute("SELECT * FROM jobs WHERE batch=? ORDER BY shot_id, kind, idx",
                                (batch_id,)).fetchall()
 
-    def gpu_seconds_since(self, since: float) -> float:
-        """Kaggle session time used by batches started since a moment: measured if known, else estimated."""
-        row = self.db.execute(
-            "SELECT COALESCE(SUM(COALESCE(gpu_seconds, est_seconds)),0) FROM batches"
-            " WHERE status IN ('submitted','done','failed') AND COALESCE(submitted_at, created_at) >= ?",
-            (since,)).fetchone()
+    def gpu_seconds_since(self, since: float, backend: str | None = "kaggle") -> float:
+        """GPU session time used by batches started since a moment: measured if known, else estimated."""
+        q = ("SELECT COALESCE(SUM(COALESCE(gpu_seconds, est_seconds)),0) FROM batches"
+             " WHERE status IN ('submitted','done','failed') AND submitted_at IS NOT NULL AND submitted_at >= ?")
+        args: tuple = (since,)
+        if backend:
+            q, args = q + " AND backend=?", (since, backend)
+        row = self.db.execute(q, args).fetchone()
         return float(row[0])

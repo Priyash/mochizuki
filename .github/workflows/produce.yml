@@ -31,11 +31,19 @@ jobs:
           python-version: "3.11"
       - name: Tools
         run: |
-          pip install -q "kaggle>=1.7" six imageio-ffmpeg
+          pip install -q "kaggle>=1.7" six imageio-ffmpeg "modal>=1.0"
           if ! command -v ffmpeg >/dev/null; then
             mkdir -p "$HOME/bin"
             ln -sf "$(python -c 'import imageio_ffmpeg as m; print(m.get_ffmpeg_exe())')" "$HOME/bin/ffmpeg"
             echo "$HOME/bin" >> "$GITHUB_PATH"
+          fi
+      - name: Deploy the Modal worker (only when Modal secrets are set)
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          if [ -n "$MODAL_TOKEN_ID" ] && [ -n "$MODAL_TOKEN_SECRET" ]; then
+            modal deploy worker/modal_app.py || echo "::warning::Modal deploy failed; Kaggle carries on alone"
           fi
       - name: Restore the ledger
         run: if [ -f state/ledger.sqlite ]; then cp state/ledger.sqlite ledger.sqlite; fi
@@ -45,6 +53,8 @@ jobs:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           CHAPTER: ${{ inputs.chapter }}
         run: python -m pipeline ci-step --state state ${CHAPTER:+--chapter "$CHAPTER"}
       - name: Post the notice

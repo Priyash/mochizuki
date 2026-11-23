@@ -636,3 +636,119 @@ def test_scene_anchors_are_drawn_first_and_the_rest_from_them(tmp_path):
     refs = steps.continuity_refs(proj, led, proj.shot("1-04"))
     assert refs[0] == sel and not any(Path(r).stem == "style" for r in refs) and len(refs) <= 3
     assert steps.state(proj, led, proj.shot("1-19")) == "waiting_anchor"     # 1B's anchor is not chosen yet
+
+
+# ---------------------------------------------------------------- Modal beside Kaggle
+@needs_ffmpeg
+def test_kaggle_and_modal_work_side_by_side_without_making_a_job_twice(tmp_path):
+    proj = copy_project(tmp_path, csv_edit=short_chapter,
+                        cfg_edit=lambda c: c["kaggle"].update(session_hours=1, setup_minutes=5))
+    led, ex = sync(proj)
+    board(proj, led, ex)
+    kaggle, modal_ = kg.LocalKaggle(proj.media), kg.LocalKaggle(proj.media, name="modal")
+    out = kg.tick_all(proj, led, [kaggle, modal_], 1, engine_set="stub")
+    by = {a["backend"]: a for a in out}
+    assert by["kaggle"]["action"] == "built_and_submitted"
+    assert by["modal"]["action"] == "built_and_submitted"          # takes what Kaggle's budget left
+    k_jobs = {j["key"] for j in led.batch_jobs(by["kaggle"]["batch"])}
+    m_jobs = {j["key"] for j in led.batch_jobs(by["modal"]["batch"])}
+    assert k_jobs and m_jobs and not (k_jobs & m_jobs)
+    out = kg.tick_all(proj, led, [kaggle, modal_], 1, engine_set="stub")
+    assert {a["action"] for a in out} >= {"collected"}
+    hero = proj.shot("1-04")
+    assert len(led.jobs(hero.id, "take")) == 1 and led.jobs(hero.id, "take")[0]["status"] == "done"
+
+
+def test_modal_stops_itself_inside_the_free_credit(proj):
+    led, _ = sync(proj)
+    rate = proj.config["modal"]["usd_per_hour"]
+    budget, setup = kg.backend_budget(proj, led, "modal")
+    assert budget <= proj.config["modal"]["session_hours"] * 3600
+    spent_hours = (proj.config["modal"]["monthly_cap_usd"] - 0.2) / rate      # nearly the whole cap used
+    led.create_batch("m1", "video", 1, spent_hours * 3600, backend="modal")
+    led.set_batch("m1", status="done", submitted_at=kg.month_start() + 60)
+    with pytest.raises(kg.BudgetUsedUp, match="Modal"):
+        kg.backend_budget(proj, led, "modal")
+    assert proj.config["modal"]["monthly_cap_usd"] < 30                      # under Modal's $30 free credit
+    assert kg.backend_budget(proj, led, "kaggle")[0] > 0                     # Kaggle's week is separate
+
+
+class FakeModal:
+    """Just enough of the modal package to drive ModalBackend."""
+
+    class exception:
+        class TimeoutError(Exception): ...
+        class FunctionTimeoutError(TimeoutError): ...
+        class OutputExpiredError(TimeoutError): ...
+
+    def __init__(self, root):
+        self.root, self.calls, fake = root, {}, self
+
+        class Upload:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def put_directory(self, local, remote):
+                shutil.copytree(local, fake.root / remote.lstrip("/"), dirs_exist_ok=True)
+
+        class Entry:
+            def __init__(self, path): self.path, self.type = path, "FILE"
+
+        class Vol:
+            def batch_upload(self, force=False): return Upload()
+            def listdir(self, path, recursive=False):
+                base = fake.root / path.lstrip("/")
+                if not base.exists():
+                    raise FileNotFoundError(path)
+                return [Entry("/" + str(f.relative_to(fake.root))) for f in base.rglob("*") if f.is_file()]
+            def read_file_into_fileobj(self, path, fh): fh.write((fake.root / path.lstrip("/")).read_bytes())
+
+        class Volume:
+            @staticmethod
+            def from_name(name, create_if_missing=False): return Vol()
+
+        class Call:
+            def __init__(self, cid): self.object_id = cid
+            def get(self, timeout=None):
+                if fake.calls[self.object_id] == "running":
+                    raise FakeModal.exception.TimeoutError()
+                return {}
+
+        class FunctionCall:
+            @staticmethod
+            def from_id(cid): return Call(cid)
+
+        class Fn:
+            def with_options(self, **kw): fake.options = kw; return self
+            def spawn(self, batch_id):
+                cid = f"fc-{len(fake.calls)}"
+                fake.calls[cid] = "running"
+                fake.spawned = batch_id
+                return Call(cid)
+
+        class Function:
+            @staticmethod
+            def from_name(app, name): return Fn()
+
+        self.Volume, self.FunctionCall, self.Function = Volume, FunctionCall, Function
+
+
+def test_modal_backend_uploads_spawns_polls_and_downloads(tmp_path):
+    from pipeline.modal_backend import ModalBackend
+    fake = FakeModal(tmp_path / "volume")
+    mb = ModalBackend(modal_module=fake)
+    batch = tmp_path / "batches" / "b1"
+    (batch / "dataset").mkdir(parents=True)
+    (batch / "kernel").mkdir()
+    (batch / "dataset" / "manifest.json").write_text("{}")
+    mb.publish_dataset(batch / "dataset", "ref", "b1")
+    assert (tmp_path / "volume" / "batches" / "b1" / "dataset" / "manifest.json").exists()
+    handle = mb.push(batch / "kernel", "L4", 3600)
+    assert fake.spawned == "b1" and fake.options == {"gpu": "L4", "timeout": 3600}
+    assert mb.status("x", handle) == "running"
+    fake.calls[handle.split()[0]] = "done"
+    out = tmp_path / "volume" / "batches" / "b1" / "out"
+    out.mkdir()
+    (out / "results.json").write_text('{"batch_id": "b1", "jobs": {}}')
+    assert mb.status("x", handle) == "complete"
+    mb.output("x", tmp_path / "download", handle)
+    assert (tmp_path / "download" / "out" / "results.json").exists()

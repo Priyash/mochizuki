@@ -42,7 +42,7 @@ The 4K is upscaled from 720p, not rendered at 4K. No free model makes native 4K 
 | GPU-time estimates in `config.json` | My estimates, until real runs replace them |
 | The `fal` paid fallback | Written but never run; endpoint ids are placeholders |
 
-`python -m pytest -q` runs 37 tests in about 3 min. They need ffmpeg and nothing else.
+`python -m pytest -q` runs 40 tests in about 3 min. They need ffmpeg and nothing else.
 
 ## Setup
 
@@ -140,6 +140,14 @@ Setup, once:
 2. Reference stills: put your own in `style_bible/refs/` on `main`, or let Kaggle paint them. For every still listed in `style_bible/ref_prompts.json` that is missing, the producer paints 4 candidates with Qwen-Image-2512 (Apache 2.0), Claude picks the best, and you approve them on the issue.
 3. Actions → produce → Run workflow, to start at once rather than wait up to two hours.
 
+Modal, a second free GPU beside Kaggle (optional):
+
+1. Sign up at modal.com with GitHub. **Do not add a payment method**: without one Modal cannot bill you, and work simply stops when the month's $30 credit is used.
+2. In Modal's settings, create an API token.
+3. Add two repository secrets: `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`.
+
+The producer then deploys `worker/modal_app.py` and runs batches on both services at once: Kaggle's T4 (30 h a week) and a Modal L4 (24 GB). Jobs are reserved when a batch is packed, so the two never make the same job. Modal is held to `config.json → modal.monthly_cap_usd` ($25, under the $30 credit), counting GPU, CPU and memory at about $1.40 an hour (roughly 18 GPU-hours a month), and every Modal call has a hard timeout just past its batch's budget. `status` shows the month's Modal spend.
+
 What it uses:
 
 - GitHub Actions minutes: each run takes 1 to 3 minutes, and runs about every two hours. That is a few hundred minutes a month, inside GitHub Free's allowance for private repositories.
@@ -177,9 +185,10 @@ shots.csv            the shot sheet: 138 shots, 600 s
 style_bible/         style.txt and reference stills (gate 1)
 prompts/             optional per-shot prompt files
 pipeline/            the producer: ledger, steps, Kaggle batches, assemble
-worker/worker.py     runs on Kaggle: Qwen keyframes, Wan takes, 4K upscale
+worker/worker.py     runs on Kaggle or Modal: reference stills, keyframes, Wan takes, 4K upscale
+worker/modal_app.py  the Modal app that runs worker.py on an L4
 .github/workflows/   tests, the producer (produce.yml) and the owner's commands (gates.yml)
-tests/               37 tests, no GPU or network needed
+tests/               40 tests, no GPU or network needed
 AGENTS.md            rules for an AI agent running the loop
 ```
 

@@ -28,27 +28,24 @@ def chapter_of(state: Path) -> int:
 
 
 def step(p: Project, led: Ledger, chapter: int, state: Path, backend, engine_set: str = "gpu") -> dict:
+    """`backend` is one backend or a list (Kaggle and Modal side by side), or None."""
+    backends = [b for b in (backend if isinstance(backend, list) else [backend]) if b is not None]
     out: dict = {"chapter": chapter, "actions": []}
     out["reviews"] = review.apply(led, state / "reviews")
+    backend = next((b for b in backends if isinstance(b, kg.KaggleCLI)), None)
     if isinstance(backend, kg.KaggleCLI):          # can we sign in, and how much GPU time is left?
         code, text = backend._run(["quota", "-v"])
         out["kaggle_check"] = {"ok": code == 0, "output": text.strip()[-600:]}
         for args in (["datasets", "list", "--mine"], ["kernels", "list", "--mine"], ["config", "view"]):
             code, text = backend._run(args)
             out["kaggle_check"][" ".join(args)] = f"{code}: {text.strip()[-500:]}"
-    if backend is None:
-        out["actions"].append({"action": "skipped", "reason": "no Kaggle credentials"})
+    if not backends:
+        out["actions"].append({"action": "skipped", "reason": "no Kaggle or Modal credentials"})
     else:
-        for _ in range(4):                        # collect, then start the next batch in the same run
-            try:
-                r = kg.tick(p, led, backend, chapter, engine_set=engine_set)
-            except (kg.KaggleError, PermissionError, ValueError) as e:
-                r = {"action": "error", "error": str(e)[:500]}
-            out["actions"].append(r)
-            if r["action"] != "collected":
-                break
-    if isinstance(backend, kg.KaggleCLI) and backend.log:
-        out["kaggle_log"] = backend.log[-10:]
+        out["actions"] = kg.tick_all(p, led, backends, chapter, engine_set=engine_set)
+    for b in backends:
+        if getattr(b, "log", None):
+            out[f"{getattr(b, 'name', 'kaggle')}_log"] = b.log[-10:]
     if p.store is not None:
         out["uploaded"] = p.store.push(p)
     out["review"] = review.export(p, led, chapter, state / "review" / f"ch{chapter}")
@@ -86,15 +83,20 @@ def notice(p: Project, led: Ledger, chapter: int, state: Path, out: dict) -> dic
     at = f"@{owner} " if owner else ""
     shots = p.chapter(chapter)
     st = {s.id: steps.state(p, led, s) for s in shots}
-    last = out["actions"][-1] if out["actions"] else {}
-    if last.get("action") == "skipped":
+    acts = out["actions"]
+    if acts and acts[-1].get("action") == "skipped":
         return {"kind": "setup", "text": f"{at}Add the KAGGLE_API_TOKEN and KAGGLE_USERNAME repository secrets "
                                          "(Settings → Secrets and variables → Actions) so the producer can run."}
-    if last.get("action") == "error":
-        return {"kind": "error", "text": f"{at}Chapter {chapter}: the Kaggle step stopped: {last['error']}"}
-    b = led.active_batch()
-    if b:
-        return {"kind": "running", "text": f"Chapter {chapter}: Kaggle batch {b['id']} ({b['stage']}) is {b['status']}."}
+    errors = [a for a in acts if a.get("action") == "error"]
+    running = [b for b in (led.active_batch("kaggle"), led.active_batch("modal")) if b]
+    if errors and not running:
+        e = errors[-1]
+        return {"kind": "error", "text": f"{at}Chapter {chapter}: the {e.get('backend', 'Kaggle').title()} step "
+                                         f"stopped: {e['error']}"}
+    if running:
+        parts = [f"{b['backend'].title()} batch {b['id']} ({b['stage']}) is {b['status']}" for b in running]
+        tail = "".join(f" {e.get('backend', '').title()} hit a problem: {e['error'][:200]}" for e in errors)
+        return {"kind": "running", "text": f"Chapter {chapter}: " + "; ".join(parts) + "." + tail}
     rs = {r["name"]: steps.ref_state(p, led, r) for r in p.refs_missing(chapter)
           if steps.ref_state(p, led, r) != "waiting_source"}
     human = [f"ref {n}" for n, x in rs.items() if x == "needs_human"] + [i for i, x in st.items() if x == "needs_human"]

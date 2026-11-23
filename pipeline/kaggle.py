@@ -70,6 +70,8 @@ class KaggleError(RuntimeError):
 class KaggleCLI:
     """Thin wrapper over the `kaggle` command. `runner` is swappable for tests."""
 
+    name = "kaggle"
+
     def __init__(self, runner=None):
         self._run = runner or self._subprocess
         self.log: list[str] = []          # what Kaggle said, for the run's status.json
@@ -130,7 +132,7 @@ class KaggleCLI:
     def push(self, folder: Path, accelerator: str, timeout_s: int) -> None:
         self.call("kernels", "push", "-p", str(folder), "--accelerator", accelerator, "-t", str(timeout_s))
 
-    def status(self, ref: str) -> str:
+    def status(self, ref: str, handle: str | None = None) -> str:
         code, out = self._run(["kernels", "status", ref])
         self.log.append(f"kaggle kernels status -> {code}: {out.strip()[-300:]}")
         if code != 0:
@@ -142,7 +144,7 @@ class KaggleCLI:
                 return "cancelled" if word == "cancel" else word
         return "unknown"
 
-    def output(self, ref: str, dest: Path) -> None:
+    def output(self, ref: str, dest: Path, handle: str | None = None) -> None:
         dest.mkdir(parents=True, exist_ok=True)
         self.call("kernels", "output", ref, "-p", str(dest), "-o", "-q")
 
@@ -161,9 +163,11 @@ class KaggleCLI:
 
 
 class LocalKaggle:
-    """A stand-in for Kaggle that runs the worker here with stub engines. Free and offline."""
+    """A stand-in for Kaggle (or Modal, with name="modal") that runs the worker here with stub
+    engines. Free and offline."""
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, name: str = "kaggle"):
+        self.name = name
         self.root = root
         self.datasets: dict[str, Path] = {}
         self.runs: dict[str, str] = {}
@@ -178,8 +182,8 @@ class LocalKaggle:
 
     def push(self, folder: Path, accelerator: str, timeout_s: int) -> None:
         meta = json.loads((folder / "kernel-metadata.json").read_text())
-        ref = meta["id"]
-        data = self.datasets[meta["dataset_sources"][0]]
+        ref = meta["id"] + ("" if self.name == "kaggle" else f"-{self.name}")
+        data = self.datasets[meta["dataset_sources"][0]] if self.name == "kaggle" else folder.parent / "dataset"
         out = self.root / "local_kaggle" / ref.replace("/", "_") / "out"
         shutil.rmtree(out, ignore_errors=True)
         batch = re.search(r"BATCH_ID = '([^']+)'", (folder / "bootstrap.py").read_text()).group(1)
@@ -190,12 +194,13 @@ class LocalKaggle:
         self.outputs[ref] = out
         if r.returncode not in (0, 3):
             print(r.stdout[-2000:], r.stderr[-2000:])
+        return ref
 
-    def status(self, ref: str) -> str:
-        return self.runs.get(ref, "unknown")
+    def status(self, ref: str, handle: str | None = None) -> str:
+        return self.runs.get(handle or ref, "unknown")
 
-    def output(self, ref: str, dest: Path) -> None:
-        src = self.outputs.get(ref)
+    def output(self, ref: str, dest: Path, handle: str | None = None) -> None:
+        src = self.outputs.get(handle or ref)
         dest.mkdir(parents=True, exist_ok=True)
         if src and src.exists():
             shutil.copytree(src, dest / "out", dirs_exist_ok=True)
@@ -233,21 +238,51 @@ def session_budget(p: Project) -> float:
     return k.get("session_hours", 10) * 3600 - k.get("setup_minutes", 25) * 60
 
 
+class BudgetUsedUp(KaggleError):
+    """A backend's free allowance for this week or month is spent. Not an error: it rests."""
+
+
+def month_start(now: float | None = None) -> float:
+    import calendar  # noqa: PLC0415
+    t = time.gmtime(time.time() if now is None else now)
+    return float(calendar.timegm((t.tm_year, t.tm_mon, 1, 0, 0, 0)))
+
+
+def backend_budget(p: Project, led: Ledger, backend: str) -> tuple[float, float]:
+    """(GPU seconds the next batch may use, setup seconds) for one backend, inside its free allowance."""
+    if backend == "modal":
+        m = p.config.get("modal", {})
+        rate = float(m.get("usd_per_hour", 1.4))
+        cap = float(m.get("monthly_cap_usd", 25))
+        setup = m.get("setup_minutes", 10) * 60
+        spent = led.gpu_seconds_since(month_start(), "modal") / 3600 * rate
+        left = (cap - spent) / rate * 3600 - setup
+        budget = min(m.get("session_hours", 4) * 3600 - setup, left)
+        if budget <= 900:
+            raise BudgetUsedUp(f"Modal's free credit for this month is used (about ${spent:.2f} of the "
+                               f"${cap:.0f} cap); it renews on the 1st")
+        return budget, setup
+    k = _cfg(p)
+    setup = k.get("setup_minutes", 25) * 60
+    used = led.gpu_seconds_since(week_start(), "kaggle")
+    weekly = k.get("weekly_gpu_hours", 28) * 3600
+    budget = min(session_budget(p), weekly - used - setup)
+    if budget <= 600:
+        raise BudgetUsedUp(f"this week's Kaggle GPU budget is used up ({used / 3600:.1f} h of "
+                           f"{weekly / 3600:.0f} h); it resets Saturday 00:00 UTC")
+    return budget, setup
+
+
 def build(p: Project, led: Ledger, stage: str, chapter: int, only: str | None = None,
-          engine_set: str = "gpu") -> dict:
-    """Reserve the next batch of jobs and pack everything one Kaggle session needs."""
+          engine_set: str = "gpu", backend: str = "kaggle") -> dict:
+    """Reserve the next batch of jobs and pack everything one GPU session needs."""
     if stage not in STAGES:
         raise ValueError(f"stage must be one of {STAGES}")
-    if led.active_batch():
-        raise KaggleError(f"batch {led.active_batch()['id']} is still open; run `collect` first")
+    if led.active_batch(backend):
+        raise KaggleError(f"batch {led.active_batch(backend)['id']} is still open; run `collect` first")
     k = _cfg(p)
-    dataset_ref, kernel_ref = refs(p)
-    used = led.gpu_seconds_since(week_start())
-    weekly = k.get("weekly_gpu_hours", 28) * 3600
-    budget = min(session_budget(p), weekly - used - k.get("setup_minutes", 25) * 60)
-    if budget <= 600:
-        raise KaggleError(f"this week's GPU budget is used up ({used / 3600:.1f} h of "
-                          f"{weekly / 3600:.0f} h); it resets Saturday 00:00 UTC")
+    dataset_ref, kernel_ref = refs(p) if backend == "kaggle" else ("modal/mochizuki", "modal/mochizuki-worker")
+    budget, setup = backend_budget(p, led, backend)
     batch_id = time.strftime("b%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
     ex = steps.BatchExecutor(batch_id, budget)
     fn = {"refs": steps.refs, "keyframes": steps.keyframes, "video": steps.video, "upscale": steps.upscale}[stage]
@@ -281,8 +316,8 @@ def build(p: Project, led: Ledger, stage: str, chapter: int, only: str | None = 
             if spec.get(field):
                 job[field] = ship(spec[field])
         jobs.append(job)
-    manifest = {"batch_id": batch_id, "stage": stage, "chapter": chapter,
-                "deadline_seconds": session_budget(p) + k.get("setup_minutes", 25) * 60 - 900,
+    manifest = {"batch_id": batch_id, "stage": stage, "chapter": chapter, "backend": backend,
+                "deadline_seconds": budget + setup - (900 if backend == "kaggle" else 300),
                 "engines": p.config["engines"], "jobs": jobs}
     (data / "manifest.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False), encoding="utf-8")
     shutil.copyfile(WORKER, data / "worker.py")
@@ -295,9 +330,9 @@ def build(p: Project, led: Ledger, stage: str, chapter: int, only: str | None = 
         "kernel_type": "script", "is_private": "true", "enable_gpu": "true", "enable_tpu": "false",
         "enable_internet": "true", "dataset_sources": [dataset_ref], "competition_sources": [],
         "kernel_sources": [], "model_sources": []}, indent=1))
-    led.create_batch(batch_id, stage, chapter, ex.est + k.get("setup_minutes", 25) * 60)
-    return {"batch": batch_id, "stage": stage, "jobs": len(jobs), "deferred": ex.deferred,
-            "est_hours": round((ex.est + k.get("setup_minutes", 25) * 60) / 3600, 2), "summary": summary}
+    led.create_batch(batch_id, stage, chapter, ex.est + setup, backend=backend)
+    return {"batch": batch_id, "backend": backend, "stage": stage, "jobs": len(jobs), "deferred": ex.deferred,
+            "est_hours": round((ex.est + setup) / 3600, 2), "summary": summary}
 
 
 def discard(led: Ledger, batch_id: str, why: str) -> None:
@@ -316,17 +351,23 @@ def submit(p: Project, led: Ledger, kg, batch_id: str) -> dict:
         discard(led, batch_id, "no reference stills")
         raise KaggleError("batch dropped: no reference stills. Add at least style_bible/refs/style.png")
     k = _cfg(p)
-    dataset_ref, _ = refs(p)
+    kaggle = b["backend"] == "kaggle"
+    dataset_ref, _ = refs(p) if kaggle else ("modal/mochizuki", "")
     work = p.media / "batches" / batch_id
     left = kg.gpu_hours_left()
     if left is not None and left * 3600 < b["est_seconds"] * 0.5:
         raise KaggleError(f"Kaggle says {left:.1f} GPU h left this week; batch needs ~{b['est_seconds'] / 3600:.1f} h")
     kg.publish_dataset(work / "dataset", dataset_ref, batch_id)
     kg.wait_dataset_ready(dataset_ref)
-    timeout = int(min(12 * 3600, k.get("session_hours", 10) * 3600 + 1800))
-    kg.push(work / "kernel", k.get("accelerator", "NvidiaTeslaT4"), timeout)
-    led.set_batch(batch_id, status="submitted", submitted_at=time.time())
-    return {"batch": batch_id, "submitted": True}
+    if kaggle:
+        timeout = int(min(12 * 3600, k.get("session_hours", 10) * 3600 + 1800))
+        handle = kg.push(work / "kernel", k.get("accelerator", "NvidiaTeslaT4"), timeout)
+    else:                                   # hard stop just past the batch's own budget: it cannot overspend
+        timeout = int(b["est_seconds"] + 1200)
+        handle = kg.push(work / "kernel", p.config.get("modal", {}).get("gpu", "L4"), timeout)
+    led.set_batch(batch_id, status="submitted", submitted_at=time.time(),
+                  handle=handle if isinstance(handle, str) else None)
+    return {"batch": batch_id, "backend": b["backend"], "submitted": True}
 
 
 def collect(p: Project, led: Ledger, kg, batch_id: str) -> dict:
@@ -334,12 +375,12 @@ def collect(p: Project, led: Ledger, kg, batch_id: str) -> dict:
     b = led.batch(batch_id)
     if not b or b["status"] != "submitted":
         raise KaggleError(f"batch {batch_id} is not running")
-    _, kernel_ref = refs(p)
-    st = kg.status(kernel_ref)
+    kernel_ref = refs(p)[1] if b["backend"] == "kaggle" else "modal/mochizuki-worker"
+    st = kg.status(kernel_ref, handle=b["handle"])
     if st in ("queued", "running", "unknown"):
-        return {"batch": batch_id, "status": st}
+        return {"batch": batch_id, "backend": b["backend"], "status": st}
     work = p.media / "batches" / batch_id
-    kg.output(kernel_ref, work / "download")
+    kg.output(kernel_ref, work / "download", handle=b["handle"])
     found = list((work / "download").rglob("results.json"))
     results = json.loads(found[0].read_text(encoding="utf-8")) if found else {"jobs": {}, "error": "no results.json"}
     stale = results.get("batch_id") not in (None, batch_id) or "stale" in str(results.get("error") or "")
@@ -366,7 +407,8 @@ def collect(p: Project, led: Ledger, kg, batch_id: str) -> dict:
     led.set_batch(batch_id, status="done" if st == "complete" else "failed", finished_at=time.time(),
                   gpu_seconds=(elapsed + 300) if elapsed else None,    # + pip install before the worker
                   note=(results.get("error") or st)[:200] if (results.get("error") or st != "complete") else None)
-    return {"batch": batch_id, "status": st, "made": made, "failed": failed, "not_reached": left,
+    return {"batch": batch_id, "backend": b["backend"], "status": st, "made": made, "failed": failed,
+            "not_reached": left,
             "stale": stale, "error": results.get("error")}
 
 
@@ -390,7 +432,8 @@ def next_stage(p: Project, led: Ledger, chapter: int) -> str | None:
 
 def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu") -> dict:
     """One automation step: collect a finished run, or start the next one. Cron calls this."""
-    active = led.active_batch()
+    name = getattr(kg, "name", "kaggle")
+    active = led.active_batch(name)
     if active and active["status"] == "built" and \
             not (p.media / "batches" / active["id"] / "dataset" / "manifest.json").exists():
         discard(led, active["id"], "packed on another machine")     # e.g. an earlier GitHub run; repack
@@ -407,7 +450,30 @@ def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu") -> 
         queue = steps.review_queue(p, led, chapter)
         return {"action": "idle", "reason": "waiting for a person", "to_review": len(queue),
                 "states": steps.status(p, led, chapter)["states"]}
-    built = build(p, led, stage, chapter, engine_set=engine_set)
+    try:
+        built = build(p, led, stage, chapter, engine_set=engine_set, backend=name)
+    except BudgetUsedUp as e:
+        return {"action": "resting", "backend": name, "reason": str(e)}
     if not built["batch"]:
         return {"action": "idle", "reason": f"nothing to run for {stage}", **built}
     return {"action": "built_and_submitted", **built, **submit(p, led, kg, built["batch"])}
+
+
+def tick_all(p: Project, led: Ledger, backends: list, chapter: int, engine_set: str = "gpu") -> list[dict]:
+    """One automation step on every backend: each collects its finished run, then starts the next.
+
+    Kaggle and Modal each hold at most one open batch. Jobs are reserved when a batch is packed,
+    so two backends never make the same job; the second one takes what the first left.
+    """
+    out = []
+    for kg in backends:
+        for _ in range(4):                                  # collect, then start the next in the same run
+            try:
+                r = tick(p, led, kg, chapter, engine_set=engine_set)
+            except (KaggleError, PermissionError, ValueError) as e:
+                r = {"action": "error", "error": str(e)[:500]}
+            r.setdefault("backend", getattr(kg, "name", "kaggle"))
+            out.append(r)
+            if r["action"] != "collected":
+                break
+    return out
