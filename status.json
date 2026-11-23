@@ -30,15 +30,15 @@
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
  "modal_log": [
-  "uploaded dataset for b20261123-144039-c8f7"
+  "uploaded dataset for b20261123-144319-dd60"
  ],
  "uploaded": 0,
  "review": {
   "items": 0
  },
  "notice": {
-  "kind": "running",
-  "text": "Chapter 1: Modal batch b20261123-144039-c8f7 (refs) is built. Modal hit a problem: NotFoundError: Lookup failed for Function 'run_batch' from the 'mochizuki-worker' app: App 'mochizuki-worker' not found in environment 'main'."
+  "kind": "error",
+  "text": "@Priyash Chapter 1: the Modal step stopped: NotFoundError: Lookup failed for Function 'run_batch' from the 'mochizuki-worker' app: App 'mochizuki-worker' not found in environment 'main'."
  },
  "status": {
   "waiting_anchor": 26,

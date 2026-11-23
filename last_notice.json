@@ -1,1 +1,1 @@
-{"kind": "running", "text": "Chapter 1: Modal batch b20261123-144039-c8f7 (refs) is built. Modal hit a problem: NotFoundError: Lookup failed for Function 'run_batch' from the 'mochizuki-worker' app: App 'mochizuki-worker' not found in environment 'main'."}
+{"kind": "error", "text": "@Priyash Chapter 1: the Modal step stopped: NotFoundError: Lookup failed for Function 'run_batch' from the 'mochizuki-worker' app: App 'mochizuki-worker' not found in environment 'main'."}
