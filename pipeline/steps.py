@@ -177,6 +177,8 @@ def keyframes(p: Project, led: Ledger, ex, chapter: int, only: str | None = None
     A second batch is made only after every candidate so far has been judged and
     failed, up to max_candidates. Good first batches never cost a second.
     """
+    if not p.references():
+        raise ValueError("no reference stills: add at least style_bible/refs/style.png (gate 1)")
     n = p.config["keyframes"]["candidates"]
     cap = p.config["keyframes"].get("max_candidates", n)
     limit = p.engine("keyframe").get("max_refs", 3)

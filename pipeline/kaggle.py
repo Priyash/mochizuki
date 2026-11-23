@@ -279,10 +279,21 @@ def build(p: Project, led: Ledger, stage: str, chapter: int, only: str | None = 
             "est_hours": round((ex.est + k.get("setup_minutes", 25) * 60) / 3600, 2), "summary": summary}
 
 
+def discard(led: Ledger, batch_id: str, why: str) -> None:
+    """Drop a batch that was never submitted. Its jobs are freed and do not count as failures."""
+    for job in led.batch_jobs(batch_id):
+        if job["status"] == "pending":
+            led.finish(job["key"], None, ok=False, note="not reached")
+    led.set_batch(batch_id, status="failed", note=why, finished_at=time.time())
+
+
 def submit(p: Project, led: Ledger, kg, batch_id: str) -> dict:
     b = led.batch(batch_id)
     if not b or b["status"] != "built":
         raise KaggleError(f"batch {batch_id} is not waiting to be submitted")
+    if b["stage"] == "keyframes" and not p.references():
+        discard(led, batch_id, "no reference stills")
+        raise KaggleError("batch dropped: no reference stills. Add at least style_bible/refs/style.png")
     k = _cfg(p)
     dataset_ref, _ = refs(p)
     work = p.media / "batches" / batch_id

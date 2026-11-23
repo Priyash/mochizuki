@@ -1,5 +1,6 @@
 # The pipeline itself needs only the Python standard library and ffmpeg.
 kaggle>=1.7        # the Kaggle command-line tool, used to submit batches
+six                # needed by the kaggle tool, which does not declare it
 pytest             # the tests
 # fal-client       # only for the paid fallback
 # The GPU packages (diffusers, transformers, gguf ...) are installed on Kaggle by the batch itself.

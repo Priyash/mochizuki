@@ -23,6 +23,16 @@ HAS_FFMPEG = shutil.which("ffmpeg") is not None
 needs_ffmpeg = pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg not installed")
 
 
+def write_png(path: Path, w: int = 64, h: int = 36) -> None:
+    import struct
+    import zlib
+    raw = b"".join(b"\x00" + bytes([90, 110, 160]) * w for _ in range(h))
+    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d))  # noqa: E731
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+                     + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
 def load_worker():
     spec = importlib.util.spec_from_file_location("worker", REPO / "worker" / "worker.py")
     mod = importlib.util.module_from_spec(spec)
@@ -33,6 +43,7 @@ def load_worker():
 def copy_project(tmp_path, csv_edit=None, cfg_edit=None) -> Project:
     shutil.copy(REPO / "config.json", tmp_path / "config.json")
     shutil.copytree(REPO / "style_bible", tmp_path / "style_bible")
+    write_png(tmp_path / "style_bible" / "refs" / "style.png")      # a stand-in reference still
     text = (REPO / "shots.csv").read_text(encoding="utf-8")
     if csv_edit:
         text = csv_edit(text)
@@ -498,3 +509,13 @@ def test_github_producer_loop_with_claude_reviews_and_owner_gates(tmp_path, monk
     w, h, seconds = probe(releases / "cuts" / "chapter_1_4k.mp4")
     assert (w, h) == (3840, 2160) and seconds == pytest.approx(sum(s.seconds for s in proj.chapter(1)), abs=0.1)
     assert all(not Path(j["path"]).is_absolute() for s in proj.chapter(1) for j in led.jobs(s.id) if j["path"])
+
+
+def test_no_reference_stills_means_no_keyframe_batch(tmp_path):
+    proj = copy_project(tmp_path)
+    for f in (tmp_path / "style_bible" / "refs").glob("*.png"):
+        f.unlink()
+    led = steps.open_ledger(proj)
+    with pytest.raises(ValueError, match="reference stills"):
+        kg.build(proj, led, "keyframes", 1, engine_set="stub")
+    assert not led.active_batch()
