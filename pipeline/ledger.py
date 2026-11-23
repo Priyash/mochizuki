@@ -49,6 +49,13 @@ CREATE TABLE IF NOT EXISTS batches (
 NOT_A_FAILURE = ("cut off", "stale inputs", "not reached")   # notes that do not count against a shot
 
 
+def not_a_failure(note: str | None) -> bool:
+    """True for a job that never got a fair try: cut off, stale, not reached, or its engine
+    failed to load (a bug or a download problem, not a bad shot)."""
+    note = note or ""
+    return note in NOT_A_FAILURE or (note.startswith("engine ") and "failed to load" in note)
+
+
 class BudgetExceeded(RuntimeError):
     pass
 
@@ -101,7 +108,7 @@ class Ledger:
 
     def failures(self, shot_id: str, kind: str) -> int:
         rows = [j for j in self.jobs(shot_id, kind) if j["status"] == "failed"]
-        return sum(1 for j in rows if (j["note"] or "") not in NOT_A_FAILURE)
+        return sum(1 for j in rows if not not_a_failure(j["note"]))
 
     def begin(self, key, shot_id, chapter, kind, idx, model, cost, batch: str | None = None) -> bool:
         """Reserve a job before the provider is called. False if it already exists."""

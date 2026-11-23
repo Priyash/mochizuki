@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .ledger import NOT_A_FAILURE, BudgetExceeded, Ledger
+from .ledger import BudgetExceeded, Ledger, not_a_failure
 from .project import Project, Shot, job_key, ref_shot
 
 OUT = {"ref": ("refs", ".png"), "keyframe": ("keyframes", ".png"), "variant": ("keyframes", ".png"),
@@ -198,7 +198,7 @@ def _attempt_key(p: Project, led: Ledger, s: Shot, kind: str, slot: int, prompt:
         job = led.get(key)
         if job is None or job["status"] in ("done", "pending"):
             return (key, idx, job) if real < max_fail else None
-        real += (job["note"] or "") not in NOT_A_FAILURE
+        real += not not_a_failure(job["note"])
     return None
 
 

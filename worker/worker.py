@@ -159,8 +159,10 @@ def find_gguf(repo: str, subdir: str, prefer: list[str]) -> str | None:
 
 
 def snapshot(model: str, skip: list[str]) -> str:
+    """Download a diffusers repo, leaving out the weights of the `skip` folders (they come from a
+    GGUF instead). Their config.json is still needed to build the model around the GGUF."""
     from huggingface_hub import snapshot_download  # noqa: PLC0415
-    ignore = [f"{d}/*" for d in skip]
+    ignore = [f"{d}/*{ext}" for d in skip for ext in (".safetensors", ".bin", ".pt", ".pth", ".gguf")]
     return snapshot_download(model, ignore_patterns=ignore)
 
 

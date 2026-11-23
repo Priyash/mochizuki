@@ -462,6 +462,9 @@ def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu", can
         queue = steps.review_queue(p, led, chapter)
         return {"action": "idle", "reason": "waiting for a person", "to_review": len(queue),
                 "states": steps.status(p, led, chapter)["states"]}
+    broken = engine_broken(led, name, stage)
+    if broken:
+        return {"action": "resting", "backend": name, "reason": broken}
     try:
         built = build(p, led, stage, chapter, engine_set=engine_set, backend=name, kg=kg)
     except BudgetUsedUp as e:
@@ -473,6 +476,34 @@ def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu", can
     except Exception:
         discard(led, built["batch"], f"could not be submitted to {name}")   # free the jobs for the other backend
         raise
+
+
+def code_time() -> float:
+    """When the checked-out code was committed (0 if unknown)."""
+    try:
+        r = subprocess.run(["git", "-C", str(REPO), "log", "-1", "--format=%ct"], capture_output=True, text=True)
+        return float(r.stdout.strip() or 0)
+    except (OSError, ValueError):
+        return 0.0
+
+
+def engine_broken(led: Ledger, backend: str, stage: str, runs: int = 2) -> str | None:
+    """If the last `runs` batches of this stage on this backend all failed because the engine
+    would not load, say so: running again would only spend GPU time. A code fix is needed."""
+    rows = led.db.execute("SELECT id FROM batches WHERE backend=? AND stage=? AND status IN ('done','failed')"
+                          " AND created_at > ? ORDER BY created_at DESC LIMIT ?",
+                          (backend, stage, code_time(), runs)).fetchall()   # a new commit earns a fresh try
+    if len(rows) < runs:
+        return None
+    notes = []
+    for r in rows:
+        jobs = [j for j in led.batch_jobs(r["id"]) if j["status"] == "failed"]
+        bad = [j["note"] for j in jobs if (j["note"] or "").startswith("engine ") and "failed to load" in j["note"]]
+        if not jobs or len(bad) < len(jobs) or len(jobs) < len(led.batch_jobs(r["id"])):
+            return None
+        notes.append(bad[0])
+    return (f"the {stage} engine failed to load in the last {runs} {backend} batches; stopped until the "
+            f"code is fixed: {notes[0][:300]}")
 
 
 def kaggle_stuck(led: Ledger) -> bool:

@@ -8,6 +8,7 @@ import importlib.util
 import json
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -690,3 +691,21 @@ def test_a_backend_that_cannot_start_a_batch_frees_its_jobs(proj):
     assert out[0]["action"] == "error" and not led.active_batch("extra")
     out = kg.tick_all(proj, led, [kg.LocalKaggle(proj.media)], 1, engine_set="stub")
     assert out[0]["action"] == "built_and_submitted"              # Kaggle takes the freed work
+
+
+def test_engine_load_failures_do_not_use_up_a_shot_and_stop_after_two_batches(tmp_path, monkeypatch):
+    proj = copy_project(tmp_path)
+    led = steps.open_ledger(proj)
+    monkeypatch.setattr(kg, "code_time", lambda: 0.0)
+    note = "engine refs failed to load: OSError('no config.json')"
+    for n in range(2):
+        b = f"b{n}"
+        led.create_batch(b, "refs", 1, 100)
+        led.begin(f"ref-style.ref{n}", "ref-style", 1, "ref", n, "m", 0, batch=b)
+        led.finish(f"ref-style.ref{n}", None, ok=False, note=note)
+        led.set_batch(b, status="done", finished_at=time.time())
+        assert led.failures("ref-style", "ref") == 0             # not the shot's fault
+        assert (kg.engine_broken(led, "kaggle", "refs") is None) == (n == 0)
+    assert "failed to load in the last 2 kaggle batches" in kg.engine_broken(led, "kaggle", "refs")
+    monkeypatch.setattr(kg, "code_time", lambda: time.time() + 1)
+    assert kg.engine_broken(led, "kaggle", "refs") is None      # a new commit gets a fresh try
