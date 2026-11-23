@@ -502,6 +502,8 @@ def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: 
             log(f"loading engine {name} for {len(jobs)} jobs")
             engine = build_engine(name, jobs, m["engines"], engine_set)
         except Exception as e:  # noqa: BLE001
+            log(f"engine {name} failed to load: {e!r}"[:600])
+            log(traceback.format_exc()[-1500:])
             for job in jobs:
                 results["jobs"][job["key"]] = {"ok": False, "error": f"engine {name} failed to load: {e!r}"[:800]}
             results["groups"][name] = {"load_error": traceback.format_exc()[-2000:]}
