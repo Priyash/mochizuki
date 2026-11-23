@@ -2,10 +2,25 @@
  "chapter": 1,
  "actions": [
   {
-   "action": "waiting",
+   "action": "collected",
    "batch": "b20261123-155903-cc2e",
    "backend": "kaggle",
-   "status": "running"
+   "status": "complete",
+   "made": 0,
+   "failed": 24,
+   "not_reached": 0,
+   "stale": false,
+   "error": null
+  },
+  {
+   "action": "idle",
+   "reason": "waiting for a person",
+   "to_review": 0,
+   "states": {
+    "waiting_anchor": 26,
+    "todo": 1
+   },
+   "backend": "kaggle"
   },
   {
    "action": "idle",
@@ -25,21 +40,22 @@
  },
  "kaggle_check": {
   "ok": true,
-  "output": "resource,used,remaining,total,refreshAt\nGPU,0.05h,29.95h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
+  "output": "resource,used,remaining,total,refreshAt\nGPU,0.12h,29.88h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
   "datasets list --mine": "0: ref                         title                   size  lastUpdated                 downloadCount  voteCount  usabilityRating  \n--------------------------  ----------------  ----------  --------------------------  -------------  ---------  ---------------  \npriyash11/mochizuki-inputs  mochizuki-inputs       11649  2026-11-23 15:59:05.860000              0          0  0.125",
   "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-23 16:51:54.310000           0",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
  "kaggle_log": [
-  "kaggle kernels status -> 0: priyash11/mochizuki-worker has status \"KernelWorkerStatus.RUNNING\""
+  "kaggle kernels status -> 0: priyash11/mochizuki-worker has status \"KernelWorkerStatus.COMPLETE\"",
+  "kaggle kernels output -> 0: "
  ],
  "uploaded": 0,
  "review": {
   "items": 0
  },
  "notice": {
-  "kind": "running",
-  "text": "Chapter 1: Kaggle batch b20261123-155903-cc2e (refs) is submitted."
+  "kind": "human",
+  "text": "@Priyash These shots need you: ref style, ref tsumugi_ch1, ref sayo, ref bowl_ch1, ref farmhouse_ch1, ref hearth_ch1. They used their take or failure cap. Change the prompt in prompts/<shot>.txt, simplify the shot, or route it to a paid model in shots.csv."
  },
  "status": {
   "waiting_anchor": 26,
