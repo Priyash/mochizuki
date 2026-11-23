@@ -3,7 +3,7 @@
  "actions": [
   {
    "action": "error",
-   "error": "batch dropped: no reference stills. Add at least style_bible/refs/style.png"
+   "error": "no reference stills: add at least style_bible/refs/style.png (gate 1)"
   }
  ],
  "reviews": {
@@ -11,13 +11,17 @@
   "errors": [],
   "refused": []
  },
+ "kaggle_check": {
+  "ok": true,
+  "output": "resource,used,remaining,total,refreshAt\nGPU,0.00h,30.00h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00"
+ },
  "uploaded": 0,
  "review": {
   "items": 0
  },
  "notice": {
   "kind": "error",
-  "text": "@Priyash Chapter 1: the Kaggle step stopped: batch dropped: no reference stills. Add at least style_bible/refs/style.png"
+  "text": "@Priyash Chapter 1: the Kaggle step stopped: no reference stills: add at least style_bible/refs/style.png (gate 1)"
  },
  "status": {
   "todo": 27
