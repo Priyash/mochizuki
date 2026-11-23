@@ -2,10 +2,29 @@
  "chapter": 1,
  "actions": [
   {
-   "action": "waiting",
+   "action": "collected",
    "batch": "b20261123-170552-a584",
    "backend": "kaggle",
-   "status": "running"
+   "status": "complete",
+   "made": 0,
+   "failed": 24,
+   "not_reached": 0,
+   "stale": false,
+   "error": null
+  },
+  {
+   "action": "built_and_submitted",
+   "batch": "b20261123-173218-4b0c",
+   "backend": "kaggle",
+   "stage": "refs",
+   "jobs": 24,
+   "deferred": 0,
+   "est_hours": 1.42,
+   "summary": {
+    "made": 24,
+    "deferred": 0
+   },
+   "submitted": true
   },
   {
    "action": "idle",
@@ -25,13 +44,18 @@
  },
  "kaggle_check": {
   "ok": true,
-  "output": "resource,used,remaining,total,refreshAt\nGPU,0.17h,29.83h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
+  "output": "resource,used,remaining,total,refreshAt\nGPU,0.22h,29.78h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
   "datasets list --mine": "0: ref                         title                   size  lastUpdated                 downloadCount  voteCount  usabilityRating  \n--------------------------  ----------------  ----------  --------------------------  -------------  ---------  ---------------  \npriyash11/mochizuki-inputs  mochizuki-inputs       11768  2026-11-23 17:05:55.720000              0          0  0.125",
   "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-23 17:06:02.907000           0",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
  "kaggle_log": [
-  "kaggle kernels status -> 0: priyash11/mochizuki-worker has status \"KernelWorkerStatus.RUNNING\""
+  "kaggle kernels status -> 0: priyash11/mochizuki-worker has status \"KernelWorkerStatus.COMPLETE\"",
+  "kaggle kernels output -> 0: ",
+  "kaggle datasets status priyash11/mochizuki-inputs -> 0: ready",
+  "kaggle datasets version -> 0: Dataset version is being created. Please check progress at https://www.kaggle.com/datasets/priyash11/mochizuki-inputs",
+  "kaggle datasets status priyash11/mochizuki-inputs -> 0: ready",
+  "kaggle kernels push -> 0: Kernel version 4 successfully pushed.  Please check progress at https://www.kaggle.com/code/priyash11/mochizuki-worker"
  ],
  "uploaded": 0,
  "review": {
@@ -39,7 +63,7 @@
  },
  "notice": {
   "kind": "running",
-  "text": "Chapter 1: Kaggle batch b20261123-170552-a584 (refs) is submitted."
+  "text": "Chapter 1: Kaggle batch b20261123-173218-4b0c (refs) is submitted."
  },
  "status": {
   "waiting_anchor": 26,
