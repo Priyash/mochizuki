@@ -40,9 +40,11 @@ def load_worker():
     return mod
 
 
-def copy_project(tmp_path, csv_edit=None, cfg_edit=None) -> Project:
+def copy_project(tmp_path, csv_edit=None, cfg_edit=None, scenes=False) -> Project:
     shutil.copy(REPO / "config.json", tmp_path / "config.json")
     shutil.copytree(REPO / "style_bible", tmp_path / "style_bible")
+    if not scenes:                      # most tests check one thing at a time; scene tests opt in
+        (tmp_path / "style_bible" / "scenes.json").unlink()
     for r in json.loads((REPO / "style_bible" / "ref_prompts.json").read_text())["refs"]:
         write_png(tmp_path / "style_bible" / "refs" / f"{r['name']}.png")   # stand-in reference stills
     text = (REPO / "shots.csv").read_text(encoding="utf-8")
@@ -599,3 +601,38 @@ def test_an_aged_still_is_painted_from_the_approved_one(tmp_path):
     steps.refs(proj, led, ex, 3)
     jobs = led.jobs("ref-tsumugi_ch3", "ref")
     assert len(jobs) == 4 and steps.ref_state(proj, led, plan["tsumugi_ch3"]) == "review"
+
+
+def test_every_shot_is_in_exactly_one_scene_with_its_anchor():
+    p = Project(REPO)
+    seen = [x for sc in p.scenes().values() for x in sc["shots"]]
+    assert sorted(seen) == sorted(s.id for s in p.shots)
+    for sid, sc in p.scenes().items():
+        assert sc["anchor"] in sc["shots"]
+        after = sc.get("after")
+        if after:                                   # an anchor may only follow an earlier scene
+            assert after < sid and after in p.scenes()
+    assert p.continuity_source(p.shot("1-04")) == "1-06"     # drawn from the scene anchor
+    assert p.continuity_source(p.shot("5-17")) == "1-06"     # the ruined farmhouse follows the first one
+    assert p.continuity_source(p.shot("3-01")) == "2-22"     # match cut: lights become sparks
+    assert p.continuity_source(p.shot("1-06")) is None
+
+
+@needs_ffmpeg
+def test_scene_anchors_are_drawn_first_and_the_rest_from_them(tmp_path):
+    proj = copy_project(tmp_path, scenes=True)
+    led, ex = sync(proj)
+    first = steps.keyframes(proj, led, ex, 1)
+    anchors = {"1-06"}                                         # 1B and 1C follow 1A's anchor
+    assert {s.id for s in proj.chapter(1) if led.jobs(s.id, "keyframe")} == anchors and first["made"] == 3
+    assert steps.state(proj, led, proj.shot("1-04")) == "waiting_anchor"
+    assert kg.next_stage(proj, led, 1) is None                 # waits for the anchor to be chosen
+    led.select(led.jobs("1-06", "keyframe")[0]["key"])
+    assert kg.next_stage(proj, led, 1) == "keyframes"
+    steps.keyframes(proj, led, ex, 1)
+    sel = led.selected("1-06")["path"]
+    job = next(j for j in led.jobs("1-04", "keyframe"))
+    assert job                                                  # the rest of 1A, and 1B/1C anchors, now drawn
+    refs = steps.continuity_refs(proj, led, proj.shot("1-04"))
+    assert refs[0] == sel and not any(Path(r).stem == "style" for r in refs) and len(refs) <= 3
+    assert steps.state(proj, led, proj.shot("1-19")) == "waiting_anchor"     # 1B's anchor is not chosen yet

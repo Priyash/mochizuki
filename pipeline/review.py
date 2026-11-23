@@ -65,6 +65,12 @@ def export(p: Project, led: Ledger, chapter: int, outdir: Path) -> dict:
                 img = f"{j['key']}.jpg"
                 _still(p.fetch(j["path"]), outdir / img)
                 cands.append({"key": j["key"], "image": img, "verdict": j["verdict"]})
+            src = p.continuity_source(s)
+            drawn_from = None
+            if src and led.selected(src):
+                drawn_from = {"shot_id": src, "image": f"source_{src}.jpg"}
+                if not (outdir / drawn_from["image"]).exists():
+                    _still(p.fetch(led.selected(src)["path"]), outdir / drawn_from["image"], width=640)
             neighbours = []                       # chosen keyframes of the shots either side, for continuity
             for m in (n - 1, n + 1):
                 if 0 <= m < len(shots) and led.selected(shots[m].id):
@@ -73,9 +79,11 @@ def export(p: Project, led: Ledger, chapter: int, outdir: Path) -> dict:
                         _still(p.fetch(led.selected(shots[m].id)["path"]), outdir / img, width=640)
                     neighbours.append({"shot_id": shots[m].id, "shot": shots[m].shot, "image": img})
             items.append({**base, "what": "keyframe", "candidates": cands, "neighbours": neighbours,
+                          "drawn_from": drawn_from, "scene": p.scene_of(s)[0],
                           "task": "select the best candidate, or fail every candidate that is not good enough. "
                                   "It must match the neighbouring shots' chosen keyframes in costume, set, light and "
-                                  "time of day unless the shot description says that changes"})
+                                  "time of day unless the shot description says that changes, and must stay true to "
+                                  "the keyframe it was drawn from (its scene anchor)"})
         elif st == "take_review":
             for j in led.jobs(s.id, "take"):
                 if j["status"] == "done" and j["verdict"] is None:

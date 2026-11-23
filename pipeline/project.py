@@ -138,6 +138,35 @@ class Project:
             return 10.0
         return 0.0
 
+    # ---- scenes: coherence inside a scene and across matched cuts
+    def scenes(self) -> dict:
+        f = self.root / "style_bible" / "scenes.json"
+        return json.loads(f.read_text(encoding="utf-8")).get("scenes", {}) if f.exists() else {}
+
+    def scene_of(self, shot: Shot) -> tuple[str | None, dict]:
+        for sid, sc in self.scenes().items():
+            if shot.id in sc.get("shots", []):
+                return sid, sc
+        return None, {}
+
+    def continuity_source(self, shot: Shot) -> str | None:
+        """The shot whose chosen keyframe this shot's keyframe is drawn from, if any.
+
+        A match cut ("... become(s) ...") follows the shot before it; any other shot follows
+        its scene's anchor; an anchor follows the anchor of the scene it comes 'after'.
+        """
+        order = [s.id for s in self.shots]
+        i = order.index(shot.id)
+        if re.search(r"\bbecomes?\b", shot.shot.lower()) and i > 0:
+            return order[i - 1]
+        sid, sc = self.scene_of(shot)
+        if not sid:
+            return None
+        if sc.get("anchor") and sc["anchor"] != shot.id:
+            return sc["anchor"]
+        after = self.scenes().get(sc.get("after", ""), {})
+        return after.get("anchor")
+
     # ---- reference stills (gate 1)
     def ref_plan(self) -> list[dict]:
         f = self.root / "style_bible" / "ref_prompts.json"
@@ -164,8 +193,9 @@ class Project:
         chapters = self.root / "style_bible" / "chapter_styles.json"
         chapter_line = json.loads(chapters.read_text(encoding="utf-8")).get(str(shot.chapter), "") \
             if chapters.exists() else ""
+        scene_line = self.scene_of(shot)[1].get("setting", "")
         parts = [style.read_text(encoding="utf-8").strip() if style.exists() else "",
-                 chapter_line,
+                 chapter_line, scene_line,
                  own.read_text(encoding="utf-8").strip() if own.exists() else shot.shot,
                  extra]
         return "\n".join(p for p in parts if p)

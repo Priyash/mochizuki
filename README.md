@@ -15,6 +15,8 @@ It costs no money. It does cost time: the free GPU quota is about 30 hours a wee
 | Still (held frames; pushes and particles added in the edit) | 55 | none | keyframe | 0 |
 
 1. **Keyframes:** Qwen-Image-Edit-2511 draws 3 candidates per shot from your reference stills. A shot gets a second set of 3 only if all three fail.
+   - **Scenes keep it coherent.** `style_bible/scenes.json` groups the 138 shots into 20 scenes. Each scene's anchor keyframe is drawn and chosen first; every other shot in the scene is then drawn from it, so set, light, costume and time of day carry through. A scene that returns to an earlier place (the hearth, the porch, the ruined farmhouse) draws its anchor from that earlier scene, and a match cut ("lights become sparks") is drawn from the shot before it.
+   - **Characters age, not redesign.** Tsumugi at 27 and 87, Sayo very old, the bowl's later seams and Akari's forms are painted as edits of the approved earlier still, and each shot uses the version for its chapter.
 2. **Board (human gate):** you pick one keyframe per shot and approve the chapter.
 3. **Takes:** the video model animates the chosen keyframe, one take at a time. A retake runs only after the previous take has failed review. Shots longer than one model clip (about 5 s on the 14B model) are made as chained clips, each starting on the last frame of the one before.
 4. **Animatic (human gate):** a 640×360 cut of the chapter, which you approve.
@@ -40,7 +42,7 @@ The 4K is upscaled from 720p, not rendered at 4K. No free model makes native 4K 
 | GPU-time estimates in `config.json` | My estimates, until real runs replace them |
 | The `fal` paid fallback | Written but never run; endpoint ids are placeholders |
 
-`python -m pytest -q` runs 30 tests in about 2.5 min. They need ffmpeg and nothing else.
+`python -m pytest -q` runs 37 tests in about 3 min. They need ffmpeg and nothing else.
 
 ## Setup
 
@@ -177,7 +179,7 @@ prompts/             optional per-shot prompt files
 pipeline/            the producer: ledger, steps, Kaggle batches, assemble
 worker/worker.py     runs on Kaggle: Qwen keyframes, Wan takes, 4K upscale
 .github/workflows/   tests, the producer (produce.yml) and the owner's commands (gates.yml)
-tests/               30 tests, no GPU or network needed
+tests/               37 tests, no GPU or network needed
 AGENTS.md            rules for an AI agent running the loop
 ```
 

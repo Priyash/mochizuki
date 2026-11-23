@@ -87,7 +87,12 @@ def state(p: Project, led: Ledger, s: Shot) -> str:
     max_fail = p.config.get("kaggle", {}).get("max_failures_per_shot", 2)
     keyframes = [j for j in led.jobs(s.id, "keyframe") if j["status"] == "done"]
     if not keyframes:
-        return "needs_human" if led.failures(s.id, "keyframe") >= max_fail else "todo"
+        if led.failures(s.id, "keyframe") >= max_fail:
+            return "needs_human"
+        src = p.continuity_source(s)
+        if src and not led.selected(src):
+            return "waiting_anchor"    # drawn from another shot's keyframe, which is not chosen yet
+        return "todo"
     if not led.selected(s.id):
         if all(j["verdict"] == "fail" for j in keyframes):
             cap = p.config["keyframes"].get("max_candidates", 0)
@@ -221,6 +226,18 @@ def _spec(p: Project, s: Shot, kind: str, idx: int, prompt: str, **extra) -> dic
             "seconds": s.seconds, **extra}
 
 
+def continuity_refs(p: Project, led: Ledger, s: Shot, limit: int = 3) -> list[str]:
+    """Reference images for a keyframe: the continuity source's chosen keyframe first (it
+    already carries the look, so style.png gives way), then the shot's characters and props."""
+    refs = [str(r) for r in p.refs_for(s, limit)]
+    src = p.continuity_source(s)
+    sel = led.selected(src) if src else None
+    if not sel:
+        return refs
+    subjects = [r for r in refs if not Path(r).stem.lower().startswith("style")]
+    return [sel["path"]] + subjects[: limit - 1]
+
+
 def keyframes(p: Project, led: Ledger, ex, chapter: int, only: str | None = None) -> dict:
     """Make keyframe candidates for shots that have none selected.
 
@@ -237,7 +254,7 @@ def keyframes(p: Project, led: Ledger, ex, chapter: int, only: str | None = None
         if only and s.id != only:
             continue
         st = state(p, led, s)
-        if led.selected(s.id) or st in ("pending_unknown", "in_batch", "needs_human"):
+        if led.selected(s.id) or st in ("pending_unknown", "in_batch", "needs_human", "waiting_anchor"):
             if st == "needs_human":
                 human.append(s.id)
             continue
@@ -253,7 +270,7 @@ def keyframes(p: Project, led: Ledger, ex, chapter: int, only: str | None = None
         want = (n - len(done) % n) if unfinished_batch else min(n, cap - len(done))
         start = len(led.jobs(s.id, "keyframe"))
         prompt = p.prompt(s)
-        refs = [str(r) for r in p.refs_for(s, limit)]
+        refs = continuity_refs(p, led, s, limit)
         for i in range(start, start + want):
             r = ex.submit(p, led, s, _spec(p, s, "keyframe", i, prompt, refs=refs), p.keyframe_cost())
             made += r in ("made", "queued")
