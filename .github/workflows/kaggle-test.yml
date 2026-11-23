@@ -1,0 +1,48 @@
+# Diagnostic: push two tiny notebooks to Kaggle (CPU and T4 GPU) and watch them for a while.
+name: kaggle-test
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q "kaggle>=1.7" six
+      - name: Push and watch
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        run: |
+          set +e
+          for kind in cpu gpu; do
+            d=/tmp/k-$kind; mkdir -p $d; cp .github/kaggle-test/test.py $d/test.py
+            gpu=$([ $kind = gpu ] && echo true || echo false)
+            cat > $d/kernel-metadata.json <<META
+          {"id": "$KAGGLE_USERNAME/mochizuki-test-$kind", "title": "mochizuki-test-$kind", "code_file": "test.py",
+           "language": "python", "kernel_type": "script", "is_private": "true", "enable_gpu": "$gpu",
+           "enable_tpu": "false", "enable_internet": "true", "dataset_sources": [], "competition_sources": [],
+           "kernel_sources": [], "model_sources": []}
+          META
+            if [ $kind = gpu ]; then kaggle kernels push -p $d --accelerator NvidiaTeslaT4 -t 600; else kaggle kernels push -p $d -t 600; fi
+          done
+          kaggle kernels status $KAGGLE_USERNAME/mochizuki-worker
+          for i in $(seq 1 20); do
+            sleep 30
+            echo "--- $(date -u +%H:%M:%S)"
+            kaggle kernels status $KAGGLE_USERNAME/mochizuki-test-cpu
+            kaggle kernels status $KAGGLE_USERNAME/mochizuki-test-gpu
+            done_cpu=$(kaggle kernels status $KAGGLE_USERNAME/mochizuki-test-cpu | grep -ci complete)
+            done_gpu=$(kaggle kernels status $KAGGLE_USERNAME/mochizuki-test-gpu | grep -ci complete)
+            [ "$done_cpu" -gt 0 ] && [ "$done_gpu" -gt 0 ] && break
+          done
+          for kind in cpu gpu; do
+            echo "=== output $kind"; mkdir -p /tmp/out-$kind
+            kaggle kernels output $KAGGLE_USERNAME/mochizuki-test-$kind -p /tmp/out-$kind -o
+            cat /tmp/out-$kind/*.log 2>/dev/null | tail -40
+          done
+          kaggle kernels list --mine
+          kaggle quota -v
