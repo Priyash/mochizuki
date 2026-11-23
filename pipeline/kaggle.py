@@ -96,9 +96,22 @@ class KaggleCLI:
             return "missing"
         return out.strip().lower() if code == 0 else f"unknown ({out.strip()[-200:]})"
 
+    LICENSES = ("unknown", "other", "copyright-authors")      # all keep every right with the owner
+
     def publish_dataset(self, folder: Path, ref: str, message: str) -> None:
         if self.dataset_status(ref) == "missing":
-            self.call("datasets", "create", "-p", str(folder), "-q")
+            meta_f = folder / "dataset-metadata.json"
+            meta = json.loads(meta_f.read_text())
+            for lic in self.LICENSES:
+                meta["licenses"] = [{"name": lic}]
+                meta_f.write_text(json.dumps(meta, indent=1))
+                try:
+                    self.call("datasets", "create", "-p", str(folder), "-q")
+                    return
+                except KaggleError as e:
+                    if "license" not in str(e).lower():
+                        raise
+            raise KaggleError(f"Kaggle accepted none of the licences {self.LICENSES} for the private dataset")
         else:
             self.call("datasets", "version", "-p", str(folder), "-m", message, "-q")
 
@@ -273,7 +286,7 @@ def build(p: Project, led: Ledger, stage: str, chapter: int, only: str | None = 
     (data / "manifest.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False), encoding="utf-8")
     shutil.copyfile(WORKER, data / "worker.py")
     (data / "dataset-metadata.json").write_text(json.dumps(
-        {"title": k["dataset_slug"], "id": dataset_ref, "licenses": [{"name": "copyright-authors"}]}, indent=1))
+        {"title": k["dataset_slug"], "id": dataset_ref, "licenses": [{"name": "unknown"}]}, indent=1))
     (kern / "bootstrap.py").write_text(BOOTSTRAP.format(
         batch_id=batch_id, engine_set=engine_set, packages=", ".join(repr(x) for x in PACKAGES)))
     (kern / "kernel-metadata.json").write_text(json.dumps({
