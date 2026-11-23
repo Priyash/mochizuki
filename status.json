@@ -6,6 +6,16 @@
    "batch": "b20261123-155903-cc2e",
    "backend": "kaggle",
    "status": "queued"
+  },
+  {
+   "action": "idle",
+   "reason": "waiting for a person",
+   "to_review": 0,
+   "states": {
+    "waiting_anchor": 26,
+    "todo": 1
+   },
+   "backend": "runpod"
   }
  ],
  "reviews": {
