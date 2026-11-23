@@ -440,7 +440,11 @@ def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu", can
         active = None
     if active:
         if active["status"] == "built":
-            return {"action": "submitted", **submit(p, led, kg, active["id"])}
+            try:
+                return {"action": "submitted", **submit(p, led, kg, active["id"])}
+            except Exception:
+                discard(led, active["id"], f"could not be submitted to {name}")
+                raise
         res = collect(p, led, kg, active["id"])
         stuck = _cfg(p).get("max_queue_hours", 3) * 3600
         if can_hand_over and name == "kaggle" and res["status"] == "queued" and \
@@ -462,7 +466,11 @@ def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu", can
         return {"action": "resting", "backend": name, "reason": str(e)}
     if not built["batch"]:
         return {"action": "idle", "reason": f"nothing to run for {stage}", **built}
-    return {"action": "built_and_submitted", **built, **submit(p, led, kg, built["batch"])}
+    try:
+        return {"action": "built_and_submitted", **built, **submit(p, led, kg, built["batch"])}
+    except Exception:
+        discard(led, built["batch"], f"could not be submitted to {name}")   # free the jobs for the other backend
+        raise
 
 
 def tick_all(p: Project, led: Ledger, backends: list, chapter: int, engine_set: str = "gpu") -> list[dict]:

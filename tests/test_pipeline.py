@@ -775,3 +775,16 @@ def test_work_stuck_in_kaggles_queue_moves_to_modal(proj):
     assert modal_jobs
     hero = next(s for s in proj.chapter(1) if s.type == "Hero")
     assert led.failures(hero.id, "take") == 0                 # a handover is not the shot's fault
+
+
+def test_a_backend_that_cannot_start_a_batch_frees_its_jobs(proj):
+    led, ex = sync(proj)
+    board(proj, led, ex)
+    broken = kg.LocalKaggle(proj.media, name="modal")
+    def refuse(*a, **k):
+        raise RuntimeError("Please add a payment method to use L4 GPU functions.")
+    broken.push = refuse
+    out = kg.tick_all(proj, led, [broken], 1, engine_set="stub")
+    assert out[0]["action"] == "error" and not led.active_batch("modal")
+    out = kg.tick_all(proj, led, [kg.LocalKaggle(proj.media)], 1, engine_set="stub")
+    assert out[0]["action"] == "built_and_submitted"              # Kaggle takes the freed work
