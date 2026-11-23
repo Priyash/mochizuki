@@ -2,29 +2,10 @@
  "chapter": 1,
  "actions": [
   {
-   "action": "collected",
-   "batch": "b20261123-173218-4b0c",
-   "backend": "kaggle",
-   "status": "cancelled",
-   "made": 0,
-   "failed": 0,
-   "not_reached": 24,
-   "stale": false,
-   "error": "no results.json"
-  },
-  {
-   "action": "built_and_submitted",
+   "action": "waiting",
    "batch": "b20261123-180102-6099",
    "backend": "kaggle",
-   "stage": "refs",
-   "jobs": 24,
-   "deferred": 0,
-   "est_hours": 1.42,
-   "summary": {
-    "made": 24,
-    "deferred": 0
-   },
-   "submitted": true
+   "status": "running"
   },
   {
    "action": "idle",
@@ -44,18 +25,13 @@
  },
  "kaggle_check": {
   "ok": true,
-  "output": "resource,used,remaining,total,refreshAt\nGPU,0.52h,29.48h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
-  "datasets list --mine": "0: ref                         title                   size  lastUpdated                 downloadCount  voteCount  usabilityRating  \n--------------------------  ----------------  ----------  --------------------------  -------------  ---------  ---------------  \npriyash11/mochizuki-inputs  mochizuki-inputs       13610  2026-11-23 17:32:20.383000              0          0  0.125",
-  "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-23 17:39:05.510000           0",
+  "output": "resource,used,remaining,total,refreshAt\nGPU,0.68h,29.32h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
+  "datasets list --mine": "0: ref                         title                   size  lastUpdated                 downloadCount  voteCount  usabilityRating  \n--------------------------  ----------------  ----------  --------------------------  -------------  ---------  ---------------  \npriyash11/mochizuki-inputs  mochizuki-inputs       13612  2026-11-23 18:01:05.817000              0          0  0.125",
+  "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-23 18:01:10.190000           0",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
  "kaggle_log": [
-  "kaggle kernels status -> 0: priyash11/mochizuki-worker has status \"KernelWorkerStatus.CANCEL_ACKNOWLEDGED\"",
-  "kaggle kernels output -> 0: ",
-  "kaggle datasets status priyash11/mochizuki-inputs -> 0: ready",
-  "kaggle datasets version -> 0: Dataset version is being created. Please check progress at https://www.kaggle.com/datasets/priyash11/mochizuki-inputs",
-  "kaggle datasets status priyash11/mochizuki-inputs -> 0: ready",
-  "kaggle kernels push -> 0: Kernel version 5 successfully pushed.  Please check progress at https://www.kaggle.com/code/priyash11/mochizuki-worker"
+  "kaggle kernels status -> 0: priyash11/mochizuki-worker has status \"KernelWorkerStatus.RUNNING\""
  ],
  "uploaded": 0,
  "review": {
