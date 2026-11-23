@@ -476,8 +476,8 @@ def tick_all(p: Project, led: Ledger, backends: list, chapter: int, engine_set: 
         for _ in range(4):                                  # collect, then start the next in the same run
             try:
                 r = tick(p, led, kg, chapter, engine_set=engine_set, can_hand_over=len(backends) > 1)
-            except (KaggleError, PermissionError, ValueError) as e:
-                r = {"action": "error", "error": str(e)[:500]}
+            except Exception as e:  # noqa: BLE001 - one backend failing must not stop the other
+                r = {"action": "error", "error": f"{type(e).__name__}: {e}"[:500]}
             r.setdefault("backend", getattr(kg, "name", "kaggle"))
             out.append(r)
             if r["action"] != "collected":

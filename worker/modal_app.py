@@ -26,7 +26,7 @@ app = modal.App("mochizuki-worker")
 
 
 @app.function(image=image, gpu=os.environ.get("MOCHIZUKI_MODAL_GPU", "L4"), cpu=4.0, memory=49152,
-              ephemeral_disk=200 * 1024, volumes={"/data": volume}, timeout=4 * 3600, retries=0)
+              volumes={"/data": volume}, timeout=4 * 3600, retries=0)   # default disk (512 GiB) holds the models
 def run_batch(batch_id: str, engine_set: str = "gpu") -> dict:
     volume.reload()
     base = f"/data/batches/{batch_id}"
