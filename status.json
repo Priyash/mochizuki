@@ -3,7 +3,7 @@
  "actions": [
   {
    "action": "error",
-   "error": "kaggle datasets create -p failed: x64/lib/python3.11/site-packages/kaggle/__init__.py\", line 3, in <module>\n    from kaggle.api.kaggle_api_extended import KaggleApi\n  File \"/opt/hostedtoolcache/Python/3.11.18/x64/lib/python3.11/site-packages/kaggle/api/kaggle_api_extended.py\", line 266, in <module>\n    from ..models.upload_file import UploadFile\n  File \"/opt/hostedtoolcache/Python/3.11.18/x64/lib/python3.11/site-packages/kaggle/models/upload_file.py\", line 22, in <module>\n    import six\nModuleNo"
+   "error": "batch dropped: no reference stills. Add at least style_bible/refs/style.png"
   }
  ],
  "reviews": {
@@ -17,9 +17,9 @@
  },
  "notice": {
   "kind": "error",
-  "text": "@Priyash Chapter 1: the Kaggle step stopped: kaggle datasets create -p failed: x64/lib/python3.11/site-packages/kaggle/__init__.py\", line 3, in <module>\n    from kaggle.api.kaggle_api_extended import KaggleApi\n  File \"/opt/hostedtoolcache/Python/3.11.18/x64/lib/python3.11/site-packages/kaggle/api/kaggle_api_extended.py\", line 266, in <module>\n    from ..models.upload_file import UploadFile\n  File \"/opt/hostedtoolcache/Python/3.11.18/x64/lib/python3.11/site-packages/kaggle/models/upload_file.py\", line 22, in <module>\n    import six\nModuleNo"
+  "text": "@Priyash Chapter 1: the Kaggle step stopped: batch dropped: no reference stills. Add at least style_bible/refs/style.png"
  },
  "status": {
-  "in_batch": 27
+  "todo": 27
  }
 }
