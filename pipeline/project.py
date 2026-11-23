@@ -146,9 +146,16 @@ class Project:
     def ref_path(self, name: str) -> Path:
         return self.root / "style_bible" / "refs" / f"{name}.png"
 
-    def refs_missing(self) -> list[dict]:
-        """Planned reference stills that are not in style_bible/refs yet."""
-        return [r for r in self.ref_plan() if not self.ref_path(r["name"]).exists()]
+    @staticmethod
+    def ref_chapter(r: dict) -> int:
+        """The first chapter a planned still is needed for: its _chN suffix, else chapter 1."""
+        m = re.search(r"_ch(\d+)$", r["name"])
+        return int(r.get("chapter") or (m.group(1) if m else 1))
+
+    def refs_missing(self, chapter: int | None = None) -> list[dict]:
+        """Planned reference stills not in style_bible/refs yet (only those needed up to `chapter`)."""
+        return [r for r in self.ref_plan() if not self.ref_path(r["name"]).exists()
+                and (chapter is None or self.ref_chapter(r) <= chapter)]
 
     # ---- prompts
     def prompt(self, shot: Shot, extra: str = "") -> str:
@@ -169,30 +176,37 @@ class Project:
                       and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")) if refs.exists() else []
 
     def refs_for(self, shot: Shot, limit: int = 3) -> list[Path]:
-        """Pick reference stills for a shot by name.
+        """Pick the reference stills a shot's keyframe is drawn from.
 
-        Files are named after what they show: tsumugi_ch1.png, sayo.png, akari.png,
-        bowl_ch3.png, style.png. A name that appears in the shot text is used, and a
-        chapter-specific file beats a general one. style.* is always included.
+        style.* always goes first. Every other still is a subject (tsumugi, sayo, bowl,
+        hearth ...) in one or more chapter versions (tsumugi_ch1, tsumugi_ch3 ...). A subject
+        is used when its name, or a word in its ref_prompts.json "match" list, appears in
+        the shot; the version is the latest one at or before the shot's chapter, so Tsumugi
+        ages with the story. Lower "priority" wins the remaining slots (characters first).
         """
         text = f"{shot.shot} {shot.sound}".lower()
-        by_name: dict[str, list[Path]] = {}
-        style = []
+        plan = {r["name"]: r for r in self.ref_plan()}
+        style: list[Path] = []
+        subjects: dict[str, list[tuple[int, Path, dict]]] = {}
         for ref in self.references():
             stem = ref.stem.lower()
             if stem.startswith("style"):
                 style.append(ref)
                 continue
-            name = re.split(r"[_\-]", stem)[0]
-            by_name.setdefault(name, []).append(ref)
-        chosen: list[Path] = []
-        for name, files in sorted(by_name.items()):
-            if name not in text and not (name == "tsumugi" and re.search(r"\b(she|her|child|girl)\b", text)):
+            m = re.match(r"^(.*?)(?:_ch(\d+))?$", stem)
+            subjects.setdefault(m.group(1), []).append((int(m.group(2) or 0), ref, plan.get(stem, {})))
+        chosen = []
+        for subject, files in subjects.items():
+            words = {subject.split("_")[0]} | {w for _, _, e in files for w in e.get("match", [])}
+            hit = any(re.search(rf"\b{re.escape(w)}\b", text) for w in words)
+            if not hit:
                 continue
-            exact = [f for f in files if f"ch{shot.chapter}" in f.stem.lower()]
-            chosen.append((exact or sorted(files))[0])
-        chosen = chosen[: max(0, limit - (1 if style else 0))]
-        return (style[:1] + chosen)[:limit]
+            eligible = [f for f in files if f[0] <= shot.chapter] or files
+            ch, path, _ = max(eligible, key=lambda f: (f[0], f[1].name))
+            prio = min((e.get("priority", 2) for _, _, e in files), default=2)
+            chosen.append((prio, subject, path))
+        chosen.sort(key=lambda c: (c[0], c[1]))
+        return (style[:1] + [path for _, _, path in chosen])[:limit]
 
 
 REF_CHAPTER = 0          # reference stills belong to no chapter

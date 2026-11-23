@@ -490,7 +490,8 @@ def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: 
     deadline = t0 + float(m.get("deadline_seconds", 10 * 3600))
     groups: dict[str, list[dict]] = {}
     for job in m["jobs"]:
-        groups.setdefault(KIND_TO_ENGINE.get(job["kind"], job["model"]), []).append(job)
+        name = "keyframe" if job["kind"] == "ref" and job.get("refs") else KIND_TO_ENGINE.get(job["kind"], job["model"])
+        groups.setdefault(name, []).append(job)
     for name, jobs in groups.items():
         if time.time() + 600 > deadline:
             break

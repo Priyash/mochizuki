@@ -40,7 +40,7 @@ def export(p: Project, led: Ledger, chapter: int, outdir: Path) -> dict:
     shutil.rmtree(outdir, ignore_errors=True)
     outdir.mkdir(parents=True)
     items = []
-    for r in p.refs_missing():
+    for r in p.refs_missing(chapter):
         if steps.ref_state(p, led, r) != "review":
             continue
         cands = []
@@ -52,7 +52,8 @@ def export(p: Project, led: Ledger, chapter: int, outdir: Path) -> dict:
         items.append({"what": "ref", "name": r["name"], "prompt": r["prompt"], "candidates": cands,
                       "task": "reference still for gate 1: select the most striking, on-style, emotionally strong "
                               "candidate, or fail every candidate that is not good enough"})
-    for s in p.chapter(chapter):
+    shots = p.chapter(chapter)
+    for n, s in enumerate(shots):
         st = steps.state(p, led, s)
         base = {"shot_id": s.id, "type": s.type, "seconds": s.seconds, "shot": s.shot, "sound": s.sound,
                 "refs": [p.rel(r) for r in p.refs_for(s, 3)]}
@@ -64,8 +65,17 @@ def export(p: Project, led: Ledger, chapter: int, outdir: Path) -> dict:
                 img = f"{j['key']}.jpg"
                 _still(p.fetch(j["path"]), outdir / img)
                 cands.append({"key": j["key"], "image": img, "verdict": j["verdict"]})
-            items.append({**base, "what": "keyframe", "candidates": cands,
-                          "task": "select the best candidate, or fail every candidate that is not good enough"})
+            neighbours = []                       # chosen keyframes of the shots either side, for continuity
+            for m in (n - 1, n + 1):
+                if 0 <= m < len(shots) and led.selected(shots[m].id):
+                    img = f"neighbour_{shots[m].id}.jpg"
+                    if not (outdir / img).exists():
+                        _still(p.fetch(led.selected(shots[m].id)["path"]), outdir / img, width=640)
+                    neighbours.append({"shot_id": shots[m].id, "shot": shots[m].shot, "image": img})
+            items.append({**base, "what": "keyframe", "candidates": cands, "neighbours": neighbours,
+                          "task": "select the best candidate, or fail every candidate that is not good enough. "
+                                  "It must match the neighbouring shots' chosen keyframes in costume, set, light and "
+                                  "time of day unless the shot description says that changes"})
         elif st == "take_review":
             for j in led.jobs(s.id, "take"):
                 if j["status"] == "done" and j["verdict"] is None:
@@ -100,9 +110,9 @@ def board_sheet(p: Project, led: Ledger, chapter: int, out: Path) -> list[str]:
     return [i for i, _ in picked]
 
 
-def refs_sheet(p: Project, led: Ledger, out: Path) -> list[str]:
+def refs_sheet(p: Project, led: Ledger, out: Path, chapter: int | None = None) -> list[str]:
     """The chosen reference stills, two to a row, large enough to judge. Returns their names in order."""
-    picked = [(r["name"], led.selected(ref_shot(r["name"]).id)) for r in p.refs_missing()]
+    picked = [(r["name"], led.selected(ref_shot(r["name"]).id)) for r in p.refs_missing(chapter)]
     picked = [(n, sel) for n, sel in picked if sel]
     _sheet([p.fetch(sel["path"]) for _, sel in picked], out, 2, 960, 540)
     return [n for n, _ in picked]

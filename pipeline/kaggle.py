@@ -372,7 +372,7 @@ def collect(p: Project, led: Ledger, kg, batch_id: str) -> dict:
 
 def next_stage(p: Project, led: Ledger, chapter: int) -> str | None:
     """What the chapter needs next from the GPU, or None if it is waiting on a person."""
-    missing = p.refs_missing()
+    missing = p.refs_missing(chapter)
     if any(steps.ref_state(p, led, r) in ("todo", "needs_candidates") for r in missing):
         return "refs"
     if missing:

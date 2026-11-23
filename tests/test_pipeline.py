@@ -283,7 +283,7 @@ def test_paid_routed_shots_are_left_out_of_kaggle_batches(tmp_path):
     assert "1-04" not in shots and "1-03" in shots
 
 
-def test_kaggle_cli_parsing_with_a_fake_runner():
+def test_kaggle_cli_parsing_with_a_fake_runner(tmp_path):
     replies = {
         ("kernels", "status"): (0, 'tester/mochizuki-worker has status "KernelWorkerStatus.COMPLETE"\n'),
         ("quota", "-v"): (0, "resource,used,remaining,total,refreshAt\nGPU,12.5h,17.5h,30h,2026-11-29\n"),
@@ -299,7 +299,8 @@ def test_kaggle_cli_parsing_with_a_fake_runner():
     assert cli.status("tester/mochizuki-worker") == "complete"
     assert cli.gpu_hours_left() == 17.5
     assert cli.dataset_status("tester/mochizuki-inputs") == "missing"
-    cli.publish_dataset(Path("/tmp/x"), "tester/mochizuki-inputs", "b1")
+    (tmp_path / "dataset-metadata.json").write_text(json.dumps({"id": "tester/mochizuki-inputs", "licenses": []}))
+    cli.publish_dataset(tmp_path, "tester/mochizuki-inputs", "b1")
     assert calls[-1][:2] == ["datasets", "create"]            # first publish creates, later ones version
     for text, want in (('has status "running"', "running"), ('has status "ERROR"', "error"),
                        ('has status "cancelAcknowledged"', "cancelled"), ("garbage", "unknown")):
@@ -571,3 +572,30 @@ def test_a_batch_packed_on_another_machine_is_repacked(proj):
     assert led.batch(built["batch"])["status"] == "failed"
     hero = next(s for s in proj.chapter(1) if s.type == "Hero")
     assert led.failures(hero.id, "take") == 0
+
+
+def test_each_shot_gets_the_right_version_of_each_character(tmp_path):
+    proj = copy_project(tmp_path)
+    names = {r.name for r in proj.refs_for(proj.shot("1-05"))}            # CU Tsumugi laughing
+    assert names == {"style.png", "tsumugi_ch1.png"}
+    names = [r.name for r in proj.refs_for(proj.shot("3-02"))]            # Tsumugi (27), shrine beam
+    assert names[:2] == ["style.png", "tsumugi_ch3.png"] and "coast_ch3.png" in names
+    names = [r.name for r in proj.refs_for(proj.shot("1-21"))]            # Interior: hearth, tray
+    assert "hearth_ch1.png" in names
+    assert all(len(proj.refs_for(s)) <= 3 for s in proj.shots)
+    for s in proj.chapter(4):                                             # nobody is seven on the Moon
+        assert "tsumugi_ch1.png" not in [r.name for r in proj.refs_for(s)]
+
+
+def test_an_aged_still_is_painted_from_the_approved_one(tmp_path):
+    proj = copy_project(tmp_path)
+    for f in ("tsumugi_ch3", "tsumugi_ch1"):
+        (tmp_path / "style_bible" / "refs" / f"{f}.png").unlink()
+    led, ex = sync(proj)
+    plan = {r["name"]: r for r in proj.ref_plan()}
+    assert steps.ref_state(proj, led, plan["tsumugi_ch3"]) == "waiting_source"
+    assert [r["name"] for r in proj.refs_missing(1)] == ["tsumugi_ch1"]   # chapter 3 stills wait for chapter 3
+    write_png(tmp_path / "style_bible" / "refs" / "tsumugi_ch1.png")
+    steps.refs(proj, led, ex, 3)
+    jobs = led.jobs("ref-tsumugi_ch3", "ref")
+    assert len(jobs) == 4 and steps.ref_state(proj, led, plan["tsumugi_ch3"]) == "review"

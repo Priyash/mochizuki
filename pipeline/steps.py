@@ -122,6 +122,8 @@ def ref_state(p: Project, led: Ledger, r: dict) -> str:
     jobs = led.jobs(s.id, "ref")
     if any(j["status"] == "pending" for j in jobs):
         return "in_batch"
+    if r.get("from") and not p.ref_path(r["from"]).exists():
+        return "waiting_source"        # painted as an edit of a still that is not approved yet
     if led.selected(s.id):
         return "selected"
     done = [j for j in jobs if j["status"] == "done"]
@@ -141,7 +143,7 @@ def refs(p: Project, led: Ledger, ex, chapter: int | None = None, only: str | No
     style = p.root / "style_bible" / "style.txt"
     style_text = style.read_text(encoding="utf-8").strip() if style.exists() else ""
     made, deferred = 0, 0
-    for r in p.refs_missing():
+    for r in p.refs_missing(chapter):
         if only and r["name"] != only:
             continue
         st = ref_state(p, led, r)
@@ -153,8 +155,9 @@ def refs(p: Project, led: Ledger, ex, chapter: int | None = None, only: str | No
         start = len(led.jobs(s.id, "ref"))
         prompt = "\n".join(x for x in (style_text, r["prompt"]) if x)
         for i in range(start, start + want):
+            extra = {"refs": [p.rel(p.ref_path(r["from"]))]} if r.get("from") else {}
             spec = _spec(p, s, "ref", i, prompt, name=r["name"],
-                         width=r.get("width", 1664), height=r.get("height", 928))
+                         width=r.get("width", 1664), height=r.get("height", 928), **extra)
             res = ex.submit(p, led, s, spec, 0.0)
             made += res in ("made", "queued")
             deferred += res == "deferred"
@@ -329,7 +332,7 @@ def upscale(p: Project, led: Ledger, ex, chapter: int, only: str | None = None) 
 def review_queue(p: Project, led: Ledger, chapter: int) -> list[dict]:
     """Everything a critic still has to look at."""
     out = []
-    for r in p.refs_missing():
+    for r in p.refs_missing(chapter):
         if ref_state(p, led, r) == "review":
             for j in led.jobs(ref_shot(r["name"]).id, "ref"):
                 if j["status"] == "done" and j["verdict"] is None:
