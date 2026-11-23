@@ -3,7 +3,7 @@
  "actions": [
   {
    "action": "error",
-   "error": "no reference stills: add at least style_bible/refs/style.png (gate 1)"
+   "error": "dataset priyash11/mochizuki-inputs not ready after 900 s"
   }
  ],
  "reviews": {
@@ -21,7 +21,7 @@
  },
  "notice": {
   "kind": "error",
-  "text": "@Priyash Chapter 1: the Kaggle step stopped: no reference stills: add at least style_bible/refs/style.png (gate 1)"
+  "text": "@Priyash Chapter 1: the Kaggle step stopped: dataset priyash11/mochizuki-inputs not ready after 900 s"
  },
  "status": {
   "todo": 27
