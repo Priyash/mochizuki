@@ -199,12 +199,12 @@ def refs(p: Project) -> tuple[str, str]:
 
 
 def week_start(now: float | None = None) -> float:
-    """Kaggle's GPU week resets on Sunday at 00:00 UTC."""
+    """Kaggle's GPU week resets on Saturday at 00:00 UTC (its quota reports refreshAt)."""
     now = time.time() if now is None else now
     t = time.gmtime(now)
-    days_since_sunday = (t.tm_wday + 1) % 7
+    days_since_saturday = (t.tm_wday - 5) % 7
     midnight = now - (t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec)
-    return midnight - days_since_sunday * 86400
+    return midnight - days_since_saturday * 86400
 
 
 def session_budget(p: Project) -> float:
@@ -226,7 +226,7 @@ def build(p: Project, led: Ledger, stage: str, chapter: int, only: str | None = 
     budget = min(session_budget(p), weekly - used - k.get("setup_minutes", 25) * 60)
     if budget <= 600:
         raise KaggleError(f"this week's GPU budget is used up ({used / 3600:.1f} h of "
-                          f"{weekly / 3600:.0f} h); it resets Sunday 00:00 UTC")
+                          f"{weekly / 3600:.0f} h); it resets Saturday 00:00 UTC")
     batch_id = time.strftime("b%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
     ex = steps.BatchExecutor(batch_id, budget)
     fn = {"keyframes": steps.keyframes, "video": steps.video, "upscale": steps.upscale}[stage]

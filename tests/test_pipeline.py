@@ -305,10 +305,10 @@ def test_kaggle_cli_parsing_with_a_fake_runner():
         assert kg.KaggleCLI(lambda a, t=text: (0, t)).status("x") == want
 
 
-def test_kaggle_week_starts_on_sunday_utc():
-    wed = 1795305600 + 3 * 86400 + 5 * 3600         # Sun 2026-11-22 00:00 UTC + 3 days 5 h
-    start = kg.week_start(wed)
-    assert (wed - start) == 3 * 86400 + 5 * 3600
+def test_kaggle_week_starts_on_saturday_utc():
+    mon = 1795305600 + 86400 + 5 * 3600             # Mon 2026-11-23 05:00 UTC
+    start = kg.week_start(mon)
+    assert (mon - start) == 2 * 86400 + 5 * 3600     # Sat 2026-11-21 00:00 UTC, as Kaggle's quota reports
     assert kg.week_start(start) == start
 
 

@@ -101,7 +101,7 @@ python -m pipeline status --chapter 1                # states, 4K progress, GPU 
 Kaggle rules the pipeline works inside:
 
 - Sessions are 12 h at most. Batches are sized to 10 h, including about 25 min for setup.
-- The free GPU quota is about 30 h a week and resets on Sunday at 00:00 UTC. `weekly_gpu_hours` (default 28) keeps a stuck run from using it all.
+- The free GPU quota is about 30 h a week and resets on Saturday at 00:00 UTC. `weekly_gpu_hours` (default 28) keeps a stuck run from using it all.
 - One batch runs at a time.
 
 Try the loop for free on your own machine, using stub engines in place of the GPU:
