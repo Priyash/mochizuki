@@ -34,7 +34,7 @@ API = "https://api.runpod.io/v2"
 PREFIX = "mochizuki-"
 DEFAULTS = {
     "enabled": False,
-    "gpus": ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 3090"],
+    "gpus": ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 3090", "NVIDIA RTX 5000 Ada Generation"],
     "cloud": "COMMUNITY",
     "image": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
     "min_cuda": "12.8",
@@ -120,15 +120,23 @@ class RunPodBackend:
 
     @staticmethod
     def _split(handle: str | None) -> tuple[str, str]:
-        pod, _, batch = (handle or "").partition(" ")
-        return pod, batch
+        parts = (handle or "").split()
+        return (parts + ["", ""])[0], (parts + ["", ""])[1]
 
     # ---------------------------------------------------------------- money
     def spent_usd(self, led) -> float:
-        rows = led.db.execute("SELECT submitted_at, finished_at FROM batches WHERE backend=? AND submitted_at IS NOT NULL",
-                              (self.name,)).fetchall()
-        secs = sum(max(0.0, (r["finished_at"] or self.now()) - r["submitted_at"]) for r in rows)
-        return secs / 3600 * float(self.cfg["usd_per_hour"])
+        """Wall-clock time of every pod at the hourly price RunPod quoted for it (handle's 3rd field)."""
+        rows = led.db.execute("SELECT submitted_at, finished_at, handle FROM batches WHERE backend=?"
+                              " AND submitted_at IS NOT NULL", (self.name,)).fetchall()
+        usd = 0.0
+        for r in rows:
+            parts = (r["handle"] or "").split()
+            try:
+                rate = float(parts[2])
+            except (IndexError, ValueError):
+                rate = float(self.cfg["usd_per_hour"])
+            usd += max(0.0, (r["finished_at"] or self.now()) - r["submitted_at"]) / 3600 * rate
+        return usd
 
     def budget(self, p, led) -> tuple[float, float]:
         from .kaggle import BudgetUsedUp  # noqa: PLC0415
@@ -206,7 +214,7 @@ class RunPodBackend:
                 if cost is not None and float(cost) > float(c["max_usd_per_hour"]):
                     self.terminate(pod)
                     raise RunPodError(f"{gpu} came at ${cost}/h, over runpod.max_usd_per_hour; pod deleted")
-                return f"{pod} {batch_id}"
+                return f"{pod} {batch_id} {float(cost if cost is not None else c['usd_per_hour']):.3f}"
             tried.append(f"{gpu}: {code} {str(obj.get('detail') or obj.get('title') or obj)[:120]}")
             if code in (401, 402, 403):
                 break                               # bad key, empty balance, no permission: another GPU won't help

@@ -157,7 +157,7 @@ def test_runpod_only_takes_its_stages_unless_kaggle_is_stuck(tmp_path):
     r = kg.tick(proj, led, rp, 1, engine_set="stub")
     assert r["action"] == "built_and_submitted" and r["stage"] == "refs", r
     b = led.active_batch("runpod")
-    assert b["handle"].startswith("pod1 ")
+    assert b["handle"].startswith("pod1 ") and b["handle"].endswith(" 0.340")
     r = kg.tick(proj, led, rp, 1, engine_set="stub")
     assert r["action"] == "collected" and r["made"] > 0, r
     assert fake.live() == []
