@@ -133,13 +133,29 @@
         "repo": "unsloth/Qwen-Image-2512-GGUF",
         "prefer": [
           "Q5_K_M",
-          "Q4_K_M"
+          "Q4_K_M",
+          "Q4_K_S",
+          "Q4_0",
+          "Q3_K_M"
         ]
       },
       "steps": 50,
       "true_cfg_scale": 4.0,
       "negative_prompt": "photorealistic photo, live action, flat sketch, text, watermark, logo, signature, extra fingers, deformed hands, blurry, lowres",
-      "_note": "Qwen-Image-2512, Apache 2.0. If the GGUF repo is missing, the transformer is loaded in 4-bit instead."
+      "_note": "Qwen-Image-2512, Apache 2.0. The largest GGUF in `prefer` that fits the GPU is used (T4: about Q4; RTX 4090: Q5_K_M). Prompts are encoded on the CPU first.",
+      "vram_headroom_gb": 2.5,
+      "lora": {
+        "repo": "lightx2v/Qwen-Image-2512-Lightning",
+        "prefer": [
+          "8steps-V1.0-bf16",
+          "8steps",
+          "4steps-V1.0-bf16",
+          "4steps"
+        ],
+        "steps": 8,
+        "true_cfg_scale": 1.0,
+        "_note": "Few-step LoRA so a T4 makes a still in minutes, not ~15 min. Remove this block for the full 50-step model (best quality, much slower)."
+      }
     }
   },
   "providers": {

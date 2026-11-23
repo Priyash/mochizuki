@@ -706,6 +706,6 @@ def test_engine_load_failures_do_not_use_up_a_shot_and_stop_after_two_batches(tm
         led.set_batch(b, status="done", finished_at=time.time())
         assert led.failures("ref-style", "ref") == 0             # not the shot's fault
         assert (kg.engine_broken(led, "kaggle", "refs") is None) == (n == 0)
-    assert "failed to load in the last 2 kaggle batches" in kg.engine_broken(led, "kaggle", "refs")
+    assert "made nothing in the last 2 kaggle batches" in kg.engine_broken(led, "kaggle", "refs")
     monkeypatch.setattr(kg, "code_time", lambda: time.time() + 1)
     assert kg.engine_broken(led, "kaggle", "refs") is None      # a new commit gets a fresh try

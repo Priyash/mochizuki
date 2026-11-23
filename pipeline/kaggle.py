@@ -20,7 +20,7 @@ import uuid
 from pathlib import Path
 
 from . import steps
-from .ledger import Ledger
+from .ledger import Ledger, not_a_failure
 from .project import Project
 
 REPO = Path(__file__).resolve().parents[1]
@@ -488,22 +488,24 @@ def code_time() -> float:
 
 
 def engine_broken(led: Ledger, backend: str, stage: str, runs: int = 2) -> str | None:
-    """If the last `runs` batches of this stage on this backend all failed because the engine
-    would not load, say so: running again would only spend GPU time. A code fix is needed."""
+    """If the last `runs` batches of this stage on this backend made nothing at all because of
+    machine errors (engine would not load, out of memory, CUDA), say so: running again would only
+    spend GPU time. A code or config change is needed; any new commit earns a fresh try."""
     rows = led.db.execute("SELECT id FROM batches WHERE backend=? AND stage=? AND status IN ('done','failed')"
                           " AND created_at > ? ORDER BY created_at DESC LIMIT ?",
-                          (backend, stage, code_time(), runs)).fetchall()   # a new commit earns a fresh try
+                          (backend, stage, code_time(), runs)).fetchall()
     if len(rows) < runs:
         return None
-    notes = []
+    first = None
     for r in rows:
-        jobs = [j for j in led.batch_jobs(r["id"]) if j["status"] == "failed"]
-        bad = [j["note"] for j in jobs if (j["note"] or "").startswith("engine ") and "failed to load" in j["note"]]
-        if not jobs or len(bad) < len(jobs) or len(jobs) < len(led.batch_jobs(r["id"])):
+        jobs = led.batch_jobs(r["id"])
+        tried = [j for j in jobs if (j["note"] or "") not in ("not reached", "stale inputs", "cut off")]
+        if not tried or any(j["status"] == "done" for j in jobs) or \
+                not all(not_a_failure(j["note"]) for j in tried):
             return None
-        notes.append(bad[0])
-    return (f"the {stage} engine failed to load in the last {runs} {backend} batches; stopped until the "
-            f"code is fixed: {notes[0][:300]}")
+        first = first or tried[0]["note"]
+    return (f"the {stage} engine made nothing in the last {runs} {backend} batches (machine errors); "
+            f"stopped until the next code change: {first[:300]}")
 
 
 def kaggle_stuck(led: Ledger) -> bool:

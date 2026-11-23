@@ -53,7 +53,8 @@ def not_a_failure(note: str | None) -> bool:
     """True for a job that never got a fair try: cut off, stale, not reached, or its engine
     failed to load (a bug or a download problem, not a bad shot)."""
     note = note or ""
-    return note in NOT_A_FAILURE or (note.startswith("engine ") and "failed to load" in note)
+    return (note in NOT_A_FAILURE or (note.startswith("engine ") and "failed to load" in note)
+            or note.startswith("oom:") or "same device" in note or "CUDA" in note)
 
 
 class BudgetExceeded(RuntimeError):

@@ -141,21 +141,38 @@ def pick_dtype(name: str):
     return torch.float16          # T4 (Turing) has no native bf16
 
 
-def find_gguf(repo: str, subdir: str, prefer: list[str]) -> str | None:
-    """Download the first GGUF in `prefer` order that the repo has. None if the repo has none."""
-    from huggingface_hub import hf_hub_download, list_repo_files  # noqa: PLC0415
+def find_gguf(repo: str, subdir: str, prefer: list[str], max_gb: float | None = None) -> str | None:
+    """Download the first GGUF in `prefer` order that the repo has and that fits in `max_gb`
+    (the GPU memory it may take). If none of `prefer` fits, the largest GGUF that does.
+    None if the repo has none that fits."""
+    from huggingface_hub import HfApi, hf_hub_download  # noqa: PLC0415
     try:
-        files = list_repo_files(repo)
+        files = {f.path: (f.size or 0) / 2**30 for f in HfApi().list_repo_tree(repo, recursive=True)
+                 if getattr(f, "size", None) is not None and f.path.endswith(".gguf")
+                 and (not subdir or f.path.startswith(subdir + "/"))}
     except Exception as e:  # noqa: BLE001
         log(f"GGUF repo {repo} not reachable ({e}); falling back")
         return None
-    for q in prefer:
-        for f in files:
-            if f.endswith(".gguf") and q in f and (not subdir or f.startswith(subdir + "/")):
-                log(f"using {repo}/{f}")
-                return hf_hub_download(repo, f)
-    log(f"no GGUF matching {prefer} in {repo}/{subdir}")
-    return None
+    fits = {p: gb for p, gb in files.items() if max_gb is None or gb <= max_gb}
+    choice = next((p for q in prefer for p in sorted(fits) if q in p), None)
+    if choice is None and fits:
+        choice = max(fits, key=fits.get)
+    if choice is None:
+        log(f"no GGUF in {repo}/{subdir} fits {max_gb:.1f} GB; sizes: "
+            + ", ".join(f"{Path(p).name} {gb:.1f}" for p, gb in sorted(files.items(), key=lambda x: x[1])))
+        return None
+    log(f"using {repo}/{choice} ({files[choice]:.1f} GB" + (f", room {max_gb:.1f} GB)" if max_gb else ")"))
+    return hf_hub_download(repo, choice)
+
+
+def gpu_room_gb(headroom: float) -> float | None:
+    """GPU memory a model's weights may take on GPU 0, leaving `headroom` GB for activations."""
+    import torch  # noqa: PLC0415
+    if not torch.cuda.is_available():
+        return None
+    total = torch.cuda.get_device_properties(0).total_memory / 2**30
+    log(f"GPU 0: {torch.cuda.get_device_name(0)}, {total:.1f} GB; {torch.cuda.device_count()} GPU(s)")
+    return total - headroom
 
 
 def snapshot(model: str, skip: list[str]) -> str:
@@ -226,23 +243,108 @@ class QwenKeyframes:
         return {"width": img.width, "height": img.height, "seed": seed_for(job["key"])}
 
 
-class QwenStills(QwenKeyframes):
-    """Qwen-Image-2512 text-to-image: the candidate reference stills for gate 1."""
+LIGHTNING_SCHEDULER = {   # from ModelTC/Qwen-Image-Lightning's diffusers example
+    "base_image_seq_len": 256, "base_shift": 1.0986122886681098, "invert_sigmas": False,
+    "max_image_seq_len": 8192, "max_shift": 1.0986122886681098, "num_train_timesteps": 1000, "shift": 1.0,
+    "shift_terminal": None, "stochastic_sampling": False, "time_shift_type": "exponential",
+    "use_beta_sigmas": False, "use_dynamic_shifting": True, "use_exponential_sigmas": False,
+    "use_karras_sigmas": False}
 
-    PIPELINE = "QwenImagePipeline"
+
+class QwenStills:
+    """Qwen-Image-2512 text-to-image: the candidate reference stills for gate 1.
+
+    Sized for a 15 GB T4: the prompts are encoded first on the CPU (bf16) and the 7B text encoder
+    is freed; then only the transformer (the largest GGUF that fits this GPU) and the VAE sit on
+    the GPU, with no offloading. An optional few-step LoRA (engines.refs.lora) cuts 50 steps with
+    CFG to 4-8 steps without; if it will not load, the base settings are used."""
+
+    def __init__(self, cfg: dict, dtype_name: str, prompts: list[str], negative: str):
+        import diffusers  # noqa: PLC0415
+        import torch  # noqa: PLC0415
+        from diffusers import GGUFQuantizationConfig, QwenImageTransformer2DModel  # noqa: PLC0415
+        self.cfg, self.torch = cfg, torch
+        dtype = pick_dtype(dtype_name)
+        g = cfg.get("transformer_gguf") or {}
+        local = snapshot(cfg["model"], skip=["transformer"] if g else [])
+
+        # 1. every prompt of the batch, on the CPU
+        tp = diffusers.QwenImagePipeline.from_pretrained(local, transformer=None, vae=None, torch_dtype=torch.bfloat16)
+        self.embeds = {}
+        t0 = time.time()
+        for text in dict.fromkeys(prompts + [negative]):
+            with torch.inference_mode():
+                e, m = tp.encode_prompt(prompt=text, device=torch.device("cpu"))
+            self.embeds[text] = (e, m)                # m is None when every token counts
+        log(f"encoded {len(self.embeds)} prompts on the CPU in {time.time() - t0:.0f} s")
+        del tp
+        gc.collect()
+
+        # 2. the transformer, sized to this GPU, and the VAE: nothing else on the GPU
+        room = gpu_room_gb(float(cfg.get("vram_headroom_gb", 2.5)))
+        gguf = find_gguf(g["repo"], g.get("dir", ""), g.get("prefer", []), room) if g else None
+        kwargs = {"torch_dtype": dtype, "text_encoder": None, "tokenizer": None}
+        if gguf:
+            kwargs["transformer"] = QwenImageTransformer2DModel.from_single_file(
+                gguf, quantization_config=GGUFQuantizationConfig(compute_dtype=dtype),
+                config=local, subfolder="transformer", torch_dtype=dtype)
+        elif g:
+            raise RuntimeError(f"no GGUF of {g['repo']} fits this GPU ({room} GB)")
+        self.pipe = diffusers.QwenImagePipeline.from_pretrained(local, **kwargs)
+        self.steps, self.cfg_scale = cfg.get("steps", 50), cfg.get("true_cfg_scale", 4.0)
+        self._lora(cfg.get("lora"))
+        if gguf:
+            self.pipe.to("cuda")
+        else:
+            self.pipe.enable_model_cpu_offload()
+        try:
+            self.pipe.vae.enable_tiling()
+        except Exception:  # noqa: BLE001
+            pass
+        self.pipe.set_progress_bar_config(disable=True)
+        self.negative = negative
+
+    def _lora(self, lora: dict | None) -> None:
+        if not lora or not lora.get("repo"):
+            return
+        from diffusers import FlowMatchEulerDiscreteScheduler  # noqa: PLC0415
+        from huggingface_hub import list_repo_files  # noqa: PLC0415
+        try:
+            files = [f for f in list_repo_files(lora["repo"]) if f.endswith(".safetensors")]
+            name = next((f for q in lora.get("prefer", []) for f in files if q in f), files[0] if files else None)
+            self.pipe.load_lora_weights(lora["repo"], weight_name=name)
+            self.pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(LIGHTNING_SCHEDULER)
+            self.steps, self.cfg_scale = lora.get("steps", 8), lora.get("true_cfg_scale", 1.0)
+            log(f"few-step LoRA {lora['repo']}/{name}: {self.steps} steps, cfg {self.cfg_scale}")
+        except Exception as e:  # noqa: BLE001 - slower but still works without it
+            try:
+                self.pipe.unload_lora_weights()
+            except Exception:  # noqa: BLE001
+                pass
+            log(f"LoRA {lora['repo']} not used ({e!r}); {self.steps} steps, cfg {self.cfg_scale}"[:400])
 
     def run(self, job: dict, inputs: Path, out: Path) -> dict:
-        c = self.cfg
+        torch = self.torch
         w, h = job.get("width", 1664), job.get("height", 928)
-        with self.torch.inference_mode():
-            result = self.pipe(prompt=job["prompt"], negative_prompt=c.get("negative_prompt", " "),
-                               true_cfg_scale=c.get("true_cfg_scale", 4.0), num_inference_steps=c.get("steps", 50),
-                               width=w, height=h,
-                               generator=self.torch.Generator("cpu").manual_seed(seed_for(job["key"])))
-        img = result.images[0]
+        dev, dt = "cuda", self.pipe.transformer.dtype
+        e, m = self.embeds[job["prompt"]]
+        args = dict(prompt_embeds=e.to(dev, dt), prompt_embeds_mask=None if m is None else m.to(dev),
+                    num_inference_steps=self.steps, true_cfg_scale=self.cfg_scale, width=w, height=h,
+                    generator=torch.Generator("cpu").manual_seed(seed_for(job["key"])))
+        if self.cfg_scale > 1:
+            ne, nm = self.embeds[self.negative]
+            args.update(negative_prompt_embeds=ne.to(dev, dt),
+                        negative_prompt_embeds_mask=None if nm is None else nm.to(dev))
+        t0 = time.time()
+        try:
+            with torch.inference_mode():
+                img = self.pipe(**args).images[0]
+        finally:
+            torch.cuda.empty_cache()
         check_not_blank(img, "reference still")
         img.save(out)
-        return {"width": img.width, "height": img.height, "seed": seed_for(job["key"])}
+        return {"width": img.width, "height": img.height, "seed": seed_for(job["key"]),
+                "steps": self.steps, "seconds": round(time.time() - t0, 1)}
 
 
 class WanVideo:
@@ -451,7 +553,10 @@ def build_engine(name: str, jobs: list[dict], engines: dict, engine_set: str):
     dtype = engines.get("dtype", "auto")
     if name == "refs":
         cfg = engines["refs"]
-        return StubImage(cfg) if engine_set == "stub" else QwenStills(cfg, dtype)
+        if engine_set == "stub":
+            return StubImage(cfg)
+        neg = cfg.get("negative_prompt", " ")
+        return QwenStills(cfg, dtype, [j["prompt"] for j in jobs], neg)
     if name == "keyframe":
         cfg = engines["keyframe"]
         return StubImage(cfg) if engine_set == "stub" else QwenKeyframes(cfg, dtype)
