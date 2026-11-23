@@ -136,7 +136,8 @@ class KaggleCLI:
         code, out = self._run(["kernels", "status", ref])
         self.log.append(f"kaggle kernels status -> {code}: {out.strip()[-300:]}")
         if code != 0:
-            return "error" if "404" in out else "unknown"     # 404: the notebook was deleted
+            gone = any(w in out.lower() for w in ("404", "403", "not found", "denied", "wrong kernel slug"))
+            return "error" if gone else "unknown"             # the notebook was deleted or is out of reach
         m = re.search(r'has status "([^"]+)"', out)
         s = (m.group(1) if m else out).lower()
         for word in ("complete", "error", "cancel", "running", "queued"):
