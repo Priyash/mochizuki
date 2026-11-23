@@ -1,1 +1,1 @@
-{"kind": "error", "text": "@Priyash Chapter 1: the Modal step stopped: NotFoundError: Lookup failed for Function 'run_batch' from the 'mochizuki-worker' app: App 'mochizuki-worker' not found in environment 'main'."}
+{"kind": "running", "text": "Chapter 1: Kaggle batch b20261123-144531-bec9 (refs) is submitted."}

@@ -2,6 +2,20 @@
  "chapter": 1,
  "actions": [
   {
+   "action": "built_and_submitted",
+   "batch": "b20261123-144531-bec9",
+   "backend": "kaggle",
+   "stage": "refs",
+   "jobs": 24,
+   "deferred": 0,
+   "est_hours": 1.42,
+   "summary": {
+    "made": 24,
+    "deferred": 0
+   },
+   "submitted": true
+  },
+  {
    "action": "idle",
    "reason": "waiting for a person",
    "to_review": 0,
@@ -9,11 +23,6 @@
     "waiting_anchor": 26,
     "todo": 1
    },
-   "backend": "kaggle"
-  },
-  {
-   "action": "error",
-   "error": "NotFoundError: Lookup failed for Function 'run_batch' from the 'mochizuki-worker' app: App 'mochizuki-worker' not found in environment 'main'.",
    "backend": "modal"
   }
  ],
@@ -29,16 +38,19 @@
   "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-23 10:50:28.453000           0",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
- "modal_log": [
-  "uploaded dataset for b20261123-144319-dd60"
+ "kaggle_log": [
+  "kaggle datasets status priyash11/mochizuki-inputs -> 0: ready",
+  "kaggle datasets version -> 0: Dataset version is being created. Please check progress at https://www.kaggle.com/datasets/priyash11/mochizuki-inputs",
+  "kaggle datasets status priyash11/mochizuki-inputs -> 0: ready",
+  "kaggle kernels push -> 0: Kernel version 2 successfully pushed.  Please check progress at https://www.kaggle.com/code/priyash11/mochizuki-worker"
  ],
  "uploaded": 0,
  "review": {
   "items": 0
  },
  "notice": {
-  "kind": "error",
-  "text": "@Priyash Chapter 1: the Modal step stopped: NotFoundError: Lookup failed for Function 'run_batch' from the 'mochizuki-worker' app: App 'mochizuki-worker' not found in environment 'main'."
+  "kind": "running",
+  "text": "Chapter 1: Kaggle batch b20261123-144531-bec9 (refs) is submitted."
  },
  "status": {
   "waiting_anchor": 26,
