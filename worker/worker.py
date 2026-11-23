@@ -273,9 +273,11 @@ class QwenStills:
         self.embeds = {}
         t0 = time.time()
         for text in dict.fromkeys(prompts + [negative]):
+            t1 = time.time()
             with torch.inference_mode():
                 e, m = tp.encode_prompt(prompt=text, device=torch.device("cpu"))
             self.embeds[text] = (e, m)                # m is None when every token counts
+            log(f"prompt {len(self.embeds)}/{len(set(prompts + [negative]))} encoded on the CPU in {time.time() - t1:.0f} s")
         log(f"encoded {len(self.embeds)} prompts on the CPU in {time.time() - t0:.0f} s")
         del tp
         gc.collect()
@@ -615,17 +617,29 @@ def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: 
             save()
             continue
         results["groups"][name] = {"load_seconds": time.time() - g0}
-        for job in jobs:
+        log(f"engine {name} ready in {time.time() - g0:.0f} s")
+        slow = 0
+        factor = float(m.get("slow_factor", 3))
+        for n, job in enumerate(jobs):
             est = float(job.get("est_seconds", 0))
             if time.time() + est > deadline:
                 continue                                   # left for the next session
+            if slow >= 2:
+                log(f"stopping {name}: 2 jobs took over {factor:g}x their estimate; "
+                    f"{len(jobs) - n} left for the next batch")
+                results["groups"][name]["stopped_slow"] = len(jobs) - n
+                break
             j0 = time.time()
             ext = ".mp4" if job["kind"] == "take" or job.get("media") == "video" else ".png"
             target = out / f"{job['key']}{ext}"
             try:
                 info = engine.run(job, inputs, target)
+                took = time.time() - j0
                 results["jobs"][job["key"]] = {"ok": True, "file": target.name,
-                                               "gpu_seconds": time.time() - j0, **(info or {})}
+                                               "gpu_seconds": took, **(info or {})}
+                log(f"{job['key']} ok in {took:.0f} s (estimate {est:.0f} s) [{n + 1}/{len(jobs)}]")
+                if est > 0 and took > factor * est:
+                    slow += 1
             except Exception as e:  # noqa: BLE001
                 oom = "out of memory" in str(e).lower()
                 results["jobs"][job["key"]] = {"ok": False, "error": repr(e)[:800], "oom": oom,
