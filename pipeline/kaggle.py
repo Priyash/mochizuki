@@ -132,6 +132,7 @@ class KaggleCLI:
 
     def status(self, ref: str) -> str:
         code, out = self._run(["kernels", "status", ref])
+        self.log.append(f"kaggle kernels status -> {code}: {out.strip()[-300:]}")
         if code != 0:
             return "unknown"
         m = re.search(r'has status "([^"]+)"', out)
