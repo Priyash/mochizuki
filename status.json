@@ -25,7 +25,7 @@
  },
  "kaggle_check": {
   "ok": true,
-  "output": "resource,used,remaining,total,refreshAt\nGPU,3.27h,26.73h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
+  "output": "resource,used,remaining,total,refreshAt\nGPU,4.57h,25.43h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
   "datasets list --mine": "0: ref                         title                   size  lastUpdated                 downloadCount  voteCount  usabilityRating  \n--------------------------  ----------------  ----------  --------------------------  -------------  ---------  ---------------  \npriyash11/mochizuki-inputs  mochizuki-inputs       13612  2026-11-23 18:01:05.817000              0          0  0.125",
   "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-23 18:01:10.190000           0",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
