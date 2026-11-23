@@ -559,3 +559,15 @@ def test_reference_stills_are_painted_picked_by_claude_and_approved_by_the_owner
     reply = ci.command(proj, led, state, "/approve refs", "owner", "owner")
     assert reply.startswith("Approved") and (tmp_path / "style_bible" / "refs" / "sayo.png").exists()
     assert not proj.refs_missing() and kg.next_stage(proj, led, 1) == "keyframes"
+
+
+def test_a_batch_packed_on_another_machine_is_repacked(proj):
+    led, ex = sync(proj)
+    board(proj, led, ex)
+    built = kg.build(proj, led, "video", 1, engine_set="stub")
+    shutil.rmtree(proj.media / "batches" / built["batch"])            # the next GitHub run starts clean
+    out = kg.tick(proj, led, kg.LocalKaggle(proj.media), 1, engine_set="stub")
+    assert out["action"] == "built_and_submitted" and out["batch"] != built["batch"]
+    assert led.batch(built["batch"])["status"] == "failed"
+    hero = next(s for s in proj.chapter(1) if s.type == "Hero")
+    assert led.failures(hero.id, "take") == 0

@@ -376,6 +376,10 @@ def next_stage(p: Project, led: Ledger, chapter: int) -> str | None:
 def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu") -> dict:
     """One automation step: collect a finished run, or start the next one. Cron calls this."""
     active = led.active_batch()
+    if active and active["status"] == "built" and \
+            not (p.media / "batches" / active["id"] / "dataset" / "manifest.json").exists():
+        discard(led, active["id"], "packed on another machine")     # e.g. an earlier GitHub run; repack
+        active = None
     if active:
         if active["status"] == "built":
             return {"action": "submitted", **submit(p, led, kg, active["id"])}
