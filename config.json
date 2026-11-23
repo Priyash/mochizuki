@@ -167,8 +167,8 @@
     "_note": "Gate 1: reference stills painted on Kaggle from style_bible/ref_prompts.json when style_bible/refs/ lacks them."
   },
   "modal": {
-    "enabled": false,
-    "gpu": "L4",
+    "enabled": true,
+    "gpu": "T4",
     "usd_per_hour": 1.4,
     "monthly_cap_usd": 25,
     "session_hours": 4,
