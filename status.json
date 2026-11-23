@@ -13,9 +13,13 @@
  },
  "kaggle_check": {
   "ok": true,
-  "output": "resource,used,remaining,total,refreshAt\nGPU,0.00h,30.00h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00"
+  "output": "resource,used,remaining,total,refreshAt\nGPU,0.00h,30.00h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
+  "datasets list --mine": "0: No datasets found",
+  "kernels list --mine": "0: Not found",
+  "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
  "kaggle_log": [
+  "kaggle datasets status priyash11/mochizuki-inputs -> 1: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/datasets.DatasetApiService/GetDatasetStatus\n\nYou don't have access to this resource.\nIf this is a competition, you may need to accept its rules first at\n  https://www.kaggle.com/competitions/<competition>/rules",
   "kaggle datasets version -> 1: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/datasets.DatasetApiService/CreateDatasetVersion\n\nYou don't have access to this resource.\nIf this is a competition, you may need to accept its rules first at\n  https://www.kaggle.com/competitions/<competition>/rules"
  ],
  "uploaded": 0,
