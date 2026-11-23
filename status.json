@@ -19,6 +19,9 @@
   "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-23 10:50:28.453000           0",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
+ "kaggle_log": [
+  "kaggle kernels status -> 0: priyash11/mochizuki-worker has status \"KernelWorkerStatus.QUEUED\""
+ ],
  "uploaded": 0,
  "review": {
   "items": 0
