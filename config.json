@@ -57,7 +57,7 @@
     "weekly_gpu_hours": 28,
     "max_failures_per_shot": 2,
     "poll_seconds": 120,
-    "_note": "username: your Kaggle username. weekly_gpu_hours stays under Kaggle's ~30 h so a stuck run cannot use it all. max_queue_hours: with Modal connected, a batch still waiting for a Kaggle GPU after this long is handed to Modal.",
+    "_note": "username: your Kaggle username. weekly_gpu_hours stays under Kaggle's ~30 h so a stuck run cannot use it all. max_queue_hours: when a second GPU backend is connected, a batch still waiting for a Kaggle GPU after this long is handed to it.",
     "max_queue_hours": 3
   },
   "engines": {
@@ -165,14 +165,5 @@
     "candidates": 4,
     "max_candidates": 8,
     "_note": "Gate 1: reference stills painted on Kaggle from style_bible/ref_prompts.json when style_bible/refs/ lacks them."
-  },
-  "modal": {
-    "enabled": false,
-    "gpu": "L4",
-    "usd_per_hour": 1.4,
-    "monthly_cap_usd": 25,
-    "session_hours": 4,
-    "setup_minutes": 15,
-    "_note": "Switched off: Modal needs a payment method on the account to run any GPU function (tested 23 Nov 2026: L4 and T4 both refused without one). Second free GPU backend. Starter plan: $30 of compute a month; with no payment method Modal cannot bill. usd_per_hour counts the L4 ($0.80) plus 4 CPU cores and 48 GiB memory (about $0.57) that each batch reserves. monthly_cap_usd stays under $30 so the pipeline stops itself first. Do not raise it, and do not add a payment method on Modal."
   }
 }

@@ -28,7 +28,7 @@ def chapter_of(state: Path) -> int:
 
 
 def step(p: Project, led: Ledger, chapter: int, state: Path, backend, engine_set: str = "gpu") -> dict:
-    """`backend` is one backend or a list (Kaggle and Modal side by side), or None."""
+    """`backend` is one backend or a list of backends side by side, or None."""
     backends = [b for b in (backend if isinstance(backend, list) else [backend]) if b is not None]
     out: dict = {"chapter": chapter, "actions": []}
     out["reviews"] = review.apply(led, state / "reviews")
@@ -40,7 +40,7 @@ def step(p: Project, led: Ledger, chapter: int, state: Path, backend, engine_set
             code, text = backend._run(args)
             out["kaggle_check"][" ".join(args)] = f"{code}: {text.strip()[-500:]}"
     if not backends:
-        out["actions"].append({"action": "skipped", "reason": "no Kaggle or Modal credentials"})
+        out["actions"].append({"action": "skipped", "reason": "no Kaggle credentials"})
     else:
         out["actions"] = kg.tick_all(p, led, backends, chapter, engine_set=engine_set)
     for b in backends:
@@ -88,7 +88,7 @@ def notice(p: Project, led: Ledger, chapter: int, state: Path, out: dict) -> dic
         return {"kind": "setup", "text": f"{at}Add the KAGGLE_API_TOKEN and KAGGLE_USERNAME repository secrets "
                                          "(Settings → Secrets and variables → Actions) so the producer can run."}
     errors = [a for a in acts if a.get("action") == "error"]
-    running = [b for b in (led.active_batch("kaggle"), led.active_batch("modal")) if b]
+    running = list(led.active_batches())
     if errors and not running:
         e = errors[-1]
         return {"kind": "error", "text": f"{at}Chapter {chapter}: the {e.get('backend', 'Kaggle').title()} step "

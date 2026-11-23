@@ -208,6 +208,10 @@ class Ledger:
             q, args = q + " AND backend=?", (backend,)
         return self.db.execute(q + " ORDER BY created_at LIMIT 1", args).fetchone()
 
+    def active_batches(self) -> list:
+        return self.db.execute("SELECT * FROM batches WHERE status IN ('built','submitted')"
+                               " ORDER BY created_at").fetchall()
+
     def batch_jobs(self, batch_id: str) -> list:
         return self.db.execute("SELECT * FROM jobs WHERE batch=? ORDER BY shot_id, kind, idx",
                                (batch_id,)).fetchall()
