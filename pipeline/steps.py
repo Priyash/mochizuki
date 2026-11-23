@@ -45,7 +45,7 @@ class SyncExecutor:
             led.finish(spec["key"], None, ok=False, note=str(e)[:200])
             print(f"  {spec['key']} failed: {e}")
             return "failed"
-        led.finish(spec["key"], str(path))
+        led.finish(spec["key"], p.rel(path))
         return "made"
 
 

@@ -35,11 +35,12 @@ The 4K is upscaled from 720p, not rendered at 4K. No free model makes native 4K 
 | Kaggle batch packing, weekly GPU cap, session budget, stale-dataset guard | Tested |
 | Kaggle CLI output parsing | Tested against recorded output, not a live account |
 | Whole loop to a 4K cut, using a local stand-in for Kaggle and stub engines | Tested. Gives 3840×2160 at full chapter length |
+| GitHub producer loop: Claude's reviews, owner-only gates, media in releases | Tested with stand-ins for Kaggle and `gh`; the workflows themselves run on first push |
 | **GPU engines (Qwen, Wan 14B and 5B, the upscalers) on a real T4** | **Not run yet.** The first Kaggle run is the test |
 | GPU-time estimates in `config.json` | My estimates, until real runs replace them |
 | The `fal` paid fallback | Written but never run; endpoint ids are placeholders |
 
-`python -m pytest -q` runs 27 tests in about 90 s. They need ffmpeg and nothing else.
+`python -m pytest -q` runs 30 tests in about 2.5 min. They need ffmpeg and nothing else.
 
 ## Setup
 
@@ -109,6 +110,42 @@ Try the loop for free on your own machine, using stub engines in place of the GP
 KAGGLE_USERNAME=local python -m pipeline auto --chapter 1 --loop --kaggle local --engine-set stub
 ```
 
+## Letting Claude drive it (GitHub Actions)
+
+Here, nothing runs on your machine. The work is split three ways:
+
+- **The producer** is the `produce` workflow. It runs every two hours, or straight after a review or a command. Each run:
+  - applies Claude's verdicts;
+  - collects a finished Kaggle batch or starts the next one;
+  - uploads new media to this repo's releases (`media-chN`, `4k-chN`, `cuts`);
+  - exports the next review to the `state` branch;
+  - posts what is needed to the **Mochizuki production** issue.
+- **The reviewer** is a Claude scheduled task. It follows the "Reviewer run" in `AGENTS.md`: it looks at the review images, picks keyframes, passes or fails takes, pushes its verdicts and starts the producer.
+- **You** approve the two gates by commenting on the issue. Only comments by the repository owner are obeyed:
+
+| Comment | What it does |
+| --- | --- |
+| `/approve board N` | Approves chapter N's keyframes; takes start |
+| `/approve animatic N` | Approves the cut; the 4K pass starts |
+| `/chapter N` | Moves the producer to chapter N |
+| `/status` | Replies with where the chapter stands |
+
+Setup, once:
+
+1. Settings → Secrets and variables → Actions → New repository secret. Add `KAGGLE_USERNAME` and `KAGGLE_API_TOKEN`. If you have an old-style `kaggle.json` key, add it as `KAGGLE_KEY` instead of `KAGGLE_API_TOKEN`.
+2. Commit your reference stills to `style_bible/refs/` on `main`.
+3. Actions → produce → Run workflow, to start at once rather than wait up to two hours.
+
+What it uses:
+
+- GitHub Actions minutes: each run takes 1 to 3 minutes, and runs about every two hours. That is a few hundred minutes a month, inside GitHub Free's allowance for private repositories.
+- Release storage: the media of the whole film is several GB, and GitHub doesn't charge for release files.
+
+Its limits:
+
+- Claude reviews still frames and can't watch motion, so watch every Hero take yourself before you approve the animatic.
+- The first real Kaggle run is still the test of the GPU models.
+
 ## How long it takes
 
 Estimated GPU time on the free plan, before real runs correct it:
@@ -137,7 +174,8 @@ style_bible/         style.txt and reference stills (gate 1)
 prompts/             optional per-shot prompt files
 pipeline/            the producer: ledger, steps, Kaggle batches, assemble
 worker/worker.py     runs on Kaggle: Qwen keyframes, Wan takes, 4K upscale
-tests/               27 tests, no GPU or network needed
+.github/workflows/   tests, the producer (produce.yml) and the owner's commands (gates.yml)
+tests/               30 tests, no GPU or network needed
 AGENTS.md            rules for an AI agent running the loop
 ```
 

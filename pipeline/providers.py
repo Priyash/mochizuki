@@ -37,10 +37,10 @@ class MockProvider:
         if kind in ("keyframe", "variant"):
             _ffmpeg(["-f", "lavfi", "-i", f"color=c={COLORS[kind]}:s=640x360", "-frames:v", "1", str(out)])
         elif kind == "take":
-            _ffmpeg(["-loop", "1", "-i", str(spec["image"]), "-t", str(spec["seconds"]), "-r", "12",
+            _ffmpeg(["-loop", "1", "-i", str(self.p.fetch(spec["image"])), "-t", str(spec["seconds"]), "-r", "12",
                      "-vf", "scale=640:360,format=yuv420p", str(out)])
         elif kind == "upscale":
-            shutil.copyfile(spec["source"], out)
+            shutil.copyfile(self.p.fetch(spec["source"]), out)
         else:
             raise ValueError(f"unknown job kind {kind}")
 
@@ -76,7 +76,7 @@ class FalProvider:
         v = self.cfg["video"][spec["model"]]
         if v["endpoint"].startswith("VERIFY"):
             raise RuntimeError(f"Set providers.fal.video['{spec['model']}'].endpoint in config.json first.")
-        args = {"prompt": spec["prompt"], v["image_arg"]: self.fal.upload_file(str(spec["image"])),
+        args = {"prompt": spec["prompt"], v["image_arg"]: self.fal.upload_file(str(self.p.fetch(spec["image"]))),
                 v["duration_arg"]: max(3, int(spec["seconds"])), **v.get("args", {})}
         result = self.fal.subscribe(v["endpoint"], arguments=args)
         self._download(result["video"]["url"], out)

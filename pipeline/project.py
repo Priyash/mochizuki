@@ -63,6 +63,23 @@ class Project:
         if unknown:
             raise ValueError(f"shots.csv names models missing from config.json: {sorted(unknown)}")
         self.media = self.root / "media"
+        self.store = None          # where media lives when it is not on this machine (pipeline/store.py)
+
+    # ---- files. The ledger keeps paths relative to the project, so it can move between machines.
+    def rel(self, path) -> str:
+        path = Path(path)
+        try:
+            return path.resolve().relative_to(self.root).as_posix()
+        except ValueError:
+            return str(path)
+
+    def fetch(self, path) -> Path:
+        """Absolute path of a media file, downloaded from the store first if it is not here."""
+        f = Path(path)
+        f = f if f.is_absolute() else self.root / f
+        if not f.exists() and self.store is not None:
+            self.store.fetch(self, f)
+        return f
 
     # ---- lookups
     def chapter(self, n: int | None) -> list[Shot]:

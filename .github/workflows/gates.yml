@@ -1,0 +1,46 @@
+# The owner's commands, from a comment on the production issue:
+#   /approve board N   /approve animatic N   /chapter N   /status
+# Only the repository owner's comments run. Claude's comments and anyone else's are ignored.
+name: gates
+on:
+  issue_comment:
+    types: [created]
+concurrency:
+  group: mochizuki-state
+  cancel-in-progress: false
+permissions:
+  contents: write
+  issues: write
+  actions: write
+jobs:
+  gate:
+    if: >-
+      !github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/') &&
+      github.event.comment.user.login == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: state
+          path: state
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore the ledger
+        run: if [ -f state/ledger.sqlite ]; then cp state/ledger.sqlite ledger.sqlite; fi
+      - name: Run the command
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+        run: python -m pipeline gate --state state > reply.txt && cat reply.txt
+      - name: Save state
+        run: .github/scripts/save_state.sh "owner command on issue ${{ github.event.issue.number }}"
+      - name: Reply and kick the producer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} -R ${{ github.repository }} --body-file reply.txt
+          gh workflow run produce.yml -R ${{ github.repository }} --ref main

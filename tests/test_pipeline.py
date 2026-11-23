@@ -354,7 +354,7 @@ def test_local_kaggle_end_to_end_to_4k(tmp_path):
 
     # the 7 s shot is two chained clips: the take is the full length, not the model's 5 s cap
     take = next(j for j in led.jobs("1-14", "take") if j["verdict"] == "pass")
-    assert probe(take["path"])[2] >= 7.0
+    assert probe(proj.fetch(take["path"]))[2] >= 7.0
 
     anim = asm.assemble(proj, led, 1)
     assert probe(anim["file"])[:2] == (640, 360)
@@ -385,3 +385,116 @@ def test_a_stale_dataset_is_not_counted_as_a_failure(tmp_path):
     assert res["stale"] and res["made"] == 0
     s = proj.chapter(1)[0]
     assert led.failures(s.id, "keyframe") == 0 and steps.state(proj, led, s) == "todo"
+
+
+# ---------------------------------------------------------------- GitHub Actions producer
+class FakeGH:
+    """Stands in for `gh release ...`: each release is a folder."""
+
+    def __init__(self, root: Path):
+        self.root = root
+        root.mkdir(parents=True, exist_ok=True)
+
+    def __call__(self, args):
+        verb, tag = args[1], args[2]
+        d = self.root / tag
+        if verb == "view":
+            return (0, "\n".join(sorted(f.name for f in d.iterdir()))) if d.exists() else (1, "release not found")
+        if verb == "create":
+            d.mkdir()
+            return 0, ""
+        if verb == "upload":
+            shutil.copy(args[3], d / Path(args[3]).name)
+            return 0, ""
+        if verb == "download":
+            name, dest = args[args.index("-p") + 1], Path(args[args.index("-D") + 1])
+            shutil.copy(d / name, dest / name)
+            return 0, ""
+        return 1, "unknown"
+
+
+def test_release_store_puts_each_file_in_its_chapter_release(proj):
+    from pipeline.store import tag_for
+    m = proj.media
+    assert tag_for(proj, m / "keyframes" / "1-03" / "k.png") == "media-ch1"
+    assert tag_for(proj, m / "takes" / "4-26" / "t.mp4") == "media-ch4"
+    assert tag_for(proj, m / "4k" / "2-01" / "u.mp4") == "4k-ch2"
+    assert tag_for(proj, m / "animatic" / "chapter_3_4k.mp4") == "cuts"
+    assert tag_for(proj, m / "batches" / "b1" / "x") is None
+
+
+def test_a_reviewer_cannot_approve_and_only_the_owner_can(proj, tmp_path):
+    from pipeline import ci, review
+    led, ex = sync(proj)
+    steps.keyframes(proj, led, ex, 1)
+    s = proj.chapter(1)[0]
+    folder = tmp_path / "reviews"
+    folder.mkdir()
+    (folder / "a.json").write_text(json.dumps({"select": [led.jobs(s.id, "keyframe")[0]["key"]],
+                                               "approve": {"gate": "board", "chapter": 1},
+                                               "verdicts": [{"key": "nope", "verdict": "pass"}]}))
+    out = review.apply(led, folder)
+    assert out["applied"] == 1 and out["refused"] and out["errors"] and not list(folder.glob("*.json"))
+    assert not led.approved(1, "board")
+    assert ci.command(proj, led, tmp_path, "/approve board 1", "claude[bot]", "owner").startswith("Only @owner")
+    assert "Not approved" in ci.command(proj, led, tmp_path, "/approve board 1", "owner", "owner")
+    assert ci.command(proj, led, tmp_path, "/chapter 3", "owner", "owner").endswith("chapter 3.")
+    assert ci.chapter_of(tmp_path) == 3
+
+
+@needs_ffmpeg
+def test_github_producer_loop_with_claude_reviews_and_owner_gates(tmp_path, monkeypatch):
+    from pipeline import ci
+    from pipeline.store import ReleaseStore
+    (tmp_path / "proj").mkdir()
+    proj = copy_project(tmp_path / "proj", csv_edit=short_chapter)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/mochizuki")
+    monkeypatch.setenv("GITHUB_REPOSITORY_OWNER", "owner")
+    releases = tmp_path / "releases"
+    proj.store = ReleaseStore("owner/mochizuki", runner=FakeGH(releases))
+    led = steps.open_ledger(proj)
+    local = kg.LocalKaggle(proj.media)
+    state = tmp_path / "state"
+
+    def run():
+        out = ci.step(proj, led, 1, state, local, engine_set="stub")
+        for folder in ("keyframes", "takes", "4k"):          # every Actions run starts on a fresh machine
+            shutil.rmtree(proj.media / folder, ignore_errors=True)
+        return out
+
+    def claude_reviews(n):
+        q = json.loads((state / "review" / "ch1" / "queue.json").read_text())
+        assert q["items"]
+        verdicts, select = [], []
+        for it in q["items"]:
+            if it["what"] == "keyframe":
+                assert (state / "review" / "ch1" / it["candidates"][0]["image"]).exists()
+                select.append(it["candidates"][0]["key"])
+            else:
+                assert (state / "review" / "ch1" / it["image"]).exists()
+                verdicts.append({"key": it["key"], "verdict": "pass", "note": "on model"})
+        (state / "reviews").mkdir(exist_ok=True)
+        (state / "reviews" / f"claude-{n}.json").write_text(json.dumps({"verdicts": verdicts, "select": select}))
+
+    assert run()["notice"]["kind"] == "running"                  # keyframe batch submitted
+    assert run()["notice"]["kind"] == "review"                   # collected; Claude's turn
+    claude_reviews(1)
+    out = run()
+    assert out["notice"]["kind"] == "board" and "/approve board 1" in out["notice"]["text"]
+    assert (state / "review" / "ch1" / "board.jpg").exists()
+    assert not led.approved(1, "board")
+    assert ci.command(proj, led, state, "/approve board 1", "owner", "owner").startswith("Approved")
+
+    assert run()["notice"]["kind"] == "running"                  # takes
+    assert run()["notice"]["kind"] == "review"
+    claude_reviews(2)
+    out = run()
+    assert out["notice"]["kind"] == "animatic" and (releases / "cuts" / "chapter_1.mp4").exists()
+    assert ci.command(proj, led, state, "/approve animatic 1", "owner", "owner").startswith("Approved")
+
+    assert run()["notice"]["kind"] == "running"                  # 4K
+    out = run()
+    assert out["notice"]["kind"] == "done", out["notice"]
+    w, h, seconds = probe(releases / "cuts" / "chapter_1_4k.mp4")
+    assert (w, h) == (3840, 2160) and seconds == pytest.approx(sum(s.seconds for s in proj.chapter(1)), abs=0.1)
+    assert all(not Path(j["path"]).is_absolute() for s in proj.chapter(1) for j in led.jobs(s.id) if j["path"])

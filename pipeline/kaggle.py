@@ -242,9 +242,7 @@ def build(p: Project, led: Ledger, stage: str, chapter: int, only: str | None = 
     names: dict[str, str] = {}
 
     def ship(path: str) -> str:
-        src = Path(path)
-        if not src.is_absolute():
-            src = p.root / src
+        src = p.fetch(path)
         if str(src) not in names:
             if not src.exists():
                 raise KaggleError(f"input {src} is missing")
@@ -323,7 +321,7 @@ def collect(p: Project, led: Ledger, kg, batch_id: str) -> dict:
             dest = steps.out_path(p, job["shot_id"], job["kind"], job["key"], Path(r["file"]).suffix)
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(outdir / r["file"]), dest)
-            led.finish(job["key"], str(dest), gpu_seconds=r.get("gpu_seconds"))
+            led.finish(job["key"], p.rel(dest), gpu_seconds=r.get("gpu_seconds"))
             made += 1
         elif r:
             led.finish(job["key"], None, ok=False, gpu_seconds=r.get("gpu_seconds"),

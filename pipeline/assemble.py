@@ -30,12 +30,12 @@ def _norm(w: int, h: int, crf: int, hold: float = 0) -> list[str]:
             "-r", FPS, "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf)]
 
 
-def _four_k(led: Ledger, shot_id: str, source_key: str) -> str | None:
+def _four_k(p: Project, led: Ledger, shot_id: str, source_key: str) -> str | None:
     for j in led.jobs(shot_id, "upscale"):
-        if j["status"] == "done" and j["path"] and Path(j["path"]).exists():
+        if j["status"] == "done" and j["path"] and p.fetch(j["path"]).exists():
             for attempt in range(10):
                 if j["key"] == job_key(shot_id, "upscale", j["idx"], source_key) and j["idx"] % 10 == attempt:
-                    return j["path"]
+                    return str(p.fetch(j["path"]))
     return None
 
 
@@ -51,12 +51,12 @@ def assemble(p: Project, led: Ledger, chapter: int, four_k: bool = False) -> dic
         passed = [j for j in led.jobs(s.id, "take") if j["status"] == "done" and j["verdict"] == "pass"]
         sel = led.selected(s.id)
         src, kind = None, "card"
-        if passed and Path(passed[-1]["path"]).exists():
-            src, kind = passed[-1]["path"], "take"
-            up = _four_k(led, s.id, passed[-1]["key"]) if four_k else None
-        elif sel and Path(sel["path"]).exists():
-            src, kind = sel["path"], "keyframe"
-            up = _four_k(led, s.id, sel["key"]) if four_k else None
+        if passed and p.fetch(passed[-1]["path"]).exists():
+            src, kind = str(p.fetch(passed[-1]["path"])), "take"
+            up = _four_k(p, led, s.id, passed[-1]["key"]) if four_k else None
+        elif sel and p.fetch(sel["path"]).exists():
+            src, kind = str(p.fetch(sel["path"])), "keyframe"
+            up = _four_k(p, led, s.id, sel["key"]) if four_k else None
         else:
             up = None
         if up:

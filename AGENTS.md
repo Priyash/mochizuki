@@ -25,6 +25,22 @@ When it is idle:
 4. When every shot has passed, run `assemble --chapter N`. Ask the person to approve the animatic.
 5. After approval, `auto` upscales the chapter to 4K. Then `assemble --chapter N --4k`.
 
+## Reviewer run (GitHub Actions mode)
+
+When the producer runs on GitHub Actions, you are the reviewer. You never run Kaggle, never touch `ledger.sqlite`, and never approve anything. One run:
+
+1. Clone the repository and check out the `state` branch into `./state` (for example `git worktree add state origin/state`, or a second clone with `-b state`).
+2. Read `state/chapter.txt` (the chapter N) and `state/review/chN/queue.json`. If it has no items, stop and say so in one line.
+3. For every item, open its image(s) in `state/review/chN/` and the reference stills it lists (in the main checkout), and judge it by "How to review" below.
+   - A keyframe item lists candidates. Select the best one, or fail every candidate that is not good enough. Never select a candidate you would fail.
+   - A take item is six frames of the clip, left to right, top to bottom. Pass or fail it. You can't see motion between frames, so fail a take when the frames show morphing, drift or a jump; say in the note that the owner should watch every Hero take.
+4. Write one file, `state/reviews/claude-<UTC date and time>.json`, holding only:
+   `{"verdicts": [{"key": "...", "verdict": "pass" or "fail", "note": "one line"}], "select": ["<keyframe key>", ...]}`
+5. Commit it on the `state` branch, `git pull --rebase`, and push. Retry the pull and push if the push is refused.
+6. Start the producer: `gh api -X POST repos/<owner>/<repo>/actions/workflows/produce.yml/dispatches -f ref=main`. If that is refused, leave it: the producer runs every two hours anyway.
+
+Never write anything else to the state branch, and never comment `/approve` on the issue.
+
 ## How to review
 
 Review in a fresh context that has not seen the prompt, so the verdict rests on the picture alone. Open the file and compare it with `style_bible/refs/`.

@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from . import assemble as asm
+from . import ci
 from . import kaggle as kg
 from . import plan as planner
 from . import providers, steps
@@ -78,6 +79,14 @@ def main(argv=None) -> int:
     a = sub.add_parser("assemble", help="cut the chapter: animatic, or --4k picture"); chap(a)
     a.add_argument("--4k", dest="four_k", action="store_true")
 
+    # GitHub Actions
+    a = sub.add_parser("ci-step", help="one producer run on GitHub Actions"); chap(a, False)
+    a.add_argument("--state", default="state", help="checkout of the state branch")
+    a.add_argument("--engine-set", default="gpu", choices=["gpu", "stub"]); backend(a)
+    a.add_argument("--no-store", action="store_true", help="keep media on this machine (testing)")
+    a = sub.add_parser("gate", help="run the owner's command from an issue comment (COMMENT_BODY)")
+    a.add_argument("--state", default="state")
+
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     load_env(root)
@@ -89,6 +98,24 @@ def main(argv=None) -> int:
         return 0
 
     led = steps.open_ledger(p)
+    if args.cmd == "ci-step":
+        from .store import ReleaseStore  # noqa: PLC0415
+        state = Path(args.state)
+        state.mkdir(parents=True, exist_ok=True)
+        if not args.no_store:
+            p.store = ReleaseStore()
+        has_creds = os.environ.get("KAGGLE_USERNAME") and (
+            os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY") or Path("~/.kaggle/kaggle.json").expanduser().exists())
+        backend_ = kaggle_backend(args.kaggle, p) if (has_creds or args.kaggle == "local") else None
+        out = ci.step(p, led, args.chapter or ci.chapter_of(state), state, backend_, engine_set=args.engine_set)
+        print(json.dumps(out["notice"], ensure_ascii=False))
+        return 0
+    if args.cmd == "gate":
+        state = Path(args.state)
+        state.mkdir(parents=True, exist_ok=True)
+        print(ci.command(p, led, state, os.environ.get("COMMENT_BODY", ""),
+                         os.environ.get("COMMENT_AUTHOR", ""), os.environ.get("GITHUB_REPOSITORY_OWNER", "")))
+        return 0
     try:
         if args.cmd in ("keyframes", "video", "upscale"):
             ex = steps.SyncExecutor(providers.get(args.provider, p),

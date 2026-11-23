@@ -1,0 +1,59 @@
+# The producer. Every two hours (or when kicked): apply Claude's reviews, collect or start a
+# Kaggle batch, upload new media to releases, export the next review, post what is needed.
+name: produce
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      chapter:
+        description: "Chapter to work on (blank: the one in state/chapter.txt)"
+        required: false
+        default: ""
+concurrency:
+  group: mochizuki-state
+  cancel-in-progress: false
+permissions:
+  contents: write
+  issues: write
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: state
+          path: state
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Tools
+        run: |
+          pip install -q "kaggle>=1.7" imageio-ffmpeg
+          if ! command -v ffmpeg >/dev/null; then
+            mkdir -p "$HOME/bin"
+            ln -sf "$(python -c 'import imageio_ffmpeg as m; print(m.get_ffmpeg_exe())')" "$HOME/bin/ffmpeg"
+            echo "$HOME/bin" >> "$GITHUB_PATH"
+          fi
+      - name: Restore the ledger
+        run: if [ -f state/ledger.sqlite ]; then cp state/ledger.sqlite ledger.sqlite; fi
+      - name: Producer step
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          CHAPTER: ${{ inputs.chapter }}
+        run: python -m pipeline ci-step --state state ${CHAPTER:+--chapter "$CHAPTER"}
+      - name: Post the notice
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OUTCOME: ${{ job.status }}
+        run: python .github/scripts/notify.py state
+      - name: Save state
+        if: always()
+        run: .github/scripts/save_state.sh "producer run ${{ github.run_id }}"
