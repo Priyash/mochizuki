@@ -154,7 +154,11 @@ class Project:
     def prompt(self, shot: Shot, extra: str = "") -> str:
         style = self.root / "style_bible" / "style.txt"
         own = self.root / "prompts" / f"{shot.id}.txt"
+        chapters = self.root / "style_bible" / "chapter_styles.json"
+        chapter_line = json.loads(chapters.read_text(encoding="utf-8")).get(str(shot.chapter), "") \
+            if chapters.exists() else ""
         parts = [style.read_text(encoding="utf-8").strip() if style.exists() else "",
+                 chapter_line,
                  own.read_text(encoding="utf-8").strip() if own.exists() else shot.shot,
                  extra]
         return "\n".join(p for p in parts if p)
