@@ -358,6 +358,12 @@ def check(rp: RunPodBackend) -> dict:
         gid: ({"price": (gpus[gid].get("price") or {}).get(rp.cfg["cloud"].lower()),
                "availability": gpus[gid].get("availability")} if gid in gpus else "not in catalog")
         for gid in rp.cfg["gpus"]}}
+    for label, q in (("cuda_ok", f"&minCudaVersion={rp.cfg['min_cuda']}"), ("any_cuda", "")):
+        code, obj = rp.api("GET", f"/catalog/gpus?include=AVAILABILITY&product=POD&cloud={rp.cfg['cloud']}{q}")
+        r[f"community_24gb_plus_{label}"] = sorted(
+            (f"{(g.get('price') or {}).get(rp.cfg['cloud'].lower())} {g.get('availability')} {g.get('memory')}GB {g.get('id')}"
+             for g in obj.get("gpus", []) if (g.get("memory") or 0) >= 24 and g.get("availability") not in (None, "NONE")
+             and ((g.get("price") or {}).get(rp.cfg["cloud"].lower()) or 9) <= float(rp.cfg["max_usd_per_hour"])))
     for path in ("/billing/balance", "/billing", "/account/balance"):
         code, obj = rp.api("GET", path)
         if code != 404:
