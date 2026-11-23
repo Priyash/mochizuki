@@ -33,6 +33,9 @@ def step(p: Project, led: Ledger, chapter: int, state: Path, backend, engine_set
     if isinstance(backend, kg.KaggleCLI):          # can we sign in, and how much GPU time is left?
         code, text = backend._run(["quota", "-v"])
         out["kaggle_check"] = {"ok": code == 0, "output": text.strip()[-600:]}
+        for args in (["datasets", "list", "--mine"], ["kernels", "list", "--mine"], ["config", "view"]):
+            code, text = backend._run(args)
+            out["kaggle_check"][" ".join(args)] = f"{code}: {text.strip()[-500:]}"
     if backend is None:
         out["actions"].append({"action": "skipped", "reason": "no Kaggle credentials"})
     else:

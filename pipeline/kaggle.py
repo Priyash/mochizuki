@@ -91,6 +91,7 @@ class KaggleCLI:
     def dataset_status(self, ref: str) -> str:
         code, out = self._run(["datasets", "status", ref])
         self.last_status = f"{code}: {out.strip()[-300:]}"
+        self.log.append(f"kaggle datasets status {ref} -> {self.last_status}")
         if code != 0 and ("404" in out or "not found" in out.lower()):
             return "missing"
         return out.strip().lower() if code == 0 else f"unknown ({out.strip()[-200:]})"
