@@ -48,7 +48,7 @@
     "_note": "Money caps. The free plan spends nothing; raise these only if you route shots to Kling 4."
   },
   "kaggle": {
-    "username": "",
+    "username": "priyash11",
     "dataset_slug": "mochizuki-inputs",
     "kernel_slug": "mochizuki-worker",
     "accelerator": "NvidiaTeslaT4",
