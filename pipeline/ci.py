@@ -29,6 +29,9 @@ def chapter_of(state: Path) -> int:
 def step(p: Project, led: Ledger, chapter: int, state: Path, backend, engine_set: str = "gpu") -> dict:
     out: dict = {"chapter": chapter, "actions": []}
     out["reviews"] = review.apply(led, state / "reviews")
+    if isinstance(backend, kg.KaggleCLI):          # can we sign in, and how much GPU time is left?
+        code, text = backend._run(["quota", "-v"])
+        out["kaggle_check"] = {"ok": code == 0, "output": text.strip()[-600:]}
     if backend is None:
         out["actions"].append({"action": "skipped", "reason": "no Kaggle credentials"})
     else:
