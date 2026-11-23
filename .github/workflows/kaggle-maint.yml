@@ -1,0 +1,37 @@
+# Owner-run maintenance on the Kaggle account (Actions > kaggle-maint > Run workflow).
+name: kaggle-maint
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do"
+        type: choice
+        options: [status, delete-stuck-worker]
+concurrency:
+  group: mochizuki-state
+  cancel-in-progress: false
+jobs:
+  maint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q "kaggle>=1.7" six
+      - name: Run
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          set +e
+          kaggle kernels list --mine
+          kaggle kernels status $KAGGLE_USERNAME/mochizuki-worker
+          if [ "$ACTION" = "delete-stuck-worker" ]; then
+            kaggle kernels delete $KAGGLE_USERNAME/mochizuki-worker -y
+            kaggle kernels delete $KAGGLE_USERNAME/mochizuki-test-cpu -y
+            sleep 5
+            kaggle kernels list --mine
+          fi
+          kaggle quota -v

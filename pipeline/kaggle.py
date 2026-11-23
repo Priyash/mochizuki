@@ -136,7 +136,7 @@ class KaggleCLI:
         code, out = self._run(["kernels", "status", ref])
         self.log.append(f"kaggle kernels status -> {code}: {out.strip()[-300:]}")
         if code != 0:
-            return "unknown"
+            return "error" if "404" in out else "unknown"     # 404: the notebook was deleted
         m = re.search(r'has status "([^"]+)"', out)
         s = (m.group(1) if m else out).lower()
         for word in ("complete", "error", "cancel", "running", "queued"):
@@ -373,7 +373,10 @@ def collect(p: Project, led: Ledger, kg, batch_id: str) -> dict:
     if st in ("queued", "running", "unknown"):
         return {"batch": batch_id, "backend": b["backend"], "status": st}
     work = p.media / "batches" / batch_id
-    kg.output(kernel_ref, work / "download", handle=b["handle"])
+    try:
+        kg.output(kernel_ref, work / "download", handle=b["handle"])
+    except KaggleError:
+        pass                                   # nothing to download: its jobs are freed below
     found = list((work / "download").rglob("results.json"))
     results = json.loads(found[0].read_text(encoding="utf-8")) if found else {"jobs": {}, "error": "no results.json"}
     stale = results.get("batch_id") not in (None, batch_id) or "stale" in str(results.get("error") or "")
