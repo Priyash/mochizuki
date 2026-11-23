@@ -1,0 +1,25 @@
+{
+ "chapter": 1,
+ "actions": [
+  {
+   "action": "skipped",
+   "reason": "no Kaggle credentials"
+  }
+ ],
+ "reviews": {
+  "applied": 0,
+  "errors": [],
+  "refused": []
+ },
+ "uploaded": 0,
+ "review": {
+  "items": 0
+ },
+ "notice": {
+  "kind": "setup",
+  "text": "@Priyash Add the KAGGLE_API_TOKEN and KAGGLE_USERNAME repository secrets (Settings → Secrets and variables → Actions) so the producer can run."
+ },
+ "status": {
+  "todo": 27
+ }
+}
