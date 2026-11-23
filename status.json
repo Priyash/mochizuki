@@ -5,7 +5,7 @@
    "action": "waiting",
    "batch": "b20261123-144531-bec9",
    "backend": "kaggle",
-   "status": "queued"
+   "status": "unknown"
   }
  ],
  "reviews": {
@@ -17,11 +17,11 @@
   "ok": true,
   "output": "resource,used,remaining,total,refreshAt\nGPU,0.00h,30.00h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
   "datasets list --mine": "0: ref                         title                   size  lastUpdated                 downloadCount  voteCount  usabilityRating  \n--------------------------  ----------------  ----------  --------------------------  -------------  ---------  ---------------  \npriyash11/mochizuki-inputs  mochizuki-inputs       11645  2026-11-23 14:45:34.397000              0          0  0.125",
-  "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-23 10:50:28.453000           0",
+  "kernels list --mine": "0: ref  title               author  lastRunTime          totalVotes  \n---  ------------------  ------  -------------------  ----------  \n     [Private Notebook]          2010-04-01 00:00:00           0",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
  "kaggle_log": [
-  "kaggle kernels status -> 0: priyash11/mochizuki-worker has status \"KernelWorkerStatus.QUEUED\""
+  "kaggle kernels status -> 1: s denied). The most likely cause is a wrong kernel slug. The benchmark_task_slug returned by get_benchmark_leaderboard differs from the actual kernel slug — use the slug from the notebook URL (kaggle.com/code/owner/KERNEL-SLUG), not from the leaderboard. It can also occur if the notebook is private."
  ],
  "uploaded": 0,
  "review": {
