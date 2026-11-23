@@ -17,7 +17,7 @@
   "ok": true,
   "output": "resource,used,remaining,total,refreshAt\nGPU,0.00h,30.00h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
   "datasets list --mine": "0: ref                         title                   size  lastUpdated                 downloadCount  voteCount  usabilityRating  \n--------------------------  ----------------  ----------  --------------------------  -------------  ---------  ---------------  \npriyash11/mochizuki-inputs  mochizuki-inputs       11649  2026-11-23 15:59:05.860000              0          0  0.125",
-  "kernels list --mine": "0: ref                         title               author     lastRunTime                 totalVotes  \n--------------------------  ------------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker  mochizuki-worker    Priyash11  2026-11-23 15:59:09.030000           0  \n                            [Private Notebook]             2010-04-01 00:00:00                  0",
+  "kernels list --mine": "0: ref                           title               author     lastRunTime                 totalVotes  \n----------------------------  ------------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker    mochizuki-worker    Priyash11  2026-11-23 15:59:09.030000           0  \npriyash11/mochizuki-test-gpu  mochizuki-test-gpu  Priyash11  2026-11-23 16:07:10.870000           0",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
  "kaggle_log": [
