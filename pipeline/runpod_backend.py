@@ -138,16 +138,62 @@ class RunPodBackend:
             usd += max(0.0, (r["finished_at"] or self.now()) - r["submitted_at"]) / 3600 * rate
         return usd
 
+    def disk_usd_per_hour(self) -> float:
+        return float(self.cfg["disk_gb"]) * float(self.cfg.get("disk_usd_per_gb_month", 0.10)) / 730
+
+    def pick_gpu(self) -> tuple[str, float] | None:
+        """The first GPU of runpod.gpus that is in stock on our cloud, with our CUDA, at or under
+        runpod.max_usd_per_hour. None if there is none right now."""
+        c = self.cfg
+        code, obj = self.api("GET", f"/catalog/gpus?include=AVAILABILITY&product=POD&cloud={c['cloud']}"
+                                    f"&minCudaVersion={c['min_cuda']}")
+        if code != 200:
+            return None
+        cat = {g.get("id"): g for g in obj.get("gpus", [])}
+        seen = []
+        for gid in c["gpus"]:
+            g = cat.get(gid) or {}
+            price = (g.get("price") or {}).get(c["cloud"].lower())
+            stock = g.get("availability") or "NONE"
+            seen.append(f"{gid.replace('NVIDIA ', '')} {stock} ${price}")
+            if stock != "NONE" and price is not None and float(price) <= float(c["max_usd_per_hour"]):
+                self.log.append(f"GPU in stock within ${c['max_usd_per_hour']}/h: {gid} at ${price}/h")
+                return gid, float(price)
+        self.stock = "; ".join(seen)
+        return None
+
+    def balance(self) -> float | None:
+        code, obj = self.api("GET", "/billing/balance")
+        try:
+            return float(obj["balanceAmount"]) if code == 200 else None
+        except (KeyError, TypeError, ValueError):
+            return None
+
     def budget(self, p, led) -> tuple[float, float]:
+        """Seconds the next batch may run, checked every time against everything agreed:
+        a GPU in stock at or under max_usd_per_hour, total_cap_usd minus what was spent, and the
+        real prepaid balance. Raises BudgetUsedUp (the backend rests, no jobs are reserved)."""
         from .kaggle import BudgetUsedUp  # noqa: PLC0415
-        rate, cap = float(self.cfg["usd_per_hour"]), float(self.cfg["total_cap_usd"])
-        setup = float(self.cfg["setup_minutes"]) * 60
-        spent = self.spent_usd(led)
-        left_s = (cap - spent) / rate * 3600 if rate > 0 else 0
-        budget = min(float(self.cfg["batch_hours"]) * 3600, left_s - setup - 1200)
+        c = self.cfg
+        pick = self.pick_gpu()
+        if pick is None:
+            raise BudgetUsedUp(f"no GPU in stock at or under ${c['max_usd_per_hour']}/h on {c['cloud']} "
+                               f"({getattr(self, 'stock', 'catalog unavailable')}); will retry")
+        self.chosen = pick
+        rate = pick[1] + self.disk_usd_per_hour()
+        cap, spent = float(c["total_cap_usd"]), self.spent_usd(led)
+        left = cap - spent
+        bal = self.balance()
+        if bal is not None:
+            left = min(left, bal - float(c.get("balance_reserve_usd", 0.5)))
+        setup = float(c["setup_minutes"]) * 60
+        budget = min(float(c["batch_hours"]) * 3600, left / rate * 3600 - setup - 1200)
         if budget <= 900:
-            raise BudgetUsedUp(f"the RunPod cap is used up (${spent:.2f} of ${cap:.2f}); "
-                               "raise runpod.total_cap_usd in config.json to go on")
+            why = (f"the RunPod balance is ${bal:.2f}" if bal is not None and bal - 0.5 < cap - spent
+                   else f"the agreed RunPod cap is used up (${spent:.2f} of ${cap:.2f})")
+            raise BudgetUsedUp(f"{why}; not enough for a batch at ${rate:.2f}/h")
+        self.log.append(f"batch budget {budget / 3600:.2f} h at ${rate:.3f}/h; spent ${spent:.2f} of "
+                        f"${cap:.2f}; balance {'?' if bal is None else f'${bal:.2f}'}")
         return budget, setup
 
     def gpu_hours_left(self) -> float | None:
@@ -200,7 +246,9 @@ class RunPodBackend:
         start = ('mkdir -p /work && curl -fsSL "$MOCHI_AGENT_URL" -o /work/pod_agent.py '
                  '&& exec python3 /work/pod_agent.py')
         tried = []
-        for gpu in c["gpus"]:
+        chosen = getattr(self, "chosen", None)
+        order = ([chosen[0]] if chosen else []) + [g for g in c["gpus"] if not chosen or g != chosen[0]]
+        for gpu in order:
             body = {"name": PREFIX + batch_id, "image": c["image"], "cloud": c["cloud"],
                     "gpu": {"id": gpu, "count": 1, "minCudaVersion": c["min_cuda"]},
                     "disk": int(c["disk_gb"]), "ports": [f"{c['port']}/http"], "env": env,
@@ -214,7 +262,8 @@ class RunPodBackend:
                 if cost is not None and float(cost) > float(c["max_usd_per_hour"]):
                     self.terminate(pod)
                     raise RunPodError(f"{gpu} came at ${cost}/h, over runpod.max_usd_per_hour; pod deleted")
-                return f"{pod} {batch_id} {float(cost if cost is not None else c['usd_per_hour']):.3f}"
+                rate = float(cost if cost is not None else c["usd_per_hour"]) + self.disk_usd_per_hour()
+                return f"{pod} {batch_id} {rate:.3f}"
             tried.append(f"{gpu}: {code} {str(obj.get('detail') or obj.get('title') or obj)[:120]}")
             if code in (401, 402, 403):
                 break                               # bad key, empty balance, no permission: another GPU won't help
@@ -275,7 +324,8 @@ class RunPodBackend:
         return ok
 
     def cleanup(self, led) -> int:
-        """Delete every mochizuki-* pod that no open batch owns. Run before anything else."""
+        """Every run, before anything else: delete each mochizuki-* pod that no open batch owns,
+        that costs more than max_usd_per_hour, or that runs past the agreed cap."""
         code, obj = self.api("GET", "/pods")
         if code != 200:
             return 0
@@ -283,8 +333,17 @@ class RunPodBackend:
         owned = {self._split(b["handle"])[0] for b in led.active_batches()
                  if b["backend"] == self.name and b["status"] == "submitted" and b["handle"]}
         n = 0
+        over_cap = self.spent_usd(led) >= float(self.cfg["total_cap_usd"])
         for pod in pods:
-            if str(pod.get("name", "")).startswith(PREFIX) and pod.get("id") not in owned:
+            if not str(pod.get("name", "")).startswith(PREFIX):
+                continue                                    # never touch anything that is not ours
+            cost = pod.get("cost")
+            why = ("no batch owns it" if pod.get("id") not in owned else
+                   f"its price ${cost}/h is over runpod.max_usd_per_hour"
+                   if cost is not None and float(cost) > float(self.cfg["max_usd_per_hour"]) else
+                   "the agreed RunPod cap is reached" if over_cap else None)
+            if why:
+                self.log.append(f"deleting pod {pod.get('id')}: {why}")
                 n += self.terminate(pod["id"])
         return n
 
@@ -327,6 +386,11 @@ def smoke(p, rp: RunPodBackend, engine_set: str = "stub", model: str = "Wan 2.2 
     shutil.copyfile(WORKER, data / "worker.py")
     (kern / "bootstrap.py").write_text(BOOTSTRAP.format(batch_id=batch_id, engine_set=engine_set,
                                                         packages=", ".join(repr(x) for x in PACKAGES)))
+    pick = rp.pick_gpu()                            # same price rule as real batches; nothing rented otherwise
+    if pick is None:
+        return {"batch": batch_id, "ok": False, "status": "no GPU in stock within price",
+                "stock": getattr(rp, "stock", "?")}
+    rp.chosen = pick
     t0 = time.time()
     rp.publish_dataset(data, "", batch_id)
     handle = rp.push(kern, "", int(max_minutes * 60))

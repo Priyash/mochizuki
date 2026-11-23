@@ -52,7 +52,9 @@ def main(argv=None) -> int:
     a.add_argument("--model", default="Wan 2.2 5B")
     a.add_argument("--seconds", type=float, default=2)
     a.add_argument("--out", help="copy the clip here")
-    sub.add_parser("runpod-poll", help="exit 0 if a RunPod batch has finished and should be collected now")
+    a = sub.add_parser("runpod-poll", help="exit 0 if the producer should run now: a RunPod batch finished, "
+                                           "or RunPod was waiting for a GPU and one is in stock within price")
+    a.add_argument("--state", default="state")
     a = sub.add_parser("runpod-check", help="check the RunPod key without creating anything")
     a.add_argument("--deep", action="store_true", help="also test the create request, image, agent and inputs release")
     a = sub.add_parser("plan", help="dry run: GPU time and money, nothing is called"); chap(a, False)
@@ -138,9 +140,19 @@ def main(argv=None) -> int:
     if args.cmd == "runpod-poll":
         from . import runpod_backend  # noqa: PLC0415
         rp = runpod_backend.from_env(p)
-        b = led.active_batch("runpod") if rp is not None else None
+        if rp is None:
+            print("RunPod is off")
+            return 1
+        b = led.active_batch("runpod")
         if not b or b["status"] != "submitted":
-            print("no RunPod batch running")
+            sf = Path(args.state) / "status.json"
+            acts = json.loads(sf.read_text()).get("actions", []) if sf.exists() else []
+            waiting = any(a.get("backend") == "runpod" and a.get("action") == "resting"
+                          and str(a.get("reason", "")).startswith("no GPU in stock") for a in acts)
+            if waiting and rp.pick_gpu():
+                print("RunPod was waiting for a GPU; " + rp.log[-1])
+                return 0
+            print("no RunPod batch running" + ("; still no GPU within price" if waiting else ""))
             return 1
         st = rp.status("", b["handle"])
         print(f"{b['id']}: {st}; " + " | ".join(rp.log[-2:]))

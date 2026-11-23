@@ -10,6 +10,8 @@ import sys
 import tarfile
 import time
 import urllib.request
+
+import pytest
 from pathlib import Path
 
 from pipeline import kaggle as kg
@@ -27,8 +29,10 @@ def _mk(d: Path) -> Path:
 class FakeRunPod:
     """Plays RunPod's API, its HTTPS proxy and the pod agent; runs the worker here with stubs."""
 
-    def __init__(self, root: Path, refuse=(), balance_ok=True):
+    def __init__(self, root: Path, refuse=(), balance_ok=True, stock=None, balance=None):
         self.root = root
+        self.stock = stock or {"NVIDIA GeForce RTX 4090": ("HIGH", 0.34)}
+        self.balance = balance
         self.pods: dict[str, dict] = {}
         self.released: dict[str, Path] = {}
         self.refuse = set(refuse)
@@ -66,8 +70,8 @@ class FakeRunPod:
 
     def _api(self, method, path, body):
         if method == "GET" and path == "/pods":
-            return 200, json.dumps({"pods": [{"id": k, "name": v["name"]} for k, v in self.pods.items()
-                                             if v["status"] != "TERMINATED"]}).encode()
+            return 200, json.dumps({"pods": [{"id": k, "name": v["name"], "cost": v.get("cost", 0.34)}
+                                             for k, v in self.pods.items() if v["status"] != "TERMINATED"]}).encode()
         if method == "POST" and path == "/pods":
             if not body:
                 return 422, b'{"title": "invalid"}'
@@ -99,8 +103,10 @@ class FakeRunPod:
                 return 204, b""
             return 200, json.dumps({"id": pid, "status": self.pods[pid]["status"]}).encode()
         if path.startswith("/catalog/gpus"):
-            return 200, json.dumps({"gpus": [{"id": "NVIDIA GeForce RTX 4090", "price": {"community": 0.34},
-                                              "availability": "HIGH"}]}).encode()
+            return 200, json.dumps({"gpus": [{"id": k, "price": {"community": p}, "availability": a, "memory": 24}
+                                             for k, (a, p) in self.stock.items()]}).encode()
+        if path == "/billing/balance" and self.balance is not None:
+            return 200, json.dumps({"balanceAmount": self.balance, "billingMode": "PREPAID"}).encode()
         return 404, b'{"title": "not found"}'
 
     def live(self):
@@ -157,7 +163,7 @@ def test_runpod_only_takes_its_stages_unless_kaggle_is_stuck(tmp_path):
     r = kg.tick(proj, led, rp, 1, engine_set="stub")
     assert r["action"] == "built_and_submitted" and r["stage"] == "refs", r
     b = led.active_batch("runpod")
-    assert b["handle"].startswith("pod1 ") and b["handle"].endswith(" 0.340")
+    assert b["handle"].startswith("pod1 ") and b["handle"].endswith(" 0.356")   # GPU $0.34 + 120 GB disk
     r = kg.tick(proj, led, rp, 1, engine_set="stub")
     assert r["action"] == "collected" and r["made"] > 0, r
     assert fake.live() == []
@@ -252,3 +258,56 @@ def test_pod_agent_serves_results_behind_its_token(tmp_path):
     finally:
         if agent.poll() is None:
             agent.kill()
+
+
+def _video_ready(tmp_path, **fake_kw):
+    """A project whose chapter 1 needs reference stills, with Kaggle stuck so RunPod may take them."""
+    proj = copy_project(_mk(tmp_path / "p"), cfg_edit=lambda c: c.update(runpod={"enabled": True, "total_cap_usd": 30}))
+    for f in (proj.root / "style_bible" / "refs").glob("*.png"):
+        f.unlink()
+    led = steps.open_ledger(proj)
+    led.create_batch("bk-stuck", "refs", 1, 3600, backend="kaggle")
+    led.set_batch("bk-stuck", status="failed", note="stuck in Kaggle's queue; handed to the other backend")
+    fake = FakeRunPod(tmp_path / "pods", **fake_kw)
+    return proj, led, fake, backend(proj, fake)
+
+
+def test_rests_without_reserving_jobs_when_no_gpu_is_in_stock_within_price(tmp_path):
+    proj, led, fake, rp = _video_ready(tmp_path, stock={"NVIDIA GeForce RTX 4090": ("NONE", 0.34),
+                                                         "NVIDIA GeForce RTX 3090": ("LOW", 0.95)})
+    r = kg.tick(proj, led, rp, 1, engine_set="stub")
+    assert r["action"] == "resting" and r["reason"].startswith("no GPU in stock at or under $0.6/h"), r
+    assert fake.pods == {} and led.active_batch("runpod") is None and fake.released == {}
+
+
+def test_takes_the_first_affordable_gpu_in_stock(tmp_path):
+    proj, led, fake, rp = _video_ready(tmp_path, stock={"NVIDIA GeForce RTX 4090": ("NONE", 0.34),
+                                                         "NVIDIA GeForce RTX 3090": ("LOW", 0.22)})
+    r = kg.tick(proj, led, rp, 1, engine_set="stub")
+    assert r["action"] == "built_and_submitted", r
+    assert fake.pods["pod1"]["gpu"] == "NVIDIA GeForce RTX 3090"
+    assert [c for c in fake.calls if c.startswith("POST") and c.endswith("/pods")] == [f"POST {rpb.API}/pods"]
+
+
+def test_a_low_balance_stops_the_batch_before_any_pod(tmp_path):
+    proj, led, fake, rp = _video_ready(tmp_path, balance=0.6)
+    r = kg.tick(proj, led, rp, 1, engine_set="stub")
+    assert r["action"] == "resting" and "balance is $0.60" in r["reason"], r
+    assert fake.pods == {}
+
+
+def test_batch_is_sized_to_the_balance(tmp_path):
+    proj, led, fake, rp = _video_ready(tmp_path, balance=1.5)
+    secs, setup = rp.budget(proj, led)
+    assert secs == pytest.approx((1.5 - 0.5) / (0.34 + rp.disk_usd_per_hour()) * 3600 - setup - 1200)
+
+
+def test_guard_deletes_overpriced_and_over_cap_pods(tmp_path):
+    proj, led, fake, rp = _video_ready(tmp_path)
+    led.create_batch("b1", "video", 1, 3600, backend="runpod")
+    led.set_batch("b1", status="submitted", submitted_at=time.time() - 60, handle="podX b1 0.34")
+    fake.pods["podX"] = {"name": "mochizuki-b1", "status": "RUNNING", "env": {}, "out": tmp_path, "cost": 0.89}
+    assert rp.cleanup(led) == 1 and fake.live() == []
+    led.set_batch("b1", handle="podY b1 0.34", submitted_at=time.time() - 200 * 3600)     # far past the cap
+    fake.pods["podY"] = {"name": "mochizuki-b1", "status": "RUNNING", "env": {}, "out": tmp_path, "cost": 0.34}
+    assert rp.cleanup(led) == 1 and "cap is reached" in rp.log[-2]

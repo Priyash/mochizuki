@@ -1,9 +1,10 @@
-# Every 15 minutes while a RunPod batch is running: if it has finished, start the producer at
-# once so the pod is collected and deleted (it bills while it waits). Writes nothing.
+# Every 10 minutes: start the producer at once if a RunPod batch has finished (its pod bills
+# while it waits), or if RunPod was waiting for a GPU and one is now in stock within the agreed
+# price. The producer re-checks price, cap and balance before renting. Writes nothing.
 name: runpod-watch
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 permissions:
   contents: read
@@ -25,7 +26,7 @@ jobs:
         run: |
           [ -n "$RUNPOD_API_KEY" ] && [ -f state/ledger.sqlite ] || { echo "nothing to watch"; exit 0; }
           cp state/ledger.sqlite ledger.sqlite
-          if python -m pipeline runpod-poll; then echo "done=1" >> "$GITHUB_OUTPUT"; fi
+          if python -m pipeline runpod-poll --state state; then echo "done=1" >> "$GITHUB_OUTPUT"; fi
       - name: Start the producer
         if: steps.poll.outputs.done == '1'
         env:
