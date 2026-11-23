@@ -1,0 +1,30 @@
+{
+  "_note": "The reference stills Kaggle paints when style_bible/refs/ lacks them (gate 1). Each prompt follows style.txt. Edit freely; a changed prompt makes new candidates. Never name a studio, a director or an existing film.",
+  "refs": [
+    {
+      "name": "style",
+      "width": 1664, "height": 928,
+      "prompt": "Key art. Dusk on the Noto coast: an old farmhouse porch above terraced rice paddies that fall away to a silver sea. A grandmother and a seven-year-old girl kneel side by side at a stone mortar, the grandmother's wooden mallet raised, the girl laughing with flour on her nose, steam curling up between them. A huge full moon rises over the water, paper lanterns glow amber, the first stars come out. Tender, quiet and bittersweet, like the last ordinary evening before everything changes. Wide cinematic composition, warm lantern rim light against cool indigo moonlight, volumetric light, rich amber and indigo palette."
+    },
+    {
+      "name": "tsumugi_ch1",
+      "width": 1664, "height": 928,
+      "prompt": "Character sheet of Tsumugi, a seven-year-old Japanese village girl: full body front view, three-quarter view and side view, plus three close-up expressions: laughing with flour on her nose, wide-eyed wonder looking up, and holding back tears. Short black bob with a soft fringe, large dark expressive eyes, small scar-free hands, an indigo sashiko-stitched cotton jacket over a plain cream top, dark trousers, straw sandals. Consistent proportions in every view. Plain warm grey background, even soft studio light."
+    },
+    {
+      "name": "sayo",
+      "width": 1664, "height": 928,
+      "prompt": "Character sheet of Sayo, a Japanese grandmother in her seventies from a rice-and-fishing village: full body front view, three-quarter view and side view, plus three close-up expressions: a gentle crinkled smile, fierce focus while swinging a wooden mallet, and grief held quietly behind calm eyes. Silver hair in a low bun, weathered kind face, strong working hands, a faded indigo work kimono with sleeves tied back by a cord, a plain apron. Consistent proportions in every view. Plain warm grey background, even soft studio light."
+    },
+    {
+      "name": "bowl_ch1",
+      "width": 1328, "height": 1328,
+      "prompt": "Still life: a hand-thrown rice bowl with an earthy brown and cream glaze, mended once: a single thin seam of gold kintsugi runs from the rim to the foot. It rests on a worn wooden tray beside a few grains of rice, lit by soft side light through a paper shoji window. Shallow depth of field, intimate and reverent, the gold seam catching the light."
+    },
+    {
+      "name": "farmhouse_ch1",
+      "width": 1664, "height": 928,
+      "prompt": "Environment establishing shot, no people: an old thatched farmhouse with a wide wooden engawa porch on the Noto peninsula at dusk. Terraced rice paddies step down to the Sea of Japan, a stone mortar and wooden mallet rest on the porch, paper lanterns are lit, pampas grass sways, the full moon hangs low over the water. Peaceful, nostalgic, a home worth remembering."
+    }
+  ]
+}

@@ -8,9 +8,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from .ledger import NOT_A_FAILURE, BudgetExceeded, Ledger
-from .project import Project, Shot, job_key
+from .project import Project, Shot, job_key, ref_shot
 
-OUT = {"keyframe": ("keyframes", ".png"), "variant": ("keyframes", ".png"),
+OUT = {"ref": ("refs", ".png"), "keyframe": ("keyframes", ".png"), "variant": ("keyframes", ".png"),
        "take": ("takes", ".mp4"), "upscale": ("4k", None)}
 
 
@@ -112,6 +112,53 @@ def state(p: Project, led: Ledger, s: Shot) -> str:
     if len(takes) >= s.takes or led.failures(s.id, "take") >= max_fail:
         return "needs_human"
     return "needs_take"
+
+
+def ref_state(p: Project, led: Ledger, r: dict) -> str:
+    """Where one planned reference still stands (gate 1)."""
+    if p.ref_path(r["name"]).exists():
+        return "in_refs"
+    s = ref_shot(r["name"])
+    jobs = led.jobs(s.id, "ref")
+    if any(j["status"] == "pending" for j in jobs):
+        return "in_batch"
+    if led.selected(s.id):
+        return "selected"
+    done = [j for j in jobs if j["status"] == "done"]
+    if not done:
+        max_fail = p.config.get("kaggle", {}).get("max_failures_per_shot", 2)
+        return "needs_human" if led.failures(s.id, "ref") >= max_fail else "todo"
+    if all(j["verdict"] == "fail" for j in done):
+        cap = p.config.get("refs", {}).get("max_candidates", 8)
+        return "needs_human" if len(done) >= cap else "needs_candidates"
+    return "review"
+
+
+def refs(p: Project, led: Ledger, ex, chapter: int | None = None, only: str | None = None) -> dict:
+    """Paint candidate reference stills for every planned ref that style_bible/refs lacks."""
+    n = p.config.get("refs", {}).get("candidates", 4)
+    cap = p.config.get("refs", {}).get("max_candidates", 2 * n)
+    style = p.root / "style_bible" / "style.txt"
+    style_text = style.read_text(encoding="utf-8").strip() if style.exists() else ""
+    made, deferred = 0, 0
+    for r in p.refs_missing():
+        if only and r["name"] != only:
+            continue
+        st = ref_state(p, led, r)
+        if st not in ("todo", "needs_candidates"):
+            continue
+        s = ref_shot(r["name"])
+        done = [j for j in led.jobs(s.id, "ref") if j["status"] == "done"]
+        want = n if st == "todo" else min(n, cap - len(done))
+        start = len(led.jobs(s.id, "ref"))
+        prompt = "\n".join(x for x in (style_text, r["prompt"]) if x)
+        for i in range(start, start + want):
+            spec = _spec(p, s, "ref", i, prompt, name=r["name"],
+                         width=r.get("width", 1664), height=r.get("height", 928))
+            res = ex.submit(p, led, s, spec, 0.0)
+            made += res in ("made", "queued")
+            deferred += res == "deferred"
+    return {"made": made, "deferred": deferred}
 
 
 def upscale_sources(p: Project, led: Ledger, s: Shot) -> list:
@@ -282,6 +329,11 @@ def upscale(p: Project, led: Ledger, ex, chapter: int, only: str | None = None) 
 def review_queue(p: Project, led: Ledger, chapter: int) -> list[dict]:
     """Everything a critic still has to look at."""
     out = []
+    for r in p.refs_missing():
+        if ref_state(p, led, r) == "review":
+            for j in led.jobs(ref_shot(r["name"]).id, "ref"):
+                if j["status"] == "done" and j["verdict"] is None:
+                    out.append({"key": j["key"], "what": "ref", "shot": r["name"], "type": "Ref", "path": j["path"]})
     for s in p.chapter(chapter):
         st = state(p, led, s)
         kind = {"keyframes_review": "keyframe", "take_review": "take"}.get(st)

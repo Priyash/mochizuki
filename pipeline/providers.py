@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .project import Project
 
-COLORS = {"keyframe": "0x4a5568", "variant": "0x2c7a7b", "take": "0x6b46c1", "upscale": "0x2f855a"}
+COLORS = {"ref": "0x744210", "keyframe": "0x4a5568", "variant": "0x2c7a7b", "take": "0x6b46c1", "upscale": "0x2f855a"}
 
 
 def _ffmpeg(args: list[str]) -> None:
@@ -34,7 +34,7 @@ class MockProvider:
             out.write_bytes(f"mock {spec['kind']}".encode())
             return
         kind = spec["kind"]
-        if kind in ("keyframe", "variant"):
+        if kind in ("keyframe", "variant", "ref"):
             _ffmpeg(["-f", "lavfi", "-i", f"color=c={COLORS[kind]}:s=640x360", "-frames:v", "1", str(out)])
         elif kind == "take":
             _ffmpeg(["-loop", "1", "-i", str(self.p.fetch(spec["image"])), "-t", str(spec["seconds"]), "-r", "12",

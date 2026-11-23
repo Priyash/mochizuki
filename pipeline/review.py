@@ -18,7 +18,7 @@ from pathlib import Path
 
 from . import steps
 from .ledger import Ledger
-from .project import Project
+from .project import Project, ref_shot
 
 
 def _ff(args: list[str]) -> None:
@@ -40,6 +40,18 @@ def export(p: Project, led: Ledger, chapter: int, outdir: Path) -> dict:
     shutil.rmtree(outdir, ignore_errors=True)
     outdir.mkdir(parents=True)
     items = []
+    for r in p.refs_missing():
+        if steps.ref_state(p, led, r) != "review":
+            continue
+        cands = []
+        for j in led.jobs(ref_shot(r["name"]).id, "ref"):
+            if j["status"] == "done" and j["verdict"] != "fail":
+                img = f"{j['key']}.jpg"
+                _still(p.fetch(j["path"]), outdir / img, width=1280)
+                cands.append({"key": j["key"], "image": img, "verdict": j["verdict"]})
+        items.append({"what": "ref", "name": r["name"], "prompt": r["prompt"], "candidates": cands,
+                      "task": "reference still for gate 1: select the most striking, on-style, emotionally strong "
+                              "candidate, or fail every candidate that is not good enough"})
     for s in p.chapter(chapter):
         st = steps.state(p, led, s)
         base = {"shot_id": s.id, "type": s.type, "seconds": s.seconds, "shot": s.shot, "sound": s.sound,
@@ -67,23 +79,33 @@ def export(p: Project, led: Ledger, chapter: int, outdir: Path) -> dict:
     return {"items": len(items)}
 
 
-def board_sheet(p: Project, led: Ledger, chapter: int, out: Path) -> list[str]:
-    """The chosen keyframe of every shot, in order, five to a row. Returns the shot ids in order."""
-    work = out.parent / "_board"
+def _sheet(paths: list[Path], out: Path, cols: int, w: int, h: int) -> None:
+    work = out.parent / "_sheet"
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
-    ids = []
-    for n, s in enumerate(p.chapter(chapter)):
-        sel = led.selected(s.id)
-        if sel:
-            _still(p.fetch(sel["path"]), work / f"{n:03d}.jpg", width=384)
-            ids.append(s.id)
-    rows = (len(ids) + 4) // 5
+    for n, f in enumerate(paths):
+        _still(f, work / f"{n:03d}.jpg", width=w)
+    rows = (len(paths) + cols - 1) // cols
     _ff(["-framerate", "1", "-i", str(work / "%03d.jpg"), "-vf",
-         f"scale=384:216:force_original_aspect_ratio=decrease,pad=384:216:(ow-iw)/2:(oh-ih)/2,tile=5x{rows}:padding=4",
-         "-frames:v", "1", "-q:v", "4", str(out)])
+         f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"
+         f"tile={cols}x{rows}:padding=4", "-frames:v", "1", "-q:v", "3", str(out)])
     shutil.rmtree(work, ignore_errors=True)
-    return ids
+
+
+def board_sheet(p: Project, led: Ledger, chapter: int, out: Path) -> list[str]:
+    """The chosen keyframe of every shot, in order, five to a row. Returns the shot ids in order."""
+    picked = [(s.id, led.selected(s.id)) for s in p.chapter(chapter)]
+    picked = [(i, sel) for i, sel in picked if sel]
+    _sheet([p.fetch(sel["path"]) for _, sel in picked], out, 5, 384, 216)
+    return [i for i, _ in picked]
+
+
+def refs_sheet(p: Project, led: Ledger, out: Path) -> list[str]:
+    """The chosen reference stills, two to a row, large enough to judge. Returns their names in order."""
+    picked = [(r["name"], led.selected(ref_shot(r["name"]).id)) for r in p.refs_missing()]
+    picked = [(n, sel) for n, sel in picked if sel]
+    _sheet([p.fetch(sel["path"]) for _, sel in picked], out, 2, 960, 540)
+    return [n for n, _ in picked]
 
 
 def apply(led: Ledger, folder: Path) -> dict:

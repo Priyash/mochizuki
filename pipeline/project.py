@@ -126,7 +126,7 @@ class Project:
         return sum(wan_segments(shot.seconds, eng["fps"], eng["max_frames"])) / eng["fps"]
 
     def gpu_estimate(self, kind: str, shot: Shot) -> float:
-        if kind in ("keyframe", "variant"):
+        if kind in ("keyframe", "variant", "ref"):
             return float(self.config["keyframes"].get("gpu_seconds_each", 0))
         if kind == "take":
             per = self.model(shot.model).get("gpu_seconds_per_output_second", 0)
@@ -137,6 +137,18 @@ class Project:
                 return up.get("gpu_seconds_per_output_second", 0) * self.generated_seconds(shot)
             return 10.0
         return 0.0
+
+    # ---- reference stills (gate 1)
+    def ref_plan(self) -> list[dict]:
+        f = self.root / "style_bible" / "ref_prompts.json"
+        return json.loads(f.read_text(encoding="utf-8")).get("refs", []) if f.exists() else []
+
+    def ref_path(self, name: str) -> Path:
+        return self.root / "style_bible" / "refs" / f"{name}.png"
+
+    def refs_missing(self) -> list[dict]:
+        """Planned reference stills that are not in style_bible/refs yet."""
+        return [r for r in self.ref_plan() if not self.ref_path(r["name"]).exists()]
 
     # ---- prompts
     def prompt(self, shot: Shot, extra: str = "") -> str:
@@ -177,6 +189,13 @@ class Project:
             chosen.append((exact or sorted(files))[0])
         chosen = chosen[: max(0, limit - (1 if style else 0))]
         return (style[:1] + chosen)[:limit]
+
+
+REF_CHAPTER = 0          # reference stills belong to no chapter
+
+
+def ref_shot(name: str) -> Shot:
+    return Shot(f"ref-{name}", REF_CHAPTER, name, 0, "Ref", "Editor", 0, "")
 
 
 def job_key(shot_id: str, kind: str, idx: int, prompt: str) -> str:

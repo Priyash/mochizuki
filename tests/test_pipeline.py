@@ -43,7 +43,8 @@ def load_worker():
 def copy_project(tmp_path, csv_edit=None, cfg_edit=None) -> Project:
     shutil.copy(REPO / "config.json", tmp_path / "config.json")
     shutil.copytree(REPO / "style_bible", tmp_path / "style_bible")
-    write_png(tmp_path / "style_bible" / "refs" / "style.png")      # a stand-in reference still
+    for r in json.loads((REPO / "style_bible" / "ref_prompts.json").read_text())["refs"]:
+        write_png(tmp_path / "style_bible" / "refs" / f"{r['name']}.png")   # stand-in reference stills
     text = (REPO / "shots.csv").read_text(encoding="utf-8")
     if csv_edit:
         text = csv_edit(text)
@@ -515,7 +516,46 @@ def test_no_reference_stills_means_no_keyframe_batch(tmp_path):
     proj = copy_project(tmp_path)
     for f in (tmp_path / "style_bible" / "refs").glob("*.png"):
         f.unlink()
+    (tmp_path / "style_bible" / "ref_prompts.json").unlink()
     led = steps.open_ledger(proj)
     with pytest.raises(ValueError, match="reference stills"):
         kg.build(proj, led, "keyframes", 1, engine_set="stub")
     assert not led.active_batch()
+
+
+@needs_ffmpeg
+def test_reference_stills_are_painted_picked_by_claude_and_approved_by_the_owner(tmp_path, monkeypatch):
+    from pipeline import ci
+    from pipeline.store import ReleaseStore
+    proj = copy_project(tmp_path)
+    for f in ("tsumugi_ch1", "sayo"):                       # two refs still to make
+        (tmp_path / "style_bible" / "refs" / f"{f}.png").unlink()
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/mochizuki")
+    monkeypatch.setenv("GITHUB_REPOSITORY_OWNER", "owner")
+    proj.store = ReleaseStore("owner/mochizuki", runner=FakeGH(tmp_path / "releases"))
+    led = steps.open_ledger(proj)
+    local = kg.LocalKaggle(proj.media)
+    state = tmp_path / "state"
+    assert kg.next_stage(proj, led, 1) == "refs"
+
+    assert ci.step(proj, led, 1, state, local, engine_set="stub")["notice"]["kind"] == "running"
+    out = ci.step(proj, led, 1, state, local, engine_set="stub")
+    assert out["notice"]["kind"] == "review"
+    q = json.loads((state / "review" / "ch1" / "queue.json").read_text())
+    refs_items = [i for i in q["items"] if i["what"] == "ref"]
+    assert {i["name"] for i in refs_items} == {"tsumugi_ch1", "sayo"}
+    assert all(len(i["candidates"]) == 4 for i in refs_items)
+    assert not [i for i in q["items"] if i["what"] == "keyframe"]          # keyframes wait for gate 1
+    (state / "reviews").mkdir(exist_ok=True)
+    (state / "reviews" / "c.json").write_text(json.dumps({"select": [i["candidates"][1]["key"] for i in refs_items]}))
+    out = ci.step(proj, led, 1, state, local, engine_set="stub")
+    assert out["notice"]["kind"] == "refs" and (state / "review" / "ch1" / "refs.jpg").exists()
+    assert kg.next_stage(proj, led, 1) is None
+
+    assert "rejected" in ci.command(proj, led, state, "/reject sayo", "owner", "owner").lower()
+    assert steps.ref_state(proj, led, {"name": "sayo"}) == "review"        # three candidates left to choose from
+    led.select(next(j["key"] for j in led.jobs("ref-sayo", "ref") if j["verdict"] is None))
+    assert ci.command(proj, led, state, "/approve refs", "claude[bot]", "owner").startswith("Only")
+    reply = ci.command(proj, led, state, "/approve refs", "owner", "owner")
+    assert reply.startswith("Approved") and (tmp_path / "style_bible" / "refs" / "sayo.png").exists()
+    assert not proj.refs_missing() and kg.next_stage(proj, led, 1) == "keyframes"

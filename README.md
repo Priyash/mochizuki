@@ -125,6 +125,8 @@ Here, nothing runs on your machine. The work is split three ways:
 
 | Comment | What it does |
 | --- | --- |
+| `/approve refs` | Approves the reference stills Claude picked; they are committed to `style_bible/refs/` and keyframes start |
+| `/reject <name>` | Rejects one picked reference still (for example `/reject sayo`); another is picked or painted |
 | `/approve board N` | Approves chapter N's keyframes; takes start |
 | `/approve animatic N` | Approves the cut; the 4K pass starts |
 | `/chapter N` | Moves the producer to chapter N |
@@ -133,7 +135,7 @@ Here, nothing runs on your machine. The work is split three ways:
 Setup, once:
 
 1. Settings → Secrets and variables → Actions → New repository secret. Add `KAGGLE_USERNAME` and `KAGGLE_API_TOKEN`. If you have an old-style `kaggle.json` key, add it as `KAGGLE_KEY` instead of `KAGGLE_API_TOKEN`.
-2. Commit your reference stills to `style_bible/refs/` on `main`.
+2. Reference stills: put your own in `style_bible/refs/` on `main`, or let Kaggle paint them. For every still listed in `style_bible/ref_prompts.json` that is missing, the producer paints 4 candidates with Qwen-Image-2512 (Apache 2.0), Claude picks the best, and you approve them on the issue.
 3. Actions → produce → Run workflow, to start at once rather than wait up to two hours.
 
 What it uses:

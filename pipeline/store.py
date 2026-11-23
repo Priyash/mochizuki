@@ -29,6 +29,8 @@ def tag_for(p, f: Path) -> str | None:
         return None
     if len(parts) >= 2 and parts[0] == "animatic":
         return "cuts" if Path(f).suffix == ".mp4" and len(parts) == 2 else None
+    if len(parts) == 3 and parts[0] == "refs":
+        return "refs"
     if len(parts) == 3 and parts[0] in ("keyframes", "takes", "4k"):
         chapter = parts[1].split("-")[0]
         return f"{'4k' if parts[0] == '4k' else 'media'}-ch{chapter}"
@@ -94,7 +96,7 @@ class ReleaseStore:
     def push(self, p) -> int:
         """Upload every media file made on this machine that the store does not have yet."""
         n = 0
-        for folder in ("keyframes", "takes", "4k"):
+        for folder in ("refs", "keyframes", "takes", "4k"):
             for f in sorted((p.media / folder).glob("*/*")):
                 if f.is_file():
                     n += self.upload(p, f)

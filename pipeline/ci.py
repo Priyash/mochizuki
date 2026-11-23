@@ -10,13 +10,14 @@ import hashlib
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 
 from . import assemble as asm
 from . import kaggle as kg
 from . import review, steps
 from .ledger import Ledger
-from .project import Project
+from .project import Project, ref_shot
 
 DONE = ("take_passed", "ready_for_editor")
 
@@ -89,7 +90,8 @@ def notice(p: Project, led: Ledger, chapter: int, state: Path, out: dict) -> dic
     b = led.active_batch()
     if b:
         return {"kind": "running", "text": f"Chapter {chapter}: Kaggle batch {b['id']} ({b['stage']}) is {b['status']}."}
-    human = [i for i, x in st.items() if x == "needs_human"]
+    rs = {r["name"]: steps.ref_state(p, led, r) for r in p.refs_missing()}
+    human = [f"ref {n}" for n, x in rs.items() if x == "needs_human"] + [i for i, x in st.items() if x == "needs_human"]
     human_text = (f"{at}These shots need you: {', '.join(human)}. They used their take or failure cap. Change the "
                   "prompt in prompts/<shot>.txt, simplify the shot, or route it to a paid model in shots.csv.")
     if out.get("review", {}).get("items"):
@@ -98,6 +100,13 @@ def notice(p: Project, led: Ledger, chapter: int, state: Path, out: dict) -> dic
     if human:
         return {"kind": "human", "text": human_text}
     blob = f"https://github.com/{repo}/blob/state/review/ch{chapter}"
+    if rs and all(x == "selected" for x in rs.values()):
+        names = review.refs_sheet(p, led, state / "review" / f"ch{chapter}" / "refs.jpg")
+        return {"kind": "refs", "text": f"{at}The reference stills are ready: {blob}/refs.jpg (in order: "
+                                        f"{', '.join(names)}). Comment `/approve refs` to make them the film's look, or "
+                                        "`/reject <name>` for any you don't want, and new candidates will be painted."}
+    if rs:
+        return {"kind": "idle", "text": f"Reference stills: {rs}"}
     if all(led.selected(s.id) for s in shots) and not led.approved(chapter, "board"):
         ids = review.board_sheet(p, led, chapter, state / "review" / f"ch{chapter}" / "board.jpg")
         return {"kind": "board", "text": f"{at}The chapter {chapter} board is ready: {blob}/board.jpg "
@@ -117,7 +126,8 @@ def notice(p: Project, led: Ledger, chapter: int, state: Path, out: dict) -> dic
     return {"kind": "idle", "text": f"Chapter {chapter}: {counts}"}
 
 
-COMMAND = re.compile(r"^/(approve)\s+(board|animatic)\s+([1-5])\b|^/(chapter)\s+([1-5])\b|^/(status)\b", re.I | re.M)
+COMMAND = re.compile(r"^/(approve)\s+(board|animatic)\s+([1-5])\b|^/(chapter)\s+([1-5])\b|^/(status)\b"
+                     r"|^/approve\s+(refs)\b|^/reject\s+([a-z0-9_]+)", re.I | re.M)
 
 
 def command(p: Project, led: Ledger, state: Path, body: str, author: str, owner: str) -> str:
@@ -126,7 +136,30 @@ def command(p: Project, led: Ledger, state: Path, body: str, author: str, owner:
         return f"Only @{owner} can give production commands."
     m = COMMAND.search(body or "")
     if not m:
-        return "Commands: `/approve board N`, `/approve animatic N`, `/chapter N`, `/status`."
+        return ("Commands: `/approve refs`, `/reject <ref name>`, `/approve board N`, `/approve animatic N`, "
+                "`/chapter N`, `/status`.")
+    if m.group(7):
+        done, waiting = [], []
+        for r in p.refs_missing():
+            sel = led.selected(ref_shot(r["name"]).id)
+            if not sel:
+                waiting.append(r["name"])
+                continue
+            dest = p.ref_path(r["name"])
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(p.fetch(sel["path"]), dest)
+            done.append(r["name"])
+        if not done:
+            return "Nothing to approve: no reference still has been selected yet."
+        tail = f" Still waiting: {', '.join(waiting)}." if waiting else " Keyframes start on the next producer run."
+        return f"Approved and added to style_bible/refs: {', '.join(done)}.{tail}"
+    if m.group(8):
+        name = m.group(8).lower()
+        sel = led.selected(ref_shot(name).id)
+        if not sel:
+            return f"`{name}` has no selected reference still to reject."
+        led.unselect(sel["key"], "rejected by the owner")
+        return f"Rejected the chosen `{name}`. Claude will pick another candidate, or new ones will be painted."
     if m.group(1):
         gate, chapter = m.group(2).lower(), int(m.group(3))
         shots = p.chapter(chapter)

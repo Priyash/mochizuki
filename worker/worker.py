@@ -27,7 +27,7 @@ import time
 import traceback
 from pathlib import Path
 
-KIND_TO_ENGINE = {"keyframe": "keyframe", "variant": "keyframe", "upscale": "upscale"}
+KIND_TO_ENGINE = {"ref": "refs", "keyframe": "keyframe", "variant": "keyframe", "upscale": "upscale"}
 
 
 # ---------------------------------------------------------------- shared helpers
@@ -90,9 +90,10 @@ class StubImage:
         for ref in job.get("refs", []) + ([job["image"]] if job.get("image") else []):
             if not (inputs / ref).exists():
                 raise FileNotFoundError(f"input {ref} missing from the batch")
+        w, h = job.get("width", self.w), job.get("height", self.h)
         subprocess.run([ffmpeg_exe(), "-loglevel", "error", "-y", "-f", "lavfi", "-i",
-                        f"color=c=0x4a5568:s={self.w}x{self.h}", "-frames:v", "1", str(out)], check=True)
-        return {"width": self.w, "height": self.h}
+                        f"color=c=0x4a5568:s={w}x{h}", "-frames:v", "1", str(out)], check=True)
+        return {"width": w, "height": h}
 
 
 class StubVideo:
@@ -174,10 +175,13 @@ def check_not_blank(arr, what: str) -> None:
 class QwenKeyframes:
     """Qwen-Image-Edit-2511: reference stills in, a new frame out. 1 to 3 references."""
 
+    PIPELINE = "QwenImageEditPlusPipeline"
+
     def __init__(self, cfg: dict, dtype_name: str):
+        import diffusers  # noqa: PLC0415
         import torch  # noqa: PLC0415
         from diffusers import (GGUFQuantizationConfig, PipelineQuantizationConfig,  # noqa: PLC0415
-                               QwenImageEditPlusPipeline, QwenImageTransformer2DModel)
+                               QwenImageTransformer2DModel)
         self.cfg, self.torch = cfg, torch
         dtype = pick_dtype(dtype_name)
         g = cfg.get("transformer_gguf") or {}
@@ -196,7 +200,7 @@ class QwenKeyframes:
             quant_backend="bitsandbytes_4bit",
             quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": dtype},
             components_to_quantize=quantize)
-        self.pipe = QwenImageEditPlusPipeline.from_pretrained(local, **kwargs)
+        self.pipe = getattr(diffusers, self.PIPELINE).from_pretrained(local, **kwargs)
         self.pipe.enable_model_cpu_offload()
         self.pipe.set_progress_bar_config(disable=True)
 
@@ -216,6 +220,25 @@ class QwenKeyframes:
                                generator=self.torch.Generator("cpu").manual_seed(seed_for(job["key"])))
         img = result.images[0]
         check_not_blank(img, "keyframe")
+        img.save(out)
+        return {"width": img.width, "height": img.height, "seed": seed_for(job["key"])}
+
+
+class QwenStills(QwenKeyframes):
+    """Qwen-Image-2512 text-to-image: the candidate reference stills for gate 1."""
+
+    PIPELINE = "QwenImagePipeline"
+
+    def run(self, job: dict, inputs: Path, out: Path) -> dict:
+        c = self.cfg
+        w, h = job.get("width", 1664), job.get("height", 928)
+        with self.torch.inference_mode():
+            result = self.pipe(prompt=job["prompt"], negative_prompt=c.get("negative_prompt", " "),
+                               true_cfg_scale=c.get("true_cfg_scale", 4.0), num_inference_steps=c.get("steps", 50),
+                               width=w, height=h,
+                               generator=self.torch.Generator("cpu").manual_seed(seed_for(job["key"])))
+        img = result.images[0]
+        check_not_blank(img, "reference still")
         img.save(out)
         return {"width": img.width, "height": img.height, "seed": seed_for(job["key"])}
 
@@ -424,6 +447,9 @@ class Upscale4K:
 # ---------------------------------------------------------------- the run
 def build_engine(name: str, jobs: list[dict], engines: dict, engine_set: str):
     dtype = engines.get("dtype", "auto")
+    if name == "refs":
+        cfg = engines["refs"]
+        return StubImage(cfg) if engine_set == "stub" else QwenStills(cfg, dtype)
     if name == "keyframe":
         cfg = engines["keyframe"]
         return StubImage(cfg) if engine_set == "stub" else QwenKeyframes(cfg, dtype)

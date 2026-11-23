@@ -1,5 +1,5 @@
 # The owner's commands, from a comment on the production issue:
-#   /approve board N   /approve animatic N   /chapter N   /status
+#   /approve refs   /reject <ref>   /approve board N   /approve animatic N   /chapter N   /status
 # Only the repository owner's comments run. Claude's comments and anyone else's are ignored.
 name: gates
 on:
@@ -22,6 +22,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/checkout@v4
         with:
           ref: state
@@ -38,6 +40,15 @@ jobs:
         run: python -m pipeline gate --state state > reply.txt && cat reply.txt
       - name: Save state
         run: .github/scripts/save_state.sh "owner command on issue ${{ github.event.issue.number }}"
+      - name: Commit approved reference stills to main
+        run: |
+          if [ -n "$(git status --porcelain style_bible/refs)" ]; then
+            git config user.name "mochizuki-producer"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add style_bible/refs
+            git commit -qm "Reference stills approved by @${{ github.event.comment.user.login }} (gate 1)"
+            git pull -q --rebase origin main && git push -q origin HEAD:main
+          fi
       - name: Reply and kick the producer
         env:
           GH_TOKEN: ${{ github.token }}

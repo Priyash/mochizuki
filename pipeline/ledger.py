@@ -149,17 +149,23 @@ class Ledger:
 
     def select(self, key: str) -> None:
         job = self.get(key)
-        if not job or job["kind"] != "keyframe" or job["status"] != "done":
-            raise ValueError(f"{key} is not a finished keyframe")
-        self.db.execute("UPDATE jobs SET selected=0 WHERE shot_id=? AND kind='keyframe'",
-                        (job["shot_id"],))
+        if not job or job["kind"] not in ("keyframe", "ref") or job["status"] != "done":
+            raise ValueError(f"{key} is not a finished keyframe or reference still")
+        self.db.execute("UPDATE jobs SET selected=0 WHERE shot_id=? AND kind=?",
+                        (job["shot_id"], job["kind"]))
         self.db.execute("UPDATE jobs SET selected=1, verdict=COALESCE(verdict,'pass') WHERE key=?",
                         (key,))
         self.db.commit()
 
+    def unselect(self, key: str, note: str = "") -> None:
+        """A person rejects a selection: it becomes a failed candidate."""
+        self.db.execute("UPDATE jobs SET selected=0, verdict='fail', verdict_by='human', note=? WHERE key=?",
+                        (note, key))
+        self.db.commit()
+
     def selected(self, shot_id: str):
         return self.db.execute(
-            "SELECT * FROM jobs WHERE shot_id=? AND kind='keyframe' AND selected=1",
+            "SELECT * FROM jobs WHERE shot_id=? AND kind IN ('keyframe','ref') AND selected=1",
             (shot_id,)).fetchone()
 
     # ---- gates

@@ -1,5 +1,5 @@
 # The producer. Every two hours (or when kicked): apply Claude's reviews, collect or start a
-# Kaggle batch, upload new media to releases, export the next review, post what is needed.
+# Kaggle batch (reference stills, keyframes, takes or 4K), upload new media to releases, export the next review, post what is needed.
 name: produce
 on:
   schedule:
