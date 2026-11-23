@@ -1,9 +1,10 @@
-# Check the RunPod key (read pods, catalog, balance; may create pods) without creating anything.
+# Check the RunPod key and the whole pod path without spending: pods, catalog, balance, the exact
+# create request (refused for lack of credit), image tag, agent download, inputs release.
 name: runpod-check
 on:
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -15,5 +16,6 @@ jobs:
           python-version: "3.11"
       - name: Check the key
         env:
+          GH_TOKEN: ${{ github.token }}
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
-        run: python -m pipeline runpod-check
+        run: python -m pipeline runpod-check --deep

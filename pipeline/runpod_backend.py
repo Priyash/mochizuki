@@ -383,3 +383,65 @@ def check(rp: RunPodBackend) -> dict:
                        "detail": str(obj.get("detail") or obj.get("title") or "")[:200]}
     r["ok"] = r["pods_read"]["ok"] and r["catalog_read"]["ok"] and r["pods_write"]["ok"]
     return r
+
+
+def deep_check(rp: RunPodBackend, sha: str) -> dict:
+    """Everything that can be tested without credit: the exact create request (an empty balance
+    must refuse it with 402; anything created anyway is deleted at once), the image tag, the
+    agent download, the inputs release round trip, and the API's 404 paths."""
+    import urllib.parse  # noqa: PLC0415
+    c, r = rp.cfg, {}
+    # 1. the image exists on Docker Hub
+    repo_name, tag = c["image"].split(":", 1)
+    ns, name = repo_name.split("/", 1)
+    code, raw = rp._http("GET", f"https://hub.docker.com/v2/namespaces/{ns}/repositories/{name}/tags/{tag}")
+    r["image"] = {"tag": c["image"], "code": code, "ok": code == 200}
+    if code != 200:
+        code, raw = rp._http("GET", f"https://hub.docker.com/v2/namespaces/{ns}/repositories/{name}/tags"
+                                    "?page_size=100&ordering=last_updated")
+        try:
+            names = [t["name"] for t in json.loads(raw).get("results", [])]
+        except ValueError:
+            names = []
+        r["image"]["recent_tags"] = [n for n in names if "torch2" in n][:15]
+    # 2. the agent the pod downloads, at this commit
+    url = f"https://raw.githubusercontent.com/{rp.repo}/{sha}/worker/pod_agent.py"
+    code, raw = rp._http("GET", url)
+    r["agent_download"] = {"url": url, "code": code, "ok": code == 200 and b"def terminate" in (raw or b"")}
+    # 3. inputs release: upload, public download, delete
+    import tempfile  # noqa: PLC0415
+    with tempfile.TemporaryDirectory() as d:
+        folder = Path(d) / "dataset"
+        folder.mkdir()
+        (folder / "manifest.json").write_text('{"probe": true}')
+        bid = "probe-" + time.strftime("%H%M%S")
+        try:
+            rp.publish_dataset(folder, "", bid)
+            code, raw = rp._http("GET", rp._bundle[bid])
+            r["inputs_release"] = {"url": rp._bundle[bid], "public_download": code, "ok": code == 200}
+        except Exception as e:  # noqa: BLE001
+            r["inputs_release"] = {"ok": False, "error": str(e)[:300]}
+        finally:
+            rp._gh(["release", "delete-asset", c["release"], f"{bid}.tar.gz", "-R", rp.repo, "-y"])
+    # 4. the exact create request; with no credit RunPod must refuse it
+    tried = {}
+    for gpu in c["gpus"]:
+        body = {"name": PREFIX + "dryrun", "image": c["image"], "cloud": c["cloud"],
+                "gpu": {"id": gpu, "count": 1, "minCudaVersion": c["min_cuda"]},
+                "disk": int(c["disk_gb"]), "ports": [f"{c['port']}/http"], "env": {"MOCHI_DRYRUN": "1"},
+                "entrypoint": ["bash", "-c"], "cmd": ["sleep 5"]}
+        code, obj = rp.api("POST", "/pods", body)
+        tried[gpu] = {"code": code, "detail": str(obj.get("detail") or obj.get("title") or "")[:200]}
+        if code in (200, 201) and obj.get("id"):
+            tried[gpu]["created_and_deleted"] = rp.terminate(obj["id"])
+    r["create_request"] = {"tried": tried,
+                           "ok": any(v["code"] == 402 for v in tried.values()) and
+                           not any(v["code"] in (400, 422) and "valid" in v["detail"].lower() for v in tried.values())}
+    # 5. what the API answers for a pod that is gone (the backend treats 404 as gone)
+    code, _ = rp.api("GET", "/pods/doesnotexist0")
+    code2, _ = rp.api("DELETE", "/pods/doesnotexist0")
+    r["gone_pod"] = {"get": code, "delete": code2, "ok": code in (404, 400) and code2 in (404, 400, 204)}
+    code, obj = rp.api("GET", "/pods")
+    r["list_shape"] = {"keys": sorted(obj.keys())[:5], "ok": "pods" in obj}
+    r["ok"] = all(v.get("ok") for v in r.values() if isinstance(v, dict))
+    return r

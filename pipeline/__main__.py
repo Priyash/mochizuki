@@ -53,7 +53,8 @@ def main(argv=None) -> int:
     a.add_argument("--seconds", type=float, default=2)
     a.add_argument("--out", help="copy the clip here")
     sub.add_parser("runpod-poll", help="exit 0 if a RunPod batch has finished and should be collected now")
-    sub.add_parser("runpod-check", help="check the RunPod key without creating anything")
+    a = sub.add_parser("runpod-check", help="check the RunPod key without creating anything")
+    a.add_argument("--deep", action="store_true", help="also test the create request, image, agent and inputs release")
     a = sub.add_parser("plan", help="dry run: GPU time and money, nothing is called"); chap(a, False)
 
     # run-now steps (mock for testing, fal for the paid fallback)
@@ -106,8 +107,13 @@ def main(argv=None) -> int:
 
     if args.cmd == "runpod-check":
         from . import runpod_backend  # noqa: PLC0415
-        rp = runpod_backend.RunPodBackend(p, os.environ.get("RUNPOD_API_KEY", ""), "", "main")
+        sha = os.environ.get("GITHUB_SHA", "main")
+        rp = runpod_backend.RunPodBackend(p, os.environ.get("RUNPOD_API_KEY", ""),
+                                          os.environ.get("GITHUB_REPOSITORY", ""), sha)
         r = runpod_backend.check(rp)
+        if args.deep:
+            r["deep"] = runpod_backend.deep_check(rp, sha)
+            r["ok"] = r["ok"] and r["deep"]["ok"]
         print(json.dumps(r, indent=1, default=str))
         return 0 if r["ok"] else 3
     if args.cmd == "runpod-smoke":
