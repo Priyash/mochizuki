@@ -2,25 +2,18 @@
  "chapter": 1,
  "actions": [
   {
-   "action": "collected",
-   "batch": "b20261123-155903-cc2e",
+   "action": "built_and_submitted",
+   "batch": "b20261123-170552-a584",
    "backend": "kaggle",
-   "status": "complete",
-   "made": 0,
-   "failed": 24,
-   "not_reached": 0,
-   "stale": false,
-   "error": null
-  },
-  {
-   "action": "idle",
-   "reason": "waiting for a person",
-   "to_review": 0,
-   "states": {
-    "waiting_anchor": 26,
-    "todo": 1
+   "stage": "refs",
+   "jobs": 24,
+   "deferred": 0,
+   "est_hours": 1.42,
+   "summary": {
+    "made": 24,
+    "deferred": 0
    },
-   "backend": "kaggle"
+   "submitted": true
   },
   {
    "action": "idle",
@@ -46,16 +39,18 @@
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
  "kaggle_log": [
-  "kaggle kernels status -> 0: priyash11/mochizuki-worker has status \"KernelWorkerStatus.COMPLETE\"",
-  "kaggle kernels output -> 0: "
+  "kaggle datasets status priyash11/mochizuki-inputs -> 0: ready",
+  "kaggle datasets version -> 0: Dataset version is being created. Please check progress at https://www.kaggle.com/datasets/priyash11/mochizuki-inputs",
+  "kaggle datasets status priyash11/mochizuki-inputs -> 0: ready",
+  "kaggle kernels push -> 0: Kernel version 3 successfully pushed.  Please check progress at https://www.kaggle.com/code/priyash11/mochizuki-worker"
  ],
  "uploaded": 0,
  "review": {
   "items": 0
  },
  "notice": {
-  "kind": "human",
-  "text": "@Priyash These shots need you: ref style, ref tsumugi_ch1, ref sayo, ref bowl_ch1, ref farmhouse_ch1, ref hearth_ch1. They used their take or failure cap. Change the prompt in prompts/<shot>.txt, simplify the shot, or route it to a paid model in shots.csv."
+  "kind": "running",
+  "text": "Chapter 1: Kaggle batch b20261123-170552-a584 (refs) is submitted."
  },
  "status": {
   "waiting_anchor": 26,
