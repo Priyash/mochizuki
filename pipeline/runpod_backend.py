@@ -299,7 +299,8 @@ def smoke(p, rp: RunPodBackend, engine_set: str = "stub", model: str = "Wan 2.2 
     import struct  # noqa: PLC0415
     import zlib  # noqa: PLC0415
     from .kaggle import BOOTSTRAP, PACKAGES, WORKER  # noqa: PLC0415
-    batch_id = time.strftime("smoke-%Y%m%d-%H%M%S")
+    import uuid  # noqa: PLC0415
+    batch_id = time.strftime("smoke-%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
     work = p.media / "batches" / batch_id
     data, kern = work / "dataset", work / "kernel"
     data.mkdir(parents=True)
@@ -358,12 +359,12 @@ def check(rp: RunPodBackend) -> dict:
         gid: ({"price": (gpus[gid].get("price") or {}).get(rp.cfg["cloud"].lower()),
                "availability": gpus[gid].get("availability")} if gid in gpus else "not in catalog")
         for gid in rp.cfg["gpus"]}}
-    for label, q in (("cuda_ok", f"&minCudaVersion={rp.cfg['min_cuda']}"), ("any_cuda", "")):
-        code, obj = rp.api("GET", f"/catalog/gpus?include=AVAILABILITY&product=POD&cloud={rp.cfg['cloud']}{q}")
-        r[f"community_24gb_plus_{label}"] = sorted(
-            (f"{(g.get('price') or {}).get(rp.cfg['cloud'].lower())} {g.get('availability')} {g.get('memory')}GB {g.get('id')}"
-             for g in obj.get("gpus", []) if (g.get("memory") or 0) >= 24 and g.get("availability") not in (None, "NONE")
-             and ((g.get("price") or {}).get(rp.cfg["cloud"].lower()) or 9) <= float(rp.cfg["max_usd_per_hour"])))
+    for cloud in ("COMMUNITY", "SECURE"):           # what is in stock right now, 24 GB or more, any price
+        code, obj = rp.api("GET", f"/catalog/gpus?include=AVAILABILITY&product=POD&cloud={cloud}")
+        r[f"in_stock_{cloud.lower()}"] = sorted(
+            (f"${(g.get('price') or {}).get(cloud.lower())} {g.get('availability')} {g.get('memory')}GB {g.get('id')}"
+             for g in obj.get("gpus", []) if (g.get("memory") or 0) >= 24 and g.get("availability") not in (None, "NONE")),
+            key=lambda x: float(x.split()[0][1:]) if x.split()[0][1:] not in ("None", "") else 99)
     for path in ("/billing/balance", "/billing", "/account/balance"):
         code, obj = rp.api("GET", path)
         if code != 404:
