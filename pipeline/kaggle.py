@@ -480,6 +480,10 @@ def tick_all(p: Project, led: Ledger, backends: list, chapter: int, engine_set: 
     so two backends never make the same job; the second one takes what the first left.
     """
     out = []
+    for b in (led.active_batch("kaggle"), led.active_batch("modal")):   # repack what an earlier run packed
+        if b and b["status"] == "built" and \
+                not (p.media / "batches" / b["id"] / "dataset" / "manifest.json").exists():
+            discard(led, b["id"], "packed on another machine")
     for kg in backends:
         for _ in range(4):                                  # collect, then start the next in the same run
             try:
