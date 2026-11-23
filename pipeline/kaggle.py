@@ -453,6 +453,11 @@ def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu", can
             return {"action": "waiting", **res}
         return {"action": "collected", **res}
     stage = next_stage(p, led, chapter)
+    allowed = getattr(kg, "stages", None)
+    if stage and allowed and stage not in allowed and \
+            not (getattr(kg, "take_over", False) and kaggle_stuck(led)):
+        return {"action": "idle", "backend": name,
+                "reason": f"{stage} runs on Kaggle; {name} only takes {', '.join(allowed)}"}
     if stage is None:
         queue = steps.review_queue(p, led, chapter)
         return {"action": "idle", "reason": "waiting for a person", "to_review": len(queue),
@@ -470,6 +475,13 @@ def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu", can
         raise
 
 
+def kaggle_stuck(led: Ledger) -> bool:
+    """Kaggle's latest batch was handed over because it sat in Kaggle's queue too long."""
+    row = led.db.execute("SELECT status, note FROM batches WHERE backend='kaggle'"
+                         " ORDER BY created_at DESC LIMIT 1").fetchone()
+    return bool(row) and row["status"] == "failed" and (row["note"] or "").startswith("stuck in Kaggle")
+
+
 def tick_all(p: Project, led: Ledger, backends: list, chapter: int, engine_set: str = "gpu") -> list[dict]:
     """One automation step on every backend: each collects its finished run, then starts the next.
 
@@ -481,6 +493,14 @@ def tick_all(p: Project, led: Ledger, backends: list, chapter: int, engine_set: 
         if b and b["status"] == "built" and \
                 not (p.media / "batches" / b["id"] / "dataset" / "manifest.json").exists():
             discard(led, b["id"], "packed on another machine")
+    for kg in backends:                                 # paid machines nobody tracks are deleted first
+        if hasattr(kg, "cleanup"):
+            try:
+                n = kg.cleanup(led)
+                if n:
+                    out.append({"action": "cleaned_up", "backend": kg.name, "pods_deleted": n})
+            except Exception as e:  # noqa: BLE001
+                out.append({"action": "error", "backend": kg.name, "error": f"cleanup: {e}"[:300]})
     for kg in backends:
         for _ in range(4):                                  # collect, then start the next in the same run
             try:

@@ -47,6 +47,13 @@ def main(argv=None) -> int:
         p.add_argument("--kaggle", default="real", choices=["real", "local"],
                        help="local runs the worker here with stub engines, for testing")
 
+    a = sub.add_parser("runpod-smoke", help="one tiny batch on a real RunPod pod, then delete it")
+    a.add_argument("--engine-set", default="stub", choices=["gpu", "stub"])
+    a.add_argument("--model", default="Wan 2.2 5B")
+    a.add_argument("--seconds", type=float, default=2)
+    a.add_argument("--out", help="copy the clip here")
+    sub.add_parser("runpod-poll", help="exit 0 if a RunPod batch has finished and should be collected now")
+    sub.add_parser("runpod-check", help="check the RunPod key without creating anything")
     a = sub.add_parser("plan", help="dry run: GPU time and money, nothing is called"); chap(a, False)
 
     # run-now steps (mock for testing, fal for the paid fallback)
@@ -97,7 +104,41 @@ def main(argv=None) -> int:
         print(planner.render(planner.plan(p, args.chapter), title))
         return 0
 
+    if args.cmd == "runpod-check":
+        from . import runpod_backend  # noqa: PLC0415
+        rp = runpod_backend.RunPodBackend(p, os.environ.get("RUNPOD_API_KEY", ""), "", "main")
+        r = runpod_backend.check(rp)
+        print(json.dumps(r, indent=1, default=str))
+        return 0 if r["ok"] else 3
+    if args.cmd == "runpod-smoke":
+        import shutil  # noqa: PLC0415
+        from . import runpod_backend  # noqa: PLC0415
+        key = os.environ.get("RUNPOD_API_KEY", "")
+        if not key:
+            print("set RUNPOD_API_KEY")
+            return 2
+        rp = runpod_backend.RunPodBackend(p, key, os.environ.get("GITHUB_REPOSITORY", ""),
+                                          os.environ.get("GITHUB_SHA", "main"))
+        try:
+            r = runpod_backend.smoke(p, rp, args.engine_set, args.model, args.seconds)
+        finally:
+            print("\n".join(rp.log))
+        if args.out and r.get("clip"):
+            Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(r["clip"], args.out)
+        print(json.dumps(r, indent=1, default=str))
+        return 0 if r.get("ok") else 3
     led = steps.open_ledger(p)
+    if args.cmd == "runpod-poll":
+        from . import runpod_backend  # noqa: PLC0415
+        rp = runpod_backend.from_env(p)
+        b = led.active_batch("runpod") if rp is not None else None
+        if not b or b["status"] != "submitted":
+            print("no RunPod batch running")
+            return 1
+        st = rp.status("", b["handle"])
+        print(f"{b['id']}: {st}; " + " | ".join(rp.log[-2:]))
+        return 0 if st in ("complete", "error") else 1
     if args.cmd == "ci-step":
         from .store import ReleaseStore  # noqa: PLC0415
         state = Path(args.state)
@@ -109,6 +150,10 @@ def main(argv=None) -> int:
         backends = []
         if has_creds or args.kaggle == "local":
             backends.append(kaggle_backend(args.kaggle, p))
+        from . import runpod_backend  # noqa: PLC0415
+        rp = runpod_backend.from_env(p)
+        if rp is not None:
+            backends.append(rp)
         out = ci.step(p, led, args.chapter or ci.chapter_of(state), state, backends, engine_set=args.engine_set)
         print(json.dumps(out["notice"], ensure_ascii=False))
         return 0

@@ -1,0 +1,33 @@
+# Every 15 minutes while a RunPod batch is running: if it has finished, start the producer at
+# once so the pod is collected and deleted (it bills while it waits). Writes nothing.
+name: runpod-watch
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: state
+          path: state
+      - name: Is a RunPod batch done?
+        id: poll
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          [ -n "$RUNPOD_API_KEY" ] && [ -f state/ledger.sqlite ] || { echo "nothing to watch"; exit 0; }
+          cp state/ledger.sqlite ledger.sqlite
+          if python -m pipeline runpod-poll; then echo "done=1" >> "$GITHUB_OUTPUT"; fi
+      - name: Start the producer
+        if: steps.poll.outputs.done == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/actions/workflows/produce.yml/dispatches" -f ref=main

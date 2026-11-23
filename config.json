@@ -165,5 +165,27 @@
     "candidates": 4,
     "max_candidates": 8,
     "_note": "Gate 1: reference stills painted on Kaggle from style_bible/ref_prompts.json when style_bible/refs/ lacks them."
+  },
+  "runpod": {
+    "_note": "Paid, capped backend beside Kaggle. Bills only the prepaid RunPod balance the owner loads; total_cap_usd is the pipeline's own stop on top. Only the stages listed run here, unless Kaggle's queue got stuck.",
+    "enabled": true,
+    "stages": [
+      "video"
+    ],
+    "take_over_when_kaggle_stuck": true,
+    "gpus": [
+      "NVIDIA GeForce RTX 4090",
+      "NVIDIA GeForce RTX 3090"
+    ],
+    "cloud": "COMMUNITY",
+    "image": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+    "min_cuda": "12.8",
+    "disk_gb": 120,
+    "usd_per_hour": 0.4,
+    "max_usd_per_hour": 0.6,
+    "total_cap_usd": 30,
+    "batch_hours": 3,
+    "setup_minutes": 20,
+    "keep_results_hours": 2.5
   }
 }
