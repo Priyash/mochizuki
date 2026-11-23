@@ -4,6 +4,7 @@
   {
    "action": "waiting",
    "batch": "b20261123-105022-3c4a",
+   "backend": "kaggle",
    "status": "queued"
   }
  ],
