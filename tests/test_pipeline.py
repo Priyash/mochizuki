@@ -752,3 +752,26 @@ def test_modal_backend_uploads_spawns_polls_and_downloads(tmp_path):
     assert mb.status("x", handle) == "complete"
     mb.output("x", tmp_path / "download", handle)
     assert (tmp_path / "download" / "out" / "results.json").exists()
+
+
+def test_work_stuck_in_kaggles_queue_moves_to_modal(proj):
+    led, ex = sync(proj)
+    board(proj, led, ex)
+    queued = kg.LocalKaggle(proj.media)
+    queued.push = lambda folder, acc, t: None                 # Kaggle accepts it but never starts it
+    queued.status = lambda ref, handle=None: "queued"
+    out = kg.tick_all(proj, led, [queued], 1, engine_set="stub")
+    batch = led.active_batch("kaggle")["id"]
+    led.set_batch(batch, submitted_at=batch and (__import__("time").time() - 4 * 3600))
+    modal_ = kg.LocalKaggle(proj.media, name="modal")
+    out = kg.tick_all(proj, led, [queued, modal_], 1, engine_set="stub")
+    acts = [(a["backend"], a["action"]) for a in out]
+    assert ("kaggle", "handed_over") in acts and ("modal", "built_and_submitted") in acts
+    assert led.batch(batch)["status"] == "failed"
+    assert not led.active_batch("kaggle")                      # Kaggle waits; Modal took the work
+    modal_jobs = {j["shot_id"] for j in led.batch_jobs(led.active_batch("modal")["id"])} \
+        if led.active_batch("modal") else {j["shot_id"] for a in out if a.get("batch") and a["backend"] == "modal"
+                                           for j in led.batch_jobs(a["batch"])}
+    assert modal_jobs
+    hero = next(s for s in proj.chapter(1) if s.type == "Hero")
+    assert led.failures(hero.id, "take") == 0                 # a handover is not the shot's fault

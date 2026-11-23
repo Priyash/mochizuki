@@ -430,7 +430,7 @@ def next_stage(p: Project, led: Ledger, chapter: int) -> str | None:
     return None
 
 
-def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu") -> dict:
+def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu", can_hand_over: bool = False) -> dict:
     """One automation step: collect a finished run, or start the next one. Cron calls this."""
     name = getattr(kg, "name", "kaggle")
     active = led.active_batch(name)
@@ -442,6 +442,12 @@ def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu") -> 
         if active["status"] == "built":
             return {"action": "submitted", **submit(p, led, kg, active["id"])}
         res = collect(p, led, kg, active["id"])
+        stuck = _cfg(p).get("max_queue_hours", 3) * 3600
+        if can_hand_over and name == "kaggle" and res["status"] == "queued" and \
+                time.time() - (active["submitted_at"] or time.time()) > stuck:
+            discard(led, active["id"], "stuck in Kaggle's queue; handed to the other backend")
+            return {"action": "handed_over", "backend": name, "batch": active["id"],
+                    "reason": f"queued on Kaggle for over {stuck / 3600:.0f} h"}
         if res["status"] in ("queued", "running", "unknown"):
             return {"action": "waiting", **res}
         return {"action": "collected", **res}
@@ -469,11 +475,11 @@ def tick_all(p: Project, led: Ledger, backends: list, chapter: int, engine_set: 
     for kg in backends:
         for _ in range(4):                                  # collect, then start the next in the same run
             try:
-                r = tick(p, led, kg, chapter, engine_set=engine_set)
+                r = tick(p, led, kg, chapter, engine_set=engine_set, can_hand_over=len(backends) > 1)
             except (KaggleError, PermissionError, ValueError) as e:
                 r = {"action": "error", "error": str(e)[:500]}
             r.setdefault("backend", getattr(kg, "name", "kaggle"))
             out.append(r)
             if r["action"] != "collected":
-                break
+                break                       # after a handover Kaggle waits a run, so Modal takes that work
     return out
