@@ -42,7 +42,8 @@ jobs:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: |
-          if [ -n "$MODAL_TOKEN_ID" ] && [ -n "$MODAL_TOKEN_SECRET" ]; then
+          enabled=$(python -c "import json; print(json.load(open('config.json')).get('modal', {}).get('enabled', True))")
+          if [ "$enabled" = "True" ] && [ -n "$MODAL_TOKEN_ID" ] && [ -n "$MODAL_TOKEN_SECRET" ]; then
             modal deploy worker/modal_app.py 2>&1 | tail -20 || true
             modal app list 2>/dev/null | grep -q mochizuki-worker || echo "::warning::Modal deploy failed; Kaggle carries on alone"
           fi
