@@ -122,7 +122,7 @@ Estimated GPU time on the free plan, before real runs correct it:
 | 5 | 19 – 62 |
 | Film | **106 – 340 h**, about 4 to 12 weeks of free quota |
 
-My guess for the likely case is about 140 h, around 5 weeks. To finish faster, run two Kaggle accounts from different people in parallel (each must be a real person; Kaggle forbids multiple accounts for one person). Or rent a GPU for the Hero shots only.
+My guess for the likely case, about two takes per moving shot, is about 180 h: 6 to 7 weeks. To finish faster, run two Kaggle accounts from different people in parallel (each must be a real person; Kaggle forbids multiple accounts for one person). Or rent a GPU for the Hero shots only.
 
 ## Paid fallback
 
