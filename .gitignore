@@ -1,0 +1,8 @@
+.env
+kaggle.json
+media/*
+!media/.gitkeep
+ledger.sqlite
+auto.log
+__pycache__/
+.pytest_cache/

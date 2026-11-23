@@ -1,0 +1,149 @@
+{
+  "keyframes": {
+    "candidates": 3,
+    "max_candidates": 6,
+    "price_usd": 0,
+    "gpu_seconds_each": 150
+  },
+  "models": {
+    "Editor": {
+      "rate_usd_per_s": 0,
+      "generates_video": false
+    },
+    "Editor lip flap": {
+      "rate_usd_per_s": 0,
+      "generates_video": false,
+      "keyframe_variants": [
+        "mouth closed",
+        "mouth half open",
+        "mouth open"
+      ],
+      "_note": "Fallback only: three mouth shapes swapped in the editor. Dialogue shots use Wan 2.2 14B by default."
+    },
+    "Wan 2.2 5B": {
+      "provider": "kaggle",
+      "rate_usd_per_s": 0,
+      "generates_video": true,
+      "min_seconds": 1,
+      "gpu_seconds_per_output_second": 380
+    },
+    "Wan 2.2 14B": {
+      "provider": "kaggle",
+      "rate_usd_per_s": 0,
+      "generates_video": true,
+      "min_seconds": 1,
+      "gpu_seconds_per_output_second": 900
+    },
+    "Kling 4": {
+      "provider": "fal",
+      "rate_usd_per_s": 0.157,
+      "generates_video": true,
+      "min_seconds": 3,
+      "_note": "Paid fallback for hero shots if the free test fails. Change a shot's model to this in shots.csv."
+    }
+  },
+  "budget": {
+    "total_usd": 0,
+    "per_chapter_usd": {},
+    "_note": "Money caps. The free plan spends nothing; raise these only if you route shots to Kling 4."
+  },
+  "kaggle": {
+    "username": "",
+    "dataset_slug": "mochizuki-inputs",
+    "kernel_slug": "mochizuki-worker",
+    "accelerator": "NvidiaTeslaT4",
+    "session_hours": 10,
+    "setup_minutes": 25,
+    "weekly_gpu_hours": 28,
+    "max_failures_per_shot": 2,
+    "poll_seconds": 120,
+    "_note": "username: your Kaggle username. weekly_gpu_hours stays under Kaggle's ~30 h so a stuck run cannot use it all."
+  },
+  "engines": {
+    "dtype": "auto",
+    "keyframe": {
+      "model": "Qwen/Qwen-Image-Edit-2511",
+      "transformer_gguf": {
+        "repo": "QuantStack/Qwen-Image-Edit-2511-GGUF",
+        "prefer": [
+          "Q5_K_M",
+          "Q4_K_M"
+        ]
+      },
+      "width": 1664,
+      "height": 928,
+      "steps": 40,
+      "true_cfg_scale": 4.0,
+      "negative_prompt": "photorealistic, live action photo, flat sketch, text, watermark, logo, extra fingers, deformed hands, blurry",
+      "max_refs": 3,
+      "text_encoder_on_cpu": true
+    },
+    "Wan 2.2 5B": {
+      "model": "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+      "width": 1280,
+      "height": 704,
+      "fps": 24,
+      "max_frames": 121,
+      "steps": 50,
+      "guidance_scale": 5.0,
+      "expand_timesteps": true
+    },
+    "Wan 2.2 14B": {
+      "model": "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
+      "transformer_gguf": {
+        "repo": "QuantStack/Wan2.2-I2V-A14B-GGUF",
+        "high_noise_dir": "HighNoise",
+        "low_noise_dir": "LowNoise",
+        "prefer": [
+          "Q5_K_M",
+          "Q4_K_M"
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "fps": 16,
+      "max_frames": 81,
+      "steps": 40,
+      "guidance_scale": 3.5,
+      "guidance_scale_2": 3.5
+    },
+    "negative_prompt": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
+    "upscale": {
+      "target_width": 3840,
+      "target_height": 2160,
+      "crf": 12,
+      "tile": 0,
+      "gpu_seconds_per_output_second": 120,
+      "video_weights": {
+        "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth",
+        "_note": "Real-ESRGAN anime-video model (BSD-3): built for frame-to-frame stability, so takes do not flicker."
+      },
+      "image_weights": {
+        "repo": "DianXian/Real-CUGAN",
+        "repo_type": "space",
+        "file": "weights_v3/up3x-latest-conservative.pth",
+        "fallback_url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth",
+        "_note": "Real-CUGAN 3x (MIT) for stills. Community re-upload of the official weights; swap in your own copy if you prefer."
+      }
+    }
+  },
+  "providers": {
+    "fal": {
+      "_note": "Paid fallback only. Endpoint ids are NOT verified; check each before a paid run.",
+      "keyframe": {
+        "endpoint": "VERIFY-image-model-endpoint",
+        "prompt_arg": "prompt",
+        "refs_arg": "image_urls",
+        "args": {}
+      },
+      "video": {
+        "Kling 4": {
+          "endpoint": "VERIFY-kling-4-image-to-video-endpoint",
+          "image_arg": "image_url",
+          "duration_arg": "duration",
+          "args": {}
+        }
+      }
+    }
+  }
+}
