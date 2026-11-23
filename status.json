@@ -31,6 +31,7 @@
   "text": "Chapter 1: Kaggle batch b20261123-105022-3c4a (refs) is submitted."
  },
  "status": {
-  "todo": 27
+  "waiting_anchor": 26,
+  "todo": 1
  }
 }
