@@ -44,6 +44,8 @@ def step(p: Project, led: Ledger, chapter: int, state: Path, backend, engine_set
             out["actions"].append(r)
             if r["action"] != "collected":
                 break
+    if isinstance(backend, kg.KaggleCLI) and backend.log:
+        out["kaggle_log"] = backend.log[-10:]
     if p.store is not None:
         out["uploaded"] = p.store.push(p)
     out["review"] = review.export(p, led, chapter, state / "review" / f"ch{chapter}")

@@ -72,6 +72,7 @@ class KaggleCLI:
 
     def __init__(self, runner=None):
         self._run = runner or self._subprocess
+        self.log: list[str] = []          # what Kaggle said, for the run's status.json
 
     @staticmethod
     def _subprocess(args: list[str]) -> tuple[int, str]:
@@ -82,13 +83,17 @@ class KaggleCLI:
 
     def call(self, *args: str) -> str:
         code, out = self._run(list(args))
-        if code != 0:
+        self.log.append(f"kaggle {' '.join(args[:2])} -> {code}: {out.strip()[-400:]}")
+        if code != 0 or "error" in out.lower():
             raise KaggleError(f"kaggle {' '.join(args[:3])} failed: {out.strip()[-500:]}")
         return out
 
     def dataset_status(self, ref: str) -> str:
         code, out = self._run(["datasets", "status", ref])
-        return out.strip().lower() if code == 0 else "missing"
+        self.last_status = f"{code}: {out.strip()[-300:]}"
+        if code != 0 and ("404" in out or "not found" in out.lower()):
+            return "missing"
+        return out.strip().lower() if code == 0 else f"unknown ({out.strip()[-200:]})"
 
     def publish_dataset(self, folder: Path, ref: str, message: str) -> None:
         if self.dataset_status(ref) == "missing":
@@ -105,7 +110,8 @@ class KaggleCLI:
             if "error" in st:
                 raise KaggleError(f"dataset {ref} failed to process: {st}")
             time.sleep(poll)
-        raise KaggleError(f"dataset {ref} not ready after {timeout:.0f} s")
+        raise KaggleError(f"dataset {ref} not ready after {timeout:.0f} s; last status "
+                          f"{getattr(self, 'last_status', '?')}")
 
     def push(self, folder: Path, accelerator: str, timeout_s: int) -> None:
         self.call("kernels", "push", "-p", str(folder), "--accelerator", accelerator, "-t", str(timeout_s))
