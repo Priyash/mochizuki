@@ -457,7 +457,7 @@ def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu", can
     if stage and allowed and stage not in allowed and \
             not (getattr(kg, "take_over", False) and kaggle_stuck(led)):
         return {"action": "idle", "backend": name,
-                "reason": f"{stage} runs on Kaggle; {name} only takes {', '.join(allowed)}"}
+                "reason": f"{stage} is not run on {name}: config {name}.stages only takes {', '.join(allowed)}"}
     if stage is None:
         queue = steps.review_queue(p, led, chapter)
         return {"action": "idle", "reason": "waiting for a person", "to_review": len(queue),

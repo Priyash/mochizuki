@@ -28,7 +28,11 @@ def load_env(root: Path) -> None:
 
 
 def kaggle_backend(name: str, p: Project):
-    return kg.LocalKaggle(p.media) if name == "local" else kg.KaggleCLI()
+    k = kg.LocalKaggle(p.media) if name == "local" else kg.KaggleCLI()
+    stages = p.config.get("kaggle", {}).get("stages")
+    if stages and name != "local":
+        k.stages = tuple(stages)                    # config kaggle.stages: only these run on Kaggle
+    return k
 
 
 def main(argv=None) -> int:

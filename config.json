@@ -58,7 +58,12 @@
     "max_failures_per_shot": 2,
     "poll_seconds": 120,
     "_note": "username: your Kaggle username. weekly_gpu_hours stays under Kaggle's ~30 h so a stuck run cannot use it all. max_queue_hours: when a second GPU backend is connected, a batch still waiting for a Kaggle GPU after this long is handed to it.",
-    "max_queue_hours": 3
+    "max_queue_hours": 3,
+    "stages": [
+      "video",
+      "upscale"
+    ],
+    "_stages_note": "Only these stages run on Kaggle. refs and keyframes are paused here: Qwen-Image gives NaN (blank) images in fp16 on the T4 (24 of 24 stills, 24 Nov), and T4s have no bf16. Add them back only with a fix."
   },
   "engines": {
     "dtype": "auto",

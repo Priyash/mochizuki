@@ -337,6 +337,14 @@ class QwenStills:
             ne, nm = self.embeds[self.negative]
             args.update(negative_prompt_embeds=ne.to(dev, dt),
                         negative_prompt_embeds_mask=None if nm is None else nm.to(dev))
+        def nan_guard(pipe, step, t, kw):              # stop at the first NaN step, not after all of them
+            lat = kw.get("latents")
+            if lat is not None and not torch.isfinite(lat).all():
+                raise RuntimeError(f"reference still came out blank or NaN at step {step + 1}; "
+                                   f"this GPU may not handle {lat.dtype}")
+            return kw
+
+        args.update(callback_on_step_end=nan_guard, callback_on_step_end_tensor_inputs=["latents"])
         t0 = time.time()
         try:
             with torch.inference_mode():
