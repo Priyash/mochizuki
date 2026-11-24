@@ -6,7 +6,7 @@ on:
       action:
         description: "What to do"
         type: choice
-        options: [status, delete-stuck-worker]
+        options: [status, delete-stuck-worker, delete-queued-probe]
 concurrency:
   group: mochizuki-state
   cancel-in-progress: false
@@ -28,6 +28,14 @@ jobs:
           set +e
           kaggle kernels list --mine
           kaggle kernels status $KAGGLE_USERNAME/mochizuki-worker
+          kaggle kernels status $KAGGLE_USERNAME/mochizuki-probe
+          if [ "$ACTION" = "delete-queued-probe" ]; then
+            if kaggle kernels status $KAGGLE_USERNAME/mochizuki-probe | grep -qi queued; then
+              kaggle kernels delete $KAGGLE_USERNAME/mochizuki-probe -y && echo "probe deleted (it was queued)"
+            else
+              echo "probe is not queued; left alone"
+            fi
+          fi
           if [ "$ACTION" = "delete-stuck-worker" ]; then
             kaggle kernels delete $KAGGLE_USERNAME/mochizuki-worker -y
             kaggle kernels delete $KAGGLE_USERNAME/mochizuki-test-cpu -y
