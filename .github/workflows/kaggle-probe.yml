@@ -1,0 +1,40 @@
+# Test the stills engine on a Kaggle T4, outside the ledger: the same still at each precision.
+# Uses Kaggle GPU time (about 20-40 min). Prints the worker log; the stills are a run artifact.
+name: kaggle-probe
+on:
+  workflow_dispatch:
+    inputs:
+      variants:
+        description: "Precisions to try, in order"
+        required: true
+        default: "fp16,fp32"
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q "kaggle>=1.7" six
+      - name: Run the probe
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          set +e
+          python -m pipeline kaggle-probe --variants "${{ inputs.variants }}" --out probe-out
+          code=$?
+          echo "===== worker log"
+          find probe-out -name "*.log" -exec tail -c 20000 {} \;
+          exit $code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kaggle-probe
+          path: probe-out/
+          if-no-files-found: ignore

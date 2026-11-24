@@ -51,6 +51,10 @@ def main(argv=None) -> int:
         p.add_argument("--kaggle", default="real", choices=["real", "local"],
                        help="local runs the worker here with stub engines, for testing")
 
+    a = sub.add_parser("kaggle-probe", help="test the stills engine on a Kaggle T4 outside the ledger")
+    a.add_argument("--variants", default="fp16,fp32", help="precisions to try, in order (fp16, fp32, bf16, config)")
+    a.add_argument("--minutes", type=int, default=60)
+    a.add_argument("--out", default="probe-out")
     a = sub.add_parser("runpod-smoke", help="one tiny batch on a real RunPod pod, then delete it")
     a.add_argument("--engine-set", default="stub", choices=["gpu", "stub"])
     a.add_argument("--model", default="Wan 2.2 5B")
@@ -122,6 +126,13 @@ def main(argv=None) -> int:
             r["ok"] = r["ok"] and r["deep"]["ok"]
         print(json.dumps(r, indent=1, default=str))
         return 0 if r["ok"] else 3
+    if args.cmd == "kaggle-probe":
+        from . import kaggle_probe  # noqa: PLC0415
+        kgc = kg.KaggleCLI()
+        r = kaggle_probe.run(p, kgc, Path(args.out), args.variants.split(","), args.minutes)
+        print("\n".join(kgc.log[-6:]))
+        print(json.dumps(r, indent=1, default=str))
+        return 0 if any(j.get("ok") for j in r["jobs"].values()) else 3
     if args.cmd == "runpod-smoke":
         import shutil  # noqa: PLC0415
         from . import runpod_backend  # noqa: PLC0415

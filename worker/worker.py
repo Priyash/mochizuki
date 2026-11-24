@@ -299,10 +299,15 @@ class QwenStills:
             self.pipe.to("cuda")
         else:
             self.pipe.enable_model_cpu_offload()
+        if cfg.get("vae_fp32", True):                  # the decoder is the classic fp16 overflow; 0.25 GB in fp32
+            self.pipe.vae.to(dtype=torch.float32)
         try:
             self.pipe.vae.enable_tiling()
         except Exception:  # noqa: BLE001
             pass
+        log(f"stills engine: transformer {dtype}, VAE {self.pipe.vae.dtype}, {self.steps} steps, "
+            f"cfg {self.cfg_scale}; GPU memory in use {torch.cuda.memory_allocated() / 2**30:.1f} GB")
+        self.first = True
         self.pipe.set_progress_bar_config(disable=True)
         self.negative = negative
 
@@ -311,8 +316,10 @@ class QwenStills:
             return
         from diffusers import FlowMatchEulerDiscreteScheduler  # noqa: PLC0415
         from huggingface_hub import list_repo_files  # noqa: PLC0415
+        name = None
         try:
             files = [f for f in list_repo_files(lora["repo"]) if f.endswith(".safetensors")]
+            log(f"LoRA files in {lora['repo']}: {files}")
             name = next((f for q in lora.get("prefer", []) for f in files if q in f), files[0] if files else None)
             self.pipe.load_lora_weights(lora["repo"], weight_name=name)
             self.pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(LIGHTNING_SCHEDULER)
@@ -323,7 +330,9 @@ class QwenStills:
                 self.pipe.unload_lora_weights()
             except Exception:  # noqa: BLE001
                 pass
-            log(f"LoRA {lora['repo']} not used ({e!r}); {self.steps} steps, cfg {self.cfg_scale}"[:400])
+            log(f"LoRA {lora['repo']}/{name} not used; {self.steps} steps, cfg "
+                f"{self.cfg_scale}. Error: {e!r}"[:900])
+            log(traceback.format_exc()[-1200:])
 
     def run(self, job: dict, inputs: Path, out: Path) -> dict:
         torch = self.torch
@@ -337,11 +346,18 @@ class QwenStills:
             ne, nm = self.embeds[self.negative]
             args.update(negative_prompt_embeds=ne.to(dev, dt),
                         negative_prompt_embeds_mask=None if nm is None else nm.to(dev))
+        watch, t_step = self.first, [time.time()]
+        self.first = False
+
         def nan_guard(pipe, step, t, kw):              # stop at the first NaN step, not after all of them
             lat = kw.get("latents")
             if lat is not None and not torch.isfinite(lat).all():
-                raise RuntimeError(f"reference still came out blank or NaN at step {step + 1}; "
-                                   f"this GPU may not handle {lat.dtype}")
+                raise RuntimeError(f"reference still came out blank or NaN at step {step + 1} (in the "
+                                   f"transformer, before the decoder); latents {lat.dtype}")
+            if watch and lat is not None:
+                log(f"  step {step + 1}/{self.steps}: {time.time() - t_step[0]:.1f} s, "
+                    f"latents max |x| {float(lat.abs().max()):.2f}")
+                t_step[0] = time.time()
             return kw
 
         args.update(callback_on_step_end=nan_guard, callback_on_step_end_tensor_inputs=["latents"])
@@ -351,7 +367,7 @@ class QwenStills:
                 img = self.pipe(**args).images[0]
         finally:
             torch.cuda.empty_cache()
-        check_not_blank(img, "reference still")
+        check_not_blank(img, "reference still (latents were fine, so in the decoder)")
         img.save(out)
         return {"width": img.width, "height": img.height, "seed": seed_for(job["key"]),
                 "steps": self.steps, "seconds": round(time.time() - t0, 1)}
@@ -560,9 +576,9 @@ class Upscale4K:
 
 # ---------------------------------------------------------------- the run
 def build_engine(name: str, jobs: list[dict], engines: dict, engine_set: str):
-    dtype = engines.get("dtype", "auto")
-    if name == "refs":
-        cfg = engines["refs"]
+    dtype = (engines.get(name) or {}).get("dtype") or engines.get("dtype", "auto")
+    if name == "refs" or name.startswith("refs_"):
+        cfg = engines[name]
         if engine_set == "stub":
             return StubImage(cfg)
         neg = cfg.get("negative_prompt", " ")
@@ -607,7 +623,8 @@ def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: 
     deadline = t0 + float(m.get("deadline_seconds", 10 * 3600))
     groups: dict[str, list[dict]] = {}
     for job in m["jobs"]:
-        name = "keyframe" if job["kind"] == "ref" and job.get("refs") else KIND_TO_ENGINE.get(job["kind"], job["model"])
+        name = job.get("engine") or ("keyframe" if job["kind"] == "ref" and job.get("refs")
+                                     else KIND_TO_ENGINE.get(job["kind"], job["model"]))
         groups.setdefault(name, []).append(job)
     for name, jobs in groups.items():
         if time.time() + 600 > deadline:
