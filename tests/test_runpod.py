@@ -311,3 +311,21 @@ def test_guard_deletes_overpriced_and_over_cap_pods(tmp_path):
     led.set_batch("b1", handle="podY b1 0.34", submitted_at=time.time() - 200 * 3600)     # far past the cap
     fake.pods["podY"] = {"name": "mochizuki-b1", "status": "RUNNING", "env": {}, "out": tmp_path, "cost": 0.34}
     assert rp.cleanup(led) == 1 and "cap is reached" in rp.log[-2]
+
+
+def test_a_stuck_kaggle_batch_keeps_its_place_when_runpod_cannot_take_it(tmp_path):
+    proj = copy_project(_mk(tmp_path / "p"), cfg_edit=lambda c: c.update(runpod={"enabled": True, "total_cap_usd": 30}))
+    for f in (proj.root / "style_bible" / "refs").glob("*.png"):
+        f.unlink()
+    led = steps.open_ledger(proj)
+    k = kg.LocalKaggle(proj.media)
+    k.status = lambda ref, handle=None: "queued"          # Kaggle never starts it
+    broke = backend(proj, FakeRunPod(tmp_path / "pods", balance=0.0))
+    assert kg.tick(proj, led, k, 1, engine_set="stub")["action"] == "built_and_submitted"
+    b = led.active_batch("kaggle")
+    led.set_batch(b["id"], submitted_at=time.time() - 5 * 3600)
+    out = kg.tick_all(proj, led, [k, broke], 1, engine_set="stub")
+    assert out[0]["action"] == "waiting" and led.active_batch("kaggle")["id"] == b["id"], out
+    rich = backend(proj, FakeRunPod(tmp_path / "pods2", balance=20.0))
+    out = kg.tick_all(proj, led, [k, rich], 1, engine_set="stub")
+    assert out[0]["action"] == "handed_over", out

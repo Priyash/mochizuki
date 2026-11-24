@@ -445,7 +445,8 @@ def tick(p: Project, led: Ledger, kg, chapter: int, engine_set: str = "gpu", can
         res = collect(p, led, kg, active["id"])
         stuck = _cfg(p).get("max_queue_hours", 3) * 3600
         if can_hand_over and name == "kaggle" and res["status"] == "queued" and \
-                time.time() - (active["submitted_at"] or time.time()) > stuck:
+                time.time() - (active["submitted_at"] or time.time()) > stuck and \
+                (can_hand_over(active["stage"]) if callable(can_hand_over) else True):
             discard(led, active["id"], "stuck in Kaggle's queue; handed to the other backend")
             return {"action": "handed_over", "backend": name, "batch": active["id"],
                     "reason": f"queued on Kaggle for over {stuck / 3600:.0f} h"}
@@ -508,6 +509,25 @@ def engine_broken(led: Ledger, backend: str, stage: str, runs: int = 2) -> str |
             f"stopped until the next code change: {first[:300]}")
 
 
+def someone_else_can_take(p: Project, led: Ledger, backends: list, me, stage: str) -> bool:
+    """Another backend would take this stage now: allowed to (its stages, or it takes over from a
+    stuck Kaggle) and within its budget (RunPod: GPU in stock, cap, balance). Otherwise a batch
+    stuck in Kaggle's queue keeps its place instead of being dropped for nothing."""
+    for other in backends:
+        if other is me:
+            continue
+        allowed = getattr(other, "stages", None)
+        if allowed and stage not in allowed and not getattr(other, "take_over", False):
+            continue
+        try:
+            if hasattr(other, "budget"):
+                other.budget(p, led)
+            return True
+        except Exception:  # noqa: BLE001 - resting, no credit, no stock: it can't take it
+            continue
+    return False
+
+
 def kaggle_stuck(led: Ledger) -> bool:
     """Kaggle's latest batch was handed over because it sat in Kaggle's queue too long."""
     row = led.db.execute("SELECT status, note FROM batches WHERE backend='kaggle'"
@@ -537,7 +557,8 @@ def tick_all(p: Project, led: Ledger, backends: list, chapter: int, engine_set: 
     for kg in backends:
         for _ in range(4):                                  # collect, then start the next in the same run
             try:
-                r = tick(p, led, kg, chapter, engine_set=engine_set, can_hand_over=len(backends) > 1)
+                r = tick(p, led, kg, chapter, engine_set=engine_set,
+                         can_hand_over=lambda stage, me=kg: someone_else_can_take(p, led, backends, me, stage))
             except Exception as e:  # noqa: BLE001 - one backend failing must not stop the other
                 r = {"action": "error", "error": f"{type(e).__name__}: {e}"[:500]}
             r.setdefault("backend", getattr(kg, "name", "kaggle"))
