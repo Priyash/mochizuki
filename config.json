@@ -60,10 +60,11 @@
     "_note": "username: your Kaggle username. weekly_gpu_hours stays under Kaggle's ~30 h so a stuck run cannot use it all. max_queue_hours: when a second GPU backend is connected, a batch still waiting for a Kaggle GPU after this long is handed to it.",
     "max_queue_hours": 3,
     "stages": [
+      "refs",
       "video",
       "upscale"
     ],
-    "_stages_note": "Only these stages run on Kaggle. refs and keyframes are paused here: Qwen-Image gives NaN (blank) images in fp16 on the T4 (24 of 24 stills, 24 Nov), and T4s have no bf16. Add them back only with a fix."
+    "_stages_note": "Only these stages run on Kaggle. refs is back on the T4 with the fp16 fixes (decoder in fp32, NaN stop at the first bad step, per-still logging); keyframes stays off until its engine gets the same T4 rework. On 24 Nov all 24 stills came out NaN in fp16 before these fixes."
   },
   "engines": {
     "dtype": "auto",
@@ -212,7 +213,7 @@
   },
   "mac": {
     "_note": "Your own Apple Silicon Mac renders stills and keyframes for free with mflux (docs/mac-worker.md). Batches wait in the `batches` release until `python -m pipeline mac-worker` runs on the Mac. 32 GB Macs: switch both models to 4-bit (see the doc).",
-    "enabled": true,
+    "enabled": false,
     "stages": [
       "refs",
       "keyframes"

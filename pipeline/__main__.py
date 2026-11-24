@@ -184,6 +184,15 @@ def main(argv=None) -> int:
         mac = mac_backend.from_env(p)
         if mac is not None:
             backends.append(mac)
+        else:                                       # Mac switched off: its waiting batches go back to the pool
+            for b in led.active_batches():
+                if b["backend"] == "mac":
+                    kg.discard(led, b["id"], "the Mac backend was switched off in config.json")
+                    if not args.no_store:
+                        rel = mac_backend.Release(os.environ.get("GITHUB_REPOSITORY", ""))
+                        for name in mac_backend._names(b["id"]).values():
+                            rel.delete(name)
+                    print(f"Mac batch {b['id']} dropped; its jobs are free again", flush=True)
         rp = runpod_backend.from_env(p)
         if rp is None:
             print("RunPod is off")
@@ -217,6 +226,15 @@ def main(argv=None) -> int:
         mac = mac_backend.from_env(p)
         if mac is not None:
             backends.append(mac)
+        else:                                       # Mac switched off: its waiting batches go back to the pool
+            for b in led.active_batches():
+                if b["backend"] == "mac":
+                    kg.discard(led, b["id"], "the Mac backend was switched off in config.json")
+                    if not args.no_store:
+                        rel = mac_backend.Release(os.environ.get("GITHUB_REPOSITORY", ""))
+                        for name in mac_backend._names(b["id"]).values():
+                            rel.delete(name)
+                    print(f"Mac batch {b['id']} dropped; its jobs are free again", flush=True)
         rp = runpod_backend.from_env(p)
         if rp is not None:
             backends.append(rp)
