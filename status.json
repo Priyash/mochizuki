@@ -2,20 +2,18 @@
  "chapter": 1,
  "actions": [
   {
-   "action": "idle",
-   "reason": "waiting for a person",
-   "to_review": 0,
-   "states": {
-    "waiting_anchor": 26,
-    "todo": 1
+   "action": "built_and_submitted",
+   "batch": "b20261124-180146-bc20",
+   "backend": "kaggle",
+   "stage": "refs",
+   "jobs": 24,
+   "deferred": 0,
+   "est_hours": 1.42,
+   "summary": {
+    "made": 24,
+    "deferred": 0
    },
-   "backend": "kaggle"
-  },
-  {
-   "action": "waiting",
-   "batch": "b20261124-090532-78c3",
-   "backend": "mac",
-   "status": "queued"
+   "submitted": true
   },
   {
    "action": "idle",
@@ -37,16 +35,22 @@
   "ok": true,
   "output": "resource,used,remaining,total,refreshAt\nGPU,6.35h,23.65h,30.00h,2026-11-28T00:00:00+00:00\nTPU,0.00h,20.00h,20.00h,2026-11-28T00:00:00+00:00",
   "datasets list --mine": "0: ref                         title                   size  lastUpdated                 downloadCount  voteCount  usabilityRating  \n--------------------------  ----------------  ----------  --------------------------  -------------  ---------  ---------------  \npriyash11/mochizuki-inputs  mochizuki-inputs       13612  2026-11-23 18:01:05.817000              0          0  0.125",
-  "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-probe   mochizuki-probe   Priyash11  2026-11-24 07:50:57.030000           0  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-23 18:01:10.190000           0",
+  "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-23 18:01:10.190000           0",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
+ "kaggle_log": [
+  "kaggle datasets status priyash11/mochizuki-inputs -> 0: ready",
+  "kaggle datasets version -> 0: Dataset version is being created. Please check progress at https://www.kaggle.com/datasets/priyash11/mochizuki-inputs",
+  "kaggle datasets status priyash11/mochizuki-inputs -> 0: ready",
+  "kaggle kernels push -> 0: Kernel version 6 successfully pushed.  Please check progress at https://www.kaggle.com/code/priyash11/mochizuki-worker"
+ ],
  "uploaded": 0,
  "review": {
   "items": 0
  },
  "notice": {
   "kind": "running",
-  "text": "Chapter 1: Mac batch b20261124-090532-78c3 (refs) is submitted."
+  "text": "Chapter 1: Kaggle batch b20261124-180146-bc20 (refs) is submitted."
  },
  "status": {
   "waiting_anchor": 26,
