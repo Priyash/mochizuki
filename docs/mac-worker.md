@@ -12,9 +12,11 @@ If no Mac takes a batch within 72 hours, its jobs are freed again.
 ## What you need
 
 - An Apple Silicon Mac (M1 or later), macOS 14 or later.
-- **Memory:** 48 GB or more for the 8-bit models (the default). With 32 GB, use the 4-bit models
-  below. Less than 32 GB will not work for these models.
-- About 70 GB free disk for the two models (downloaded once, on the first run).
+- **Memory:** 32 GB or more. The settings are for a 32 GB Mac (4-bit models with mflux's
+  `--low-ram`); with 48 GB or more, switch to the 8-bit models (below) for better quality.
+  Less than 32 GB will not work for these models.
+- About 40 GB free disk for the two 4-bit models (downloaded once, on the first run); about 70 GB for 8-bit.
+- Close other heavy apps (browsers with many tabs, Docker, IDEs) while it renders.
 - Python 3.10 or later, git, and the GitHub CLI.
 
 ## One-time setup (Terminal)
@@ -62,15 +64,13 @@ mac worker for Priyash/mochizuki: waiting for batches (Ctrl-C to stop)
 To start work at once instead of waiting for the next scheduled producer run, start it from
 GitHub: Actions → produce → Run workflow.
 
-## 32 GB Macs: the 4-bit models
+## 48 GB or more: the 8-bit models
 
-In `config.json`, under `mac.engines`, change the two `--model` values:
-
-- stills: `mlx-community/Qwen-Image-2512-4bit`
-- keyframes: a 4-bit Qwen-Image-Edit-2511 for mflux (for example from `fcreait/Qwen-Image-Edit-mflux`,
-  downloaded to a folder, with `"--base-model", "qwen"` added to the command)
-
-Then run the self-test again.
+The default settings (`mac.engines` in `config.json`) are the 4-bit models for a 32 GB Mac:
+`mlx-community/Qwen-Image-2512-4bit` for stills and the 4-bit Qwen-Image-Edit-2511 from
+`fcreait/Qwen-Image-Edit-mflux` for keyframes (fetched once into `~/mochizuki-mac/models`).
+With 48 GB or more, copy `mac.engines_8bit` over `mac.engines` for better quality, and run the
+self-test again.
 
 ## Settings (`config.json` → `mac`)
 

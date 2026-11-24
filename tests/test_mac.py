@@ -99,3 +99,17 @@ def test_self_test_writes_one_still(tmp_path):
     proj, led, fr, mac = _setup(tmp_path)
     r = mb.self_test(proj, mb.StubEngine(), tmp_path / "s.png")
     assert Path(r["still"]["file"]).exists() and Path(r["edit"]["file"]).exists()
+
+
+def test_model_folder_is_downloaded_once_and_put_in_the_command(tmp_path):
+    calls = []
+
+    def fake_download(repo, local_dir, allow_patterns):
+        calls.append((repo, allow_patterns))
+        (Path(local_dir) / "q4").mkdir(parents=True, exist_ok=True)
+
+    e = {"cmd": ["mflux-generate-qwen-edit", "--model", "{model_dir}"], "download": {"repo": "a/b", "folder": "q4"}}
+    cmd = mb.resolve_cmd(e, tmp_path, fake_download)
+    assert cmd[-1] == str(tmp_path / "a--b" / "q4") and calls == [("a/b", ["q4/*"])]
+    mb.resolve_cmd(e, tmp_path, fake_download)
+    assert len(calls) == 1                                # not downloaded twice

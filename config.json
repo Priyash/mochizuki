@@ -212,7 +212,7 @@
     "keep_results_hours": 2.5
   },
   "mac": {
-    "_note": "Your own Apple Silicon Mac renders stills and keyframes for free with mflux (docs/mac-worker.md). Batches wait in the `batches` release until `python -m pipeline mac-worker` runs on the Mac. 32 GB Macs: switch both models to 4-bit (see the doc).",
+    "_note": "Your own Apple Silicon Mac renders stills and keyframes for free with mflux (docs/mac-worker.md). Set for a 32 GB Mac: 4-bit models with --low-ram. With 48 GB or more, use mac.engines_8bit instead (better quality).",
     "enabled": false,
     "stages": [
       "refs",
@@ -221,8 +221,38 @@
     "batch_hours": 3,
     "max_wait_hours": 72,
     "stale_minutes": 45,
-    "seconds_per_job": 300,
+    "seconds_per_job": 360,
     "engines": {
+      "refs": {
+        "cmd": [
+          "mflux-generate-qwen",
+          "--model",
+          "mlx-community/Qwen-Image-2512-4bit",
+          "--steps",
+          "20",
+          "--low-ram"
+        ]
+      },
+      "keyframe": {
+        "cmd": [
+          "mflux-generate-qwen-edit",
+          "--model",
+          "{model_dir}",
+          "--base-model",
+          "qwen",
+          "--steps",
+          "20",
+          "--low-ram"
+        ],
+        "download": {
+          "repo": "fcreait/Qwen-Image-Edit-mflux",
+          "folder": "Qwen-Image-Edit-2511-q4"
+        },
+        "image_flag": "--image-paths",
+        "max_refs": 3
+      }
+    },
+    "engines_8bit": {
       "refs": {
         "cmd": [
           "mflux-generate-qwen",

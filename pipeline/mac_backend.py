@@ -45,9 +45,12 @@ DEFAULTS = {
     "poll_seconds": 60,
     "seconds_per_job": 300,
     "engines": {
-        "refs": {"cmd": ["mflux-generate-qwen", "--model", "mlx-community/Qwen-Image-2512-8bit", "--steps", "20"]},
-        "keyframe": {"cmd": ["mflux-generate-qwen-edit", "--model", "mlx-community/qwen-image-edit-2511-8bit",
-                             "--steps", "20"], "image_flag": "--image-paths", "max_refs": 3},
+        "refs": {"cmd": ["mflux-generate-qwen", "--model", "mlx-community/Qwen-Image-2512-4bit", "--steps", "20",
+                         "--low-ram"]},
+        "keyframe": {"cmd": ["mflux-generate-qwen-edit", "--model", "{model_dir}", "--base-model", "qwen",
+                             "--steps", "20", "--low-ram"],
+                     "download": {"repo": "fcreait/Qwen-Image-Edit-mflux", "folder": "Qwen-Image-Edit-2511-q4"},
+                     "image_flag": "--image-paths", "max_refs": 3},
     },
 }
 
@@ -230,20 +233,48 @@ class StubEngine:
         return {"width": w, "height": h, "engine": "stub"}
 
 
+def resolve_cmd(e: dict, models: Path, download=None) -> list[str]:
+    """The engine's command, with {model_dir} replaced by a local copy of e["download"]
+    (a Hugging Face repo and a folder in it), fetched once into `models`."""
+    cmd = list(e["cmd"])
+    d = e.get("download")
+    if not d:
+        return cmd
+    local = models / d["repo"].replace("/", "--")
+    target = local / d.get("folder", "")
+    if not (target / ".complete").exists():
+        if download is None:
+            from huggingface_hub import snapshot_download  # noqa: PLC0415 - comes with mflux
+            download = snapshot_download
+        _log(f"downloading {d['repo']}/{d.get('folder', '')} (once)")
+        download(d["repo"], local_dir=str(local),
+                 allow_patterns=[f"{d['folder']}/*"] if d.get("folder") else None)
+        target.mkdir(parents=True, exist_ok=True)
+        (target / ".complete").write_text("ok")
+    return [str(target) if x == "{model_dir}" else x for x in cmd]
+
+
 class MfluxEngine:
     """Runs mflux's command line once per image. Text-to-image for reference stills; image edit
     (1 to 3 input images) for derived stills and keyframes. Commands come from config mac.engines."""
 
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: dict, models: Path | None = None):
         self.cfg = cfg
+        self.models = models or Path.home() / "mochizuki-mac" / "models"
         if not shutil.which(cfg["engines"]["refs"]["cmd"][0]):
             raise RuntimeError("mflux is not installed: pip install -U mflux (see docs/mac-worker.md)")
+        self.cmds: dict[str, list[str]] = {}
+
+    def _cmd(self, name: str) -> list[str]:
+        if name not in self.cmds:
+            self.cmds[name] = resolve_cmd(self.cfg["engines"][name], self.models)
+        return self.cmds[name]
 
     def run(self, job: dict, inputs: Path, out: Path) -> dict:
         images = ([job["image"]] if job.get("image") else job.get("refs", []))
         edit = bool(images)
         e = self.cfg["engines"]["keyframe" if edit else "refs"]
-        cmd = [*e["cmd"], "--prompt", job["prompt"], "--seed", str(_seed(job["key"])),
+        cmd = [*self._cmd("keyframe" if edit else "refs"), "--prompt", job["prompt"], "--seed", str(_seed(job["key"])),
                "--width", str(job.get("width", 1664)), "--height", str(job.get("height", 928)),
                "--output", str(out), *e.get("extra_args", [])]
         if edit:
