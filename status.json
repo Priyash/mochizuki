@@ -3,22 +3,19 @@
  "actions": [
   {
    "action": "idle",
-   "backend": "kaggle",
-   "reason": "refs is not run on kaggle: config kaggle.stages only takes video, upscale"
+   "reason": "waiting for a person",
+   "to_review": 0,
+   "states": {
+    "waiting_anchor": 26,
+    "todo": 1
+   },
+   "backend": "kaggle"
   },
   {
-   "action": "built_and_submitted",
+   "action": "waiting",
    "batch": "b20261124-090532-78c3",
    "backend": "mac",
-   "stage": "refs",
-   "jobs": 24,
-   "deferred": 0,
-   "est_hours": 1.08,
-   "summary": {
-    "made": 24,
-    "deferred": 0
-   },
-   "submitted": true
+   "status": "queued"
   },
   {
    "action": "idle",
@@ -43,9 +40,6 @@
   "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-probe   mochizuki-probe   Priyash11  2026-11-24 07:50:57.030000           0  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-23 18:01:10.190000           0",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
- "mac_log": [
-  "mac-b20261124-090532-78c3.tar.gz (3 KB) waits for a Mac"
- ],
  "uploaded": 0,
  "review": {
   "items": 0
