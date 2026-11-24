@@ -150,6 +150,16 @@ Its limits:
 - Claude reviews still frames and can't watch motion, so watch every Hero take yourself before you approve the animatic.
 - The first real Kaggle run is still the test of the GPU models.
 
+## Where each stage runs
+
+| Stage | Where | Why |
+|---|---|---|
+| Reference stills, keyframes | **your Mac** (`python -m pipeline mac-worker`, see [docs/mac-worker.md](docs/mac-worker.md)) | Qwen-Image needs bf16; Kaggle's T4s only have fp16 and give blank images |
+| Video, 4K upscale | **Kaggle** T4s (free, 30 GPU h/week) | |
+| Video, when Kaggle is stuck or slow | **RunPod** (prepaid, capped by `runpod.total_cap_usd`) | optional, off until you load credit |
+
+Each backend takes only the stages in its `config.json` section (`kaggle.stages`, `mac.stages`, `runpod.stages`).
+
 ## How long it takes
 
 Estimated GPU time on the free plan, before real runs correct it:

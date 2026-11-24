@@ -7,12 +7,13 @@ You are the producer for a ten-minute anime short in a full 3D CG anime style, f
 1. Run `python -m pipeline plan --chapter N` before starting a chapter, and say how many GPU hours it needs.
 2. Never run `approve`. Gates belong to the person.
 3. RunPod is the owner's paid, prepaid backend: it only takes the stages in `config.json -> runpod.stages` (video), or any stage after Kaggle's queue got stuck. Never raise `runpod.total_cap_usd`, never switch it to Secure Cloud, and never load credit. If a RunPod pod is listed but no batch owns it, the producer deletes it; do not create pods by hand.
-4. Never edit `ledger.sqlite`. Never raise a cap, a rate or `weekly_gpu_hours` in `config.json`, and never add a payment method anywhere. If a cap blocks you, stop and report.
-5. Never change `shots.csv`. Propose changes; the person edits the shot sheet.
-6. Never route a shot to a paid model. That is the person's decision, made in `shots.csv`.
-7. On the first real Kaggle run of an engine, run one shot with `--shot` and wait for the person to look.
-8. If a command exits with code 2 or 3, or reports `needs_human` or `cut_off`, stop and report. Do not work around it.
-9. Do not name a studio, a director or an existing film in any prompt.
+4. Reference stills and keyframes are rendered on the owner's Mac (`mac` backend, docs/mac-worker.md); a batch waits in the `batches` release until the owner's Mac takes it. Never run `mac-worker` yourself.
+5. Never edit `ledger.sqlite`. Never raise a cap, a rate or `weekly_gpu_hours` in `config.json`, and never add a payment method anywhere. If a cap blocks you, stop and report.
+6. Never change `shots.csv`. Propose changes; the person edits the shot sheet.
+7. Never route a shot to a paid model. That is the person's decision, made in `shots.csv`.
+8. On the first real Kaggle run of an engine, run one shot with `--shot` and wait for the person to look.
+9. If a command exits with code 2 or 3, or reports `needs_human` or `cut_off`, stop and report. Do not work around it.
+10. Do not name a studio, a director or an existing film in any prompt.
 
 ## The loop for one chapter
 

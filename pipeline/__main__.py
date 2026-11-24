@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -51,6 +52,12 @@ def main(argv=None) -> int:
         p.add_argument("--kaggle", default="real", choices=["real", "local"],
                        help="local runs the worker here with stub engines, for testing")
 
+    a = sub.add_parser("mac-worker", help="on your Apple Silicon Mac: render queued stills and keyframes with mflux")
+    a.add_argument("--once", action="store_true", help="take what is waiting, then stop")
+    a.add_argument("--self-test", action="store_true", help="make one still locally; nothing is sent to GitHub")
+    a.add_argument("--engine-set", default="gpu", choices=["gpu", "stub"])
+    a.add_argument("--work", default=str(Path.home() / "mochizuki-mac"))
+    a.add_argument("--repo", default=os.environ.get("MOCHI_REPO", ""), help="owner/repo (default: this clone's)")
     a = sub.add_parser("kaggle-probe", help="test the stills engine on a Kaggle T4 outside the ledger")
     a.add_argument("--variants", default="fp16,fp32", help="precisions to try, in order (fp16, fp32, bf16, config)")
     a.add_argument("--minutes", type=int, default=60)
@@ -126,6 +133,26 @@ def main(argv=None) -> int:
             r["ok"] = r["ok"] and r["deep"]["ok"]
         print(json.dumps(r, indent=1, default=str))
         return 0 if r["ok"] else 3
+    if args.cmd == "mac-worker":
+        from . import mac_backend  # noqa: PLC0415
+        cfg = mac_backend.settings(p)
+        engine = mac_backend.StubEngine() if args.engine_set == "stub" else mac_backend.MfluxEngine(cfg)
+        if args.self_test:
+            r = mac_backend.self_test(p, engine, Path(args.work) / "selftest-style.png")
+            print(json.dumps(r, indent=1))
+            return 0
+        repo = args.repo
+        if not repo:
+            r = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+                               capture_output=True, text=True, cwd=p.root)
+            repo = r.stdout.strip()
+        if not repo:
+            print("could not tell the repository: run inside the clone with gh logged in, or pass --repo owner/repo")
+            return 2
+        print(f"mac worker for {repo}: waiting for batches (Ctrl-C to stop)", flush=True)
+        n = mac_backend.worker_loop(mac_backend.Release(repo), Path(args.work), engine, cfg, once=args.once)
+        print(f"{n} batch(es) done")
+        return 0
     if args.cmd == "kaggle-probe":
         from . import kaggle_probe  # noqa: PLC0415
         kgc = kg.KaggleCLI()
@@ -153,7 +180,10 @@ def main(argv=None) -> int:
         return 0 if r.get("ok") else 3
     led = steps.open_ledger(p)
     if args.cmd == "runpod-poll":
-        from . import runpod_backend  # noqa: PLC0415
+        from . import mac_backend, runpod_backend  # noqa: PLC0415
+        mac = mac_backend.from_env(p)
+        if mac is not None:
+            backends.append(mac)
         rp = runpod_backend.from_env(p)
         if rp is None:
             print("RunPod is off")
@@ -183,7 +213,10 @@ def main(argv=None) -> int:
         backends = []
         if has_creds or args.kaggle == "local":
             backends.append(kaggle_backend(args.kaggle, p))
-        from . import runpod_backend  # noqa: PLC0415
+        from . import mac_backend, runpod_backend  # noqa: PLC0415
+        mac = mac_backend.from_env(p)
+        if mac is not None:
+            backends.append(mac)
         rp = runpod_backend.from_env(p)
         if rp is not None:
             backends.append(rp)
