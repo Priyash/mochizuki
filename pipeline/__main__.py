@@ -154,6 +154,7 @@ def main(argv=None) -> int:
         print("\n".join(kgc.log[-6:]))
         print(json.dumps(r, indent=1, default=str))
         return 0 if any(j.get("ok") for j in r["jobs"].values()) else 3
+    led = steps.open_ledger(p)
     if args.cmd == "ci-step":
         from .store import ReleaseStore  # noqa: PLC0415
         state = Path(args.state)

@@ -8,6 +8,7 @@ import importlib.util
 import json
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -709,3 +710,12 @@ def test_engine_load_failures_do_not_use_up_a_shot_and_stop_after_two_batches(tm
     assert "made nothing in the last 2 kaggle batches" in kg.engine_broken(led, "kaggle", "refs")
     monkeypatch.setattr(kg, "code_time", lambda: time.time() + 1)
     assert kg.engine_broken(led, "kaggle", "refs") is None      # a new commit gets a fresh try
+
+
+def test_ci_step_runs_from_the_command_line(tmp_path):
+    proj = copy_project(tmp_path)
+    r = subprocess.run([sys.executable, "-m", "pipeline", "--root", str(proj.root), "ci-step", "--kaggle", "local",
+                        "--no-store", "--state", str(tmp_path / "state"), "--engine-set", "stub"],
+                       capture_output=True, text=True, cwd=REPO)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert json.loads(r.stdout.strip().splitlines()[-1])["kind"]
