@@ -2,24 +2,20 @@
  "chapter": 1,
  "actions": [
   {
-   "action": "handed_over",
-   "backend": "kaggle",
-   "batch": "b20261126-105455-f088",
-   "reason": "queued on Kaggle for over 3 h"
+   "action": "idle",
+   "reason": "waiting for a person",
+   "to_review": 0,
+   "states": {
+    "waiting_anchor": 26,
+    "todo": 1
+   },
+   "backend": "kaggle"
   },
   {
-   "action": "built_and_submitted",
+   "action": "waiting",
    "batch": "b20261126-201651-aa6c",
    "backend": "colab",
-   "stage": "refs",
-   "jobs": 24,
-   "deferred": 0,
-   "est_hours": 1.25,
-   "summary": {
-    "made": 24,
-    "deferred": 0
-   },
-   "submitted": true
+   "status": "queued"
   }
  ],
  "reviews": {
@@ -34,15 +30,6 @@
   "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-26 00:21:45.920000           0",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
- "kaggle_log": [
-  "kaggle kernels status -> 0: priyash11/mochizuki-worker has status \"KernelWorkerStatus.QUEUED\""
- ],
- "colab_log": [
-  "Colab batch budget 4.0 h; about 0 of 100 units used",
-  "Colab batch budget 4.0 h; about 0 of 100 units used",
-  "colab-b20261126-201651-aa6c.tar.gz (3 KB) waits for the colab worker",
-  "colab-run started"
- ],
  "uploaded": 0,
  "review": {
   "items": 0
