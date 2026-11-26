@@ -137,6 +137,8 @@
       "transformer_gguf": {
         "repo": "unsloth/Qwen-Image-2512-GGUF",
         "prefer": [
+          "Q8_0",
+          "Q6_K",
           "Q5_K_M",
           "Q4_K_M",
           "Q4_K_S",
@@ -147,20 +149,8 @@
       "steps": 50,
       "true_cfg_scale": 4.0,
       "negative_prompt": "photorealistic photo, live action, flat sketch, text, watermark, logo, signature, extra fingers, deformed hands, blurry, lowres",
-      "_note": "Qwen-Image-2512, Apache 2.0. The largest GGUF in `prefer` that fits the GPU is used (T4: about Q4; RTX 4090: Q5_K_M). Prompts are encoded on the CPU first.",
-      "vram_headroom_gb": 2.5,
-      "lora": {
-        "repo": "lightx2v/Qwen-Image-2512-Lightning",
-        "prefer": [
-          "8steps-V1.0-bf16",
-          "8steps",
-          "4steps-V1.0-bf16",
-          "4steps"
-        ],
-        "steps": 8,
-        "true_cfg_scale": 1.0,
-        "_note": "Few-step LoRA so a T4 makes a still in minutes, not ~15 min. Remove this block for the full 50-step model (best quality, much slower)."
-      }
+      "_note": "Qwen-Image-2512, Apache 2.0, 50 steps with CFG for quality. The first GGUF in `prefer` that fits the GPU is used (A100 40 GB: Q8_0; L4: Q6_K). Needs bf16: Ampere or newer, or Apple Silicon (mac backend).",
+      "vram_headroom_gb": 2.5
     }
   },
   "providers": {
@@ -186,29 +176,6 @@
     "candidates": 4,
     "max_candidates": 8,
     "_note": "Gate 1: reference stills painted on Kaggle from style_bible/ref_prompts.json when style_bible/refs/ lacks them."
-  },
-  "runpod": {
-    "_note": "Paid, capped backend beside Kaggle. Bills only the prepaid RunPod balance the owner loads; total_cap_usd is the pipeline's own stop on top. Only the stages listed run here, unless Kaggle's queue got stuck.",
-    "enabled": true,
-    "stages": [
-      "video"
-    ],
-    "take_over_when_kaggle_stuck": true,
-    "gpus": [
-      "NVIDIA GeForce RTX 4090",
-      "NVIDIA GeForce RTX 3090",
-      "NVIDIA RTX 5000 Ada Generation"
-    ],
-    "cloud": "COMMUNITY",
-    "image": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
-    "min_cuda": "12.8",
-    "disk_gb": 120,
-    "usd_per_hour": 0.4,
-    "max_usd_per_hour": 0.6,
-    "total_cap_usd": 30,
-    "batch_hours": 3,
-    "setup_minutes": 20,
-    "keep_results_hours": 2.5
   },
   "mac": {
     "_note": "Your own Apple Silicon Mac renders stills and keyframes for free with mflux (docs/mac-worker.md). Set for a 32 GB Mac: 4-bit models with --low-ram. With 48 GB or more, use mac.engines_8bit instead (better quality).",
@@ -273,5 +240,28 @@
         "max_refs": 3
       }
     }
+  },
+  "colab": {
+    "_note": "Google Colab pay-as-you-go: bf16 GPUs for stills and keyframes (docs/colab.md). The producer sizes each batch to what is left of total_cap_units (the owner's agreed budget: 100 units = $9.99); the runner will not start a VM below min_balance_units. Rates are units per GPU-hour as Colab charged them in 2026.",
+    "enabled": true,
+    "stages": [
+      "refs",
+      "keyframes"
+    ],
+    "gpus": [
+      "A100",
+      "L4"
+    ],
+    "units_per_hour": {
+      "T4": 1.19,
+      "L4": 1.71,
+      "A100": 5.4
+    },
+    "total_cap_units": 100,
+    "min_balance_units": 3,
+    "batch_hours": 4,
+    "setup_minutes": 15,
+    "max_wait_hours": 12,
+    "stale_minutes": 30
   }
 }

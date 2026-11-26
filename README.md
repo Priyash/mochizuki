@@ -154,11 +154,11 @@ Its limits:
 
 | Stage | Where | Why |
 |---|---|---|
-| Reference stills, keyframes | **your Mac** (`python -m pipeline mac-worker`, see [docs/mac-worker.md](docs/mac-worker.md)) | Qwen-Image needs bf16; Kaggle's T4s only have fp16 and give blank images |
+| Reference stills, keyframes | **Google Colab** pay-as-you-go (A100/L4), see [docs/colab.md](docs/colab.md) | Qwen-Image needs bf16; Kaggle's T4s only have fp16 and give blank images |
+| Reference stills, keyframes (free, slower) | **your Mac** (`python -m pipeline mac-worker`, [docs/mac-worker.md](docs/mac-worker.md)); off until you switch `mac.enabled` on | |
 | Video, 4K upscale | **Kaggle** T4s (free, 30 GPU h/week) | |
-| Video, when Kaggle is stuck or slow | **RunPod** (prepaid, capped by `runpod.total_cap_usd`) | optional, off until you load credit |
 
-Each backend takes only the stages in its `config.json` section (`kaggle.stages`, `mac.stages`, `runpod.stages`).
+Each backend takes only the stages in its `config.json` section (`kaggle.stages`, `colab.stages`, `mac.stages`).
 
 ## How long it takes
 

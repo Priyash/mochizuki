@@ -270,17 +270,24 @@ class QwenStills:
 
         # 1. every prompt of the batch, on the CPU
         tp = diffusers.QwenImagePipeline.from_pretrained(local, transformer=None, vae=None, torch_dtype=torch.bfloat16)
+        enc = torch.device("cpu")
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported() and \
+                torch.cuda.get_device_properties(0).total_memory / 2**30 >= 30:
+            enc = torch.device("cuda")                  # A100 and up: seconds instead of minutes
+            tp.to(enc)
         self.embeds = {}
         t0 = time.time()
         for text in dict.fromkeys(prompts + [negative]):
             t1 = time.time()
             with torch.inference_mode():
-                e, m = tp.encode_prompt(prompt=text, device=torch.device("cpu"))
-            self.embeds[text] = (e, m)                # m is None when every token counts
-            log(f"prompt {len(self.embeds)}/{len(set(prompts + [negative]))} encoded on the CPU in {time.time() - t1:.0f} s")
-        log(f"encoded {len(self.embeds)} prompts on the CPU in {time.time() - t0:.0f} s")
+                e, m = tp.encode_prompt(prompt=text, device=enc)
+            self.embeds[text] = (e.cpu(), None if m is None else m.cpu())   # m is None when every token counts
+            log(f"prompt {len(self.embeds)}/{len(set(prompts + [negative]))} encoded on the {enc.type} in {time.time() - t1:.0f} s")
+        log(f"encoded {len(self.embeds)} prompts on the {enc.type} in {time.time() - t0:.0f} s")
         del tp
         gc.collect()
+        if enc.type == "cuda":
+            torch.cuda.empty_cache()
 
         # 2. the transformer, sized to this GPU, and the VAE: nothing else on the GPU
         room = gpu_room_gb(float(cfg.get("vram_headroom_gb", 2.5)))
@@ -624,7 +631,7 @@ def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: 
     groups: dict[str, list[dict]] = {}
     for job in m["jobs"]:
         name = job.get("engine") or ("keyframe" if job["kind"] == "ref" and job.get("refs")
-                                     else KIND_TO_ENGINE.get(job["kind"], job["model"]))
+                                     else KIND_TO_ENGINE.get(job["kind"]) or job.get("model"))
         groups.setdefault(name, []).append(job)
     for name, jobs in groups.items():
         if time.time() + 600 > deadline:

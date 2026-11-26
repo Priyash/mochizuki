@@ -511,7 +511,7 @@ def engine_broken(led: Ledger, backend: str, stage: str, runs: int = 2) -> str |
 
 def someone_else_can_take(p: Project, led: Ledger, backends: list, me, stage: str) -> bool:
     """Another backend would take this stage now: allowed to (its stages, or it takes over from a
-    stuck Kaggle) and within its budget (RunPod: GPU in stock, cap, balance). Otherwise a batch
+    stuck Kaggle) and within its budget (Colab: the agreed unit cap). Otherwise a batch
     stuck in Kaggle's queue keeps its place instead of being dropped for nothing."""
     for other in backends:
         if other is me:

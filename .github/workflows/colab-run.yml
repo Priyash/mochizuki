@@ -1,0 +1,78 @@
+# Runs a waiting Colab batch on a Colab VM (pay-as-you-go compute units), or one test still.
+# Started by the producer when it queues a Colab batch, and every 30 minutes in case a start was
+# missed. Exits at once when nothing is waiting. Setup: docs/colab.md (secret COLAB_ADC_JSON).
+name: colab-run
+on:
+  schedule:
+    - cron: "11,41 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "run: the waiting batch; test: one reference still, outside the ledger"
+        required: true
+        default: run
+        type: choice
+        options: [run, test]
+concurrency:
+  group: colab-runner
+  cancel-in-progress: false
+permissions:
+  contents: write
+  actions: write
+jobs:
+  colab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Is there work, and is Colab set up?
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_CREDS: ${{ secrets.COLAB_ADC_JSON != '' }}
+        run: |
+          mode="${{ inputs.mode || 'run' }}"
+          if [ "$HAS_CREDS" != "true" ]; then echo "Colab is not set up yet (secret COLAB_ADC_JSON); see docs/colab.md"; exit 0; fi
+          if [ "$mode" = "run" ]; then
+            n=$(gh api "repos/${{ github.repository }}/releases/tags/batches" --jq '[.assets[].name | select(startswith("colab-") and endswith(".tar.gz") and (endswith(".results.tar.gz") | not))] | length' 2>/dev/null || echo 0)
+            if [ "${n:-0}" = "0" ]; then echo "no Colab batch is waiting"; exit 0; fi
+          fi
+          echo "go=1" >> "$GITHUB_OUTPUT"
+      - name: Colab CLI and sign-in
+        if: steps.gate.outputs.go == '1'
+        env:
+          COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+        run: |
+          pip install -q google-colab-cli
+          mkdir -p "$HOME/.config/gcloud"
+          printf '%s' "$COLAB_ADC_JSON" > "$HOME/.config/gcloud/application_default_credentials.json"
+          chmod 600 "$HOME/.config/gcloud/application_default_credentials.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/gcloud/application_default_credentials.json" >> "$GITHUB_ENV"
+      - name: Run
+        if: steps.gate.outputs.go == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COLAB_AUTH: adc
+        run: |
+          if [ "${{ inputs.mode || 'run' }}" = "test" ]; then
+            python -m pipeline colab-test --out colab-test
+          else
+            python -m pipeline colab-runner --work colab-work
+          fi
+      - name: Start the producer to collect
+        if: steps.gate.outputs.go == '1' && (inputs.mode || 'run') == 'run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/actions/workflows/produce.yml/dispatches" -f ref=main || true
+      - name: Forget the sign-in
+        if: always()
+        run: rm -f "$HOME/.config/gcloud/application_default_credentials.json"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.gate.outputs.go == '1' && inputs.mode == 'test'
+        with:
+          name: colab-test
+          path: colab-test/**/out/
+          if-no-files-found: ignore

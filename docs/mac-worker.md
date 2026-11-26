@@ -2,7 +2,8 @@
 
 Your own Apple Silicon Mac makes the reference stills (gate 1) and the keyframes for free, with
 [mflux](https://pypi.org/project/mflux/) (Apple's MLX, native on M-series chips). Kaggle's T4s
-can't: Qwen-Image overflows in their fp16. Video and the 4K upscale stay on Kaggle or RunPod.
+can't: Qwen-Image overflows in their fp16. Video and the 4K upscale stay on Kaggle. Colab (docs/colab.md) is the paid alternative; switch
+`mac.enabled` on in `config.json` to use the Mac.
 
 The producer on GitHub keeps working as before. When it needs stills or keyframes, it puts a batch
 in the repo's `batches` release and waits. The worker on your Mac takes it, renders it, and
@@ -93,4 +94,4 @@ self-test again.
 - **`could not tell the repository`:** run it inside the `mochizuki` folder after `gh auth login`,
   or pass `--repo Priyash/mochizuki`.
 
-Nothing here costs money, and the worker never touches Kaggle, RunPod or the ledger.
+Nothing here costs money, and the worker never touches Kaggle, Colab or the ledger.

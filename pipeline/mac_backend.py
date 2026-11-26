@@ -34,6 +34,7 @@ from datetime import datetime
 from pathlib import Path
 
 RELEASE = "batches"
+NAME = "mac"
 DEFAULTS = {
     "enabled": False,
     "stages": ["refs", "keyframes"],
@@ -117,20 +118,22 @@ class Release:
         self._fetch(asset["browser_download_url"], dest)
 
 
-def _names(batch_id: str) -> dict[str, str]:
-    b = f"mac-{batch_id}"
+def _names(batch_id: str, prefix: str = "mac") -> dict[str, str]:
+    b = f"{prefix}-{batch_id}"
     return {"inputs": f"{b}.tar.gz", "claim": f"{b}.claim.json", "progress": f"{b}.progress.json",
             "results": f"{b}.results.tar.gz"}
 
 
 # ==================================================================== producer side
-class MacBackend:
+class ReleaseBackend:
+    """A batch waits in the `batches` release as <name>-<id>.tar.gz until a worker elsewhere (the
+    Mac, or the Colab runner) claims it, sends heartbeats, and uploads <name>-<id>.results.tar.gz."""
     name = "mac"
     accelerator = ""
     take_over = False
 
-    def __init__(self, p, repo: str, gh=None, fetch=None, now=time.time):
-        self.cfg = settings(p)
+    def __init__(self, p, repo: str, gh=None, fetch=None, now=time.time, cfg: dict | None = None):
+        self.cfg = cfg if cfg is not None else settings(p)
         self.rel = Release(repo, gh, fetch)
         self.now = now
         self.stages = tuple(self.cfg["stages"]) if self.cfg.get("stages") else None
@@ -144,14 +147,14 @@ class MacBackend:
 
     def publish_dataset(self, folder: Path, ref: str, message: str) -> None:
         batch_id = message
-        tgz = Path(folder).parent / _names(batch_id)["inputs"]
+        tgz = Path(folder).parent / _names(batch_id, self.name)["inputs"]
         with tarfile.open(tgz, "w:gz") as t:
             for f in sorted(Path(folder).iterdir()):
                 if f.name not in ("dataset-metadata.json", "worker.py"):
                     t.add(f, arcname=f.name)
         self.rel.ensure()
         self.rel.upload(tgz)
-        self.log.append(f"{tgz.name} ({tgz.stat().st_size // 1024} KB) waits for a Mac")
+        self.log.append(f"{tgz.name} ({tgz.stat().st_size // 1024} KB) waits for the {self.name} worker")
 
     def wait_dataset_ready(self, ref: str, **_) -> None:
         return None
@@ -160,7 +163,7 @@ class MacBackend:
         return Path(folder).parent.name                  # the handle is the batch id
 
     def status(self, ref: str, handle: str | None = None) -> str:
-        n, a = _names(handle or ""), self.rel.assets()
+        n, a = _names(handle or "", self.name), self.rel.assets()
         if not a:
             return "unknown"                             # GitHub unreachable: ask again next run
         if n["results"] in a:
@@ -172,18 +175,18 @@ class MacBackend:
             beat = max(_iso(a[n["claim"]].get("updated_at")),
                        _iso((a.get(n["progress"]) or {}).get("updated_at")))
             if self.now() - beat > float(self.cfg["stale_minutes"]) * 60:
-                self.log.append(f"the Mac working on {handle} went quiet "
+                self.log.append(f"the {self.name} worker on {handle} went quiet "
                                 f"{(self.now() - beat) / 60:.0f} min ago; giving up on it")
                 return "error"
             return "running"
         waited = self.now() - _iso(a[n["inputs"]].get("created_at"))
         if waited > float(self.cfg["max_wait_hours"]) * 3600:
-            self.log.append(f"no Mac took {handle} in {waited / 3600:.0f} h; its jobs are freed")
+            self.log.append(f"no {self.name} worker took {handle} in {waited / 3600:.0f} h; its jobs are freed")
             return "error"
         return "queued"
 
     def output(self, ref: str, dest: Path, handle: str | None = None) -> None:
-        n, a = _names(handle or ""), self.rel.assets()
+        n, a = _names(handle or "", self.name), self.rel.assets()
         try:
             if n["results"] in a:
                 tgz = Path(dest) / n["results"]
@@ -198,6 +201,10 @@ class MacBackend:
                 for name in n.values():
                     if name in a:
                         self.rel.delete(name)
+
+
+class MacBackend(ReleaseBackend):
+    name = "mac"
 
 
 def from_env(p):

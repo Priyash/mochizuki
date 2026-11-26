@@ -77,7 +77,7 @@ def test_a_silent_mac_or_no_mac_frees_the_jobs(tmp_path):
     kg.tick(proj, led, mac, 1, engine_set="stub")
     b = led.active_batch("mac")
     later = mb.MacBackend(proj, "o/r", gh=fr.gh, now=lambda: time.time() + 80 * 3600)
-    assert later.status("", b["id"]) == "error" and "no Mac took" in later.log[-1]
+    assert later.status("", b["id"]) == "error" and "no mac worker took" in later.log[-1]
     claim = tmp_path / f"mac-{b['id']}.claim.json"
     claim.write_text("{}")
     fr.gh(["release", "upload", "batches", str(claim)])

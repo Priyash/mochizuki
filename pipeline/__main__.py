@@ -58,20 +58,14 @@ def main(argv=None) -> int:
     a.add_argument("--engine-set", default="gpu", choices=["gpu", "stub"])
     a.add_argument("--work", default=str(Path.home() / "mochizuki-mac"))
     a.add_argument("--repo", default=os.environ.get("MOCHI_REPO", ""), help="owner/repo (default: this clone's)")
+    a = sub.add_parser("colab-runner", help="take the waiting Colab batch and run it on a Colab VM (GitHub Actions)")
+    a.add_argument("--work", default="colab-work")
+    a = sub.add_parser("colab-test", help="one reference still on a Colab VM, outside the ledger")
+    a.add_argument("--out", default="colab-test")
     a = sub.add_parser("kaggle-probe", help="test the stills engine on a Kaggle T4 outside the ledger")
     a.add_argument("--variants", default="fp16,fp32", help="precisions to try, in order (fp16, fp32, bf16, config)")
     a.add_argument("--minutes", type=int, default=60)
     a.add_argument("--out", default="probe-out")
-    a = sub.add_parser("runpod-smoke", help="one tiny batch on a real RunPod pod, then delete it")
-    a.add_argument("--engine-set", default="stub", choices=["gpu", "stub"])
-    a.add_argument("--model", default="Wan 2.2 5B")
-    a.add_argument("--seconds", type=float, default=2)
-    a.add_argument("--out", help="copy the clip here")
-    a = sub.add_parser("runpod-poll", help="exit 0 if the producer should run now: a RunPod batch finished, "
-                                           "or RunPod was waiting for a GPU and one is in stock within price")
-    a.add_argument("--state", default="state")
-    a = sub.add_parser("runpod-check", help="check the RunPod key without creating anything")
-    a.add_argument("--deep", action="store_true", help="also test the create request, image, agent and inputs release")
     a = sub.add_parser("plan", help="dry run: GPU time and money, nothing is called"); chap(a, False)
 
     # run-now steps (mock for testing, fal for the paid fallback)
@@ -122,17 +116,6 @@ def main(argv=None) -> int:
         print(planner.render(planner.plan(p, args.chapter), title))
         return 0
 
-    if args.cmd == "runpod-check":
-        from . import runpod_backend  # noqa: PLC0415
-        sha = os.environ.get("GITHUB_SHA", "main")
-        rp = runpod_backend.RunPodBackend(p, os.environ.get("RUNPOD_API_KEY", ""),
-                                          os.environ.get("GITHUB_REPOSITORY", ""), sha)
-        r = runpod_backend.check(rp)
-        if args.deep:
-            r["deep"] = runpod_backend.deep_check(rp, sha)
-            r["ok"] = r["ok"] and r["deep"]["ok"]
-        print(json.dumps(r, indent=1, default=str))
-        return 0 if r["ok"] else 3
     if args.cmd == "mac-worker":
         from . import mac_backend  # noqa: PLC0415
         cfg = mac_backend.settings(p)
@@ -153,6 +136,17 @@ def main(argv=None) -> int:
         n = mac_backend.worker_loop(mac_backend.Release(repo), Path(args.work), engine, cfg, once=args.once)
         print(f"{n} batch(es) done")
         return 0
+    if args.cmd in ("colab-runner", "colab-test"):
+        from . import colab_backend as cb  # noqa: PLC0415
+        cfg, cli = cb.settings(p), cb.ColabCLI()
+        if args.cmd == "colab-test":
+            r = cb.test_still(p, cli, cfg, list(kg.PACKAGES), Path(args.out))
+            print(json.dumps(r, indent=1, default=str))
+            return 0 if r.get("ok") and r.get("still") else 3
+        repo = os.environ.get("GITHUB_REPOSITORY", "")
+        b = cb.take_one(cb.Release(repo), Path(args.work), cli, cfg, list(kg.PACKAGES))
+        print(f"ran {b}" if b else "nothing ran")
+        return 0
     if args.cmd == "kaggle-probe":
         from . import kaggle_probe  # noqa: PLC0415
         kgc = kg.KaggleCLI()
@@ -160,57 +154,6 @@ def main(argv=None) -> int:
         print("\n".join(kgc.log[-6:]))
         print(json.dumps(r, indent=1, default=str))
         return 0 if any(j.get("ok") for j in r["jobs"].values()) else 3
-    if args.cmd == "runpod-smoke":
-        import shutil  # noqa: PLC0415
-        from . import runpod_backend  # noqa: PLC0415
-        key = os.environ.get("RUNPOD_API_KEY", "")
-        if not key:
-            print("set RUNPOD_API_KEY")
-            return 2
-        rp = runpod_backend.RunPodBackend(p, key, os.environ.get("GITHUB_REPOSITORY", ""),
-                                          os.environ.get("GITHUB_SHA", "main"))
-        try:
-            r = runpod_backend.smoke(p, rp, args.engine_set, args.model, args.seconds)
-        finally:
-            print("\n".join(rp.log))
-        if args.out and r.get("clip"):
-            Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(r["clip"], args.out)
-        print(json.dumps(r, indent=1, default=str))
-        return 0 if r.get("ok") else 3
-    led = steps.open_ledger(p)
-    if args.cmd == "runpod-poll":
-        from . import mac_backend, runpod_backend  # noqa: PLC0415
-        mac = mac_backend.from_env(p)
-        if mac is not None:
-            backends.append(mac)
-        else:                                       # Mac switched off: its waiting batches go back to the pool
-            for b in led.active_batches():
-                if b["backend"] == "mac":
-                    kg.discard(led, b["id"], "the Mac backend was switched off in config.json")
-                    if not args.no_store:
-                        rel = mac_backend.Release(os.environ.get("GITHUB_REPOSITORY", ""))
-                        for name in mac_backend._names(b["id"]).values():
-                            rel.delete(name)
-                    print(f"Mac batch {b['id']} dropped; its jobs are free again", flush=True)
-        rp = runpod_backend.from_env(p)
-        if rp is None:
-            print("RunPod is off")
-            return 1
-        b = led.active_batch("runpod")
-        if not b or b["status"] != "submitted":
-            sf = Path(args.state) / "status.json"
-            acts = json.loads(sf.read_text()).get("actions", []) if sf.exists() else []
-            waiting = any(a.get("backend") == "runpod" and a.get("action") == "resting"
-                          and str(a.get("reason", "")).startswith("no GPU in stock") for a in acts)
-            if waiting and rp.pick_gpu():
-                print("RunPod was waiting for a GPU; " + rp.log[-1])
-                return 0
-            print("no RunPod batch running" + ("; still no GPU within price" if waiting else ""))
-            return 1
-        st = rp.status("", b["handle"])
-        print(f"{b['id']}: {st}; " + " | ".join(rp.log[-2:]))
-        return 0 if st in ("complete", "error") else 1
     if args.cmd == "ci-step":
         from .store import ReleaseStore  # noqa: PLC0415
         state = Path(args.state)
@@ -222,22 +165,20 @@ def main(argv=None) -> int:
         backends = []
         if has_creds or args.kaggle == "local":
             backends.append(kaggle_backend(args.kaggle, p))
-        from . import mac_backend, runpod_backend  # noqa: PLC0415
-        mac = mac_backend.from_env(p)
-        if mac is not None:
-            backends.append(mac)
-        else:                                       # Mac switched off: its waiting batches go back to the pool
-            for b in led.active_batches():
-                if b["backend"] == "mac":
-                    kg.discard(led, b["id"], "the Mac backend was switched off in config.json")
+        from . import colab_backend, mac_backend  # noqa: PLC0415
+        for mod in (colab_backend, mac_backend):        # Kaggle first, then Colab, then the Mac
+            b_ = mod.from_env(p)
+            if b_ is not None:
+                backends.append(b_)
+                continue
+            for b in led.active_batches():              # switched off: its waiting batches go back to the pool
+                if b["backend"] == mod.NAME:
+                    kg.discard(led, b["id"], f"the {mod.NAME} backend was switched off in config.json")
                     if not args.no_store:
                         rel = mac_backend.Release(os.environ.get("GITHUB_REPOSITORY", ""))
-                        for name in mac_backend._names(b["id"]).values():
+                        for name in mac_backend._names(b["id"], mod.NAME).values():
                             rel.delete(name)
-                    print(f"Mac batch {b['id']} dropped; its jobs are free again", flush=True)
-        rp = runpod_backend.from_env(p)
-        if rp is not None:
-            backends.append(rp)
+                    print(f"{mod.NAME} batch {b['id']} dropped; its jobs are free again", flush=True)
         out = ci.step(p, led, args.chapter or ci.chapter_of(state), state, backends, engine_set=args.engine_set)
         print(json.dumps(out["notice"], ensure_ascii=False))
         return 0
