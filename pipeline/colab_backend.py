@@ -34,8 +34,9 @@ import threading
 import time
 from pathlib import Path
 
-from .mac_backend import Release, ReleaseBackend, _names
-from .mac_backend import _log as _mac_log
+from .log import log as _structured_log
+from .release import Release, ReleaseBackend
+from .release import names as _names
 
 NAME = "colab"
 DEFAULTS = {
@@ -99,7 +100,7 @@ def settings(p) -> dict:
 
 
 def _log(msg: str, event: str = "note", level: str = "info", **fields) -> None:
-    _mac_log(msg, event, level, comp="colab", **fields)
+    _structured_log("colab", event, msg, level, **fields)
 
 
 # ==================================================================== producer side

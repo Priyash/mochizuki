@@ -52,14 +52,10 @@ def main(argv=None) -> int:
         p.add_argument("--kaggle", default="real", choices=["real", "local"],
                        help="local runs the worker here with stub engines, for testing")
 
-    a = sub.add_parser("mac-worker", help="on your Apple Silicon Mac: render queued stills and keyframes with mflux")
-    a.add_argument("--once", action="store_true", help="take what is waiting, then stop")
-    a.add_argument("--self-test", action="store_true", help="make one still locally; nothing is sent to GitHub")
-    a.add_argument("--engines", default="", help="another engine set from config mac.engines_<name>, e.g. zimage_base")
-    a.add_argument("--edit-only", action="store_true", help="self-test: reuse the still from the last self-test and test only the keyframe (edit) engine")
-    a.add_argument("--engine-set", default="gpu", choices=["gpu", "stub"])
-    a.add_argument("--work", default=str(Path.home() / "mochizuki-mac"))
-    a.add_argument("--repo", default=os.environ.get("MOCHI_REPO", ""), help="owner/repo (default: this clone's)")
+    a = sub.add_parser("mac-worker", help="on your Apple Silicon Mac: render stills, keyframes and video, "
+                                         "run self-tests, train LoRAs (docs/mac-worker.md)")
+    from .mac import cli as mac_cli  # noqa: PLC0415
+    mac_cli.add_arguments(a)
     a = sub.add_parser("colab-runner", help="take the waiting Colab batch and run it on a Colab VM (GitHub Actions)")
     a.add_argument("--work", default="colab-work")
     a = sub.add_parser("colab-test", help="one reference still on a Colab VM, outside the ledger")
@@ -122,38 +118,8 @@ def main(argv=None) -> int:
         return 0
 
     if args.cmd == "mac-worker":
-        from . import mac_backend  # noqa: PLC0415
-        cfg = mac_backend.settings(p)
-        if args.engines:
-            alt = cfg.get(f"engines_{args.engines}")
-            if not alt:
-                print(f"no engine set mac.engines_{args.engines} in config.json", file=sys.stderr)
-                return 2
-            cfg = {**cfg, "engines": alt}
-        from .log import set_file  # noqa: PLC0415
-        if os.environ.get("MOCHI_RAW") != "1":       # structured lines only; MOCHI_RAW=1 shows the tools' own bars
-            os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
-        lf = set_file(Path.home() / "mochizuki-mac" / "logs" / time.strftime("worker-%Y%m%d.jsonl"))
-        mac_backend._log(f"mac worker: {'self-test' if args.self_test else 'waiting for batches'}, "
-                         f"engines {args.engine_set}; JSON log {lf}", event="worker.start",
-                         mode="self-test" if args.self_test else "worker", log_file=str(lf))
-        engine = mac_backend.StubEngine() if args.engine_set == "stub" else mac_backend.MfluxEngine(cfg)
-        if args.self_test:
-            r = mac_backend.self_test(p, engine, Path(args.work) / "selftest-style.png", edit_only=args.edit_only)
-            print(json.dumps(r, indent=1))
-            return 0 if r.get("still", {}).get("ok", True) and r.get("edit", {}).get("ok", True) else 3
-        repo = args.repo
-        if not repo:
-            r = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
-                               capture_output=True, text=True, cwd=p.root)
-            repo = r.stdout.strip()
-        if not repo:
-            print("could not tell the repository: run inside the clone with gh logged in, or pass --repo owner/repo")
-            return 2
-        print(f"mac worker for {repo}: waiting for batches (Ctrl-C to stop)", flush=True)
-        n = mac_backend.worker_loop(mac_backend.Release(repo), Path(args.work), engine, cfg, once=args.once)
-        print(f"{n} batch(es) done")
-        return 0
+        from .mac import cli as mac_cli  # noqa: PLC0415
+        return mac_cli.run(p, args)
     if args.cmd in ("colab-runner", "colab-test", "colab-smoke", "colab-gpus"):
         from . import colab_backend as cb  # noqa: PLC0415
         from .log import set_file  # noqa: PLC0415
@@ -194,8 +160,9 @@ def main(argv=None) -> int:
         backends = []
         if has_creds or args.kaggle == "local":
             backends.append(kaggle_backend(args.kaggle, p))
-        from . import colab_backend, mac_backend  # noqa: PLC0415
-        for mod in (colab_backend, mac_backend):        # Kaggle first, then Colab, then the Mac
+        from . import colab_backend, mac  # noqa: PLC0415
+        from .release import Release, names  # noqa: PLC0415
+        for mod in (colab_backend, mac):                 # Kaggle first, then Colab, then the Mac
             b_ = mod.from_env(p)
             if b_ is not None:
                 backends.append(b_)
@@ -204,8 +171,8 @@ def main(argv=None) -> int:
                 if b["backend"] == mod.NAME:
                     kg.discard(led, b["id"], f"the {mod.NAME} backend was switched off in config.json")
                     if not args.no_store:
-                        rel = mac_backend.Release(os.environ.get("GITHUB_REPOSITORY", ""))
-                        for name in mac_backend._names(b["id"], mod.NAME).values():
+                        rel = Release(os.environ.get("GITHUB_REPOSITORY", ""))
+                        for name in names(b["id"], mod.NAME).values():
                             rel.delete(name)
                     print(f"{mod.NAME} batch {b['id']} dropped; its jobs are free again", flush=True)
         out = ci.step(p, led, args.chapter or ci.chapter_of(state), state, backends, engine_set=args.engine_set)
