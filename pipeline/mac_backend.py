@@ -48,13 +48,10 @@ DEFAULTS = {
     "poll_seconds": 60,
     "seconds_per_job": 300,
     "engines": {
-        "refs": {"cmd": ["mflux-generate-qwen", "--model", "mlx-community/Qwen-Image-2512-4bit", "--steps", "20",
-                         "--low-ram"]},
-        "keyframe": {"cmd": ["mflux-generate-qwen-edit", "--model", "{model_dir}", "--base-model", "qwen",
-                             "--steps", "20", "--low-ram"],
-                     "download": {"repo": "fcreait/Qwen-Image-Edit-mflux", "folder": "q4",
-                                  "tokenizer_from": "Qwen/Qwen-Image-Edit-2511"},
-                     "image_flag": "--image-paths", "max_refs": 3},
+        "refs": {"cmd": ["mflux-generate-z-image-turbo", "--model", "z-image-turbo", "--steps", "9"],
+                 "hf_repo": "Tongyi-MAI/Z-Image-Turbo"},
+        "keyframe": {"cmd": ["mflux-generate-flux2-edit", "--model", "flux2-klein-4b", "--steps", "4"],
+                     "hf_repo": "black-forest-labs/FLUX.2-klein-4B", "image_flag": "--image-paths", "max_refs": 3},
     },
 }
 
@@ -414,8 +411,13 @@ _STEP = re.compile(r"(\d+)/(\d+) \[")
 _BAR = re.compile(r"\d+%\|")
 
 
+def hf_cache_dir(repo: str) -> Path:
+    home = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface"))
+    return Path(os.environ.get("HF_HUB_CACHE", home / "hub")) / f"models--{repo.replace('/', '--')}"
+
+
 def run_streaming(cmd: list[str], timeout: float, prefix: str = "", label: str = "",
-                  every: float = 60.0, raw: bool | None = None) -> tuple[int, str]:
+                  every: float = 60.0, raw: bool | None = None, cache: Path | None = None) -> tuple[int, str]:
     """Run a command (mflux) and turn its output into structured log lines: one `render.step`
     per step with seconds per step and time left, `render.loading` while the model loads,
     `render.status` (memory, swap, thermal) when nothing has moved for `every` seconds, and any
@@ -439,6 +441,16 @@ def run_streaming(cmd: list[str], timeout: float, prefix: str = "", label: str =
             mem = mac_memory()
             if st["first_step_at"] is None:
                 msg, ev = f"{tag}loading the model into memory ({(now - t0) / 60:.1f} min so far)", "render.loading"
+                if cache is not None:                   # mflux downloads a model the first time it is used
+                    gb = _dir_gb(cache)
+                    grew = gb - st.get("cache_gb", gb)
+                    st["cache_gb"] = gb
+                    mem["model_cache_gb"] = round(gb, 1)
+                    if grew > 0.05:
+                        msg = (f"{tag}downloading the model (first use): {gb:.1f} GB so far, "
+                               f"{grew * 1000 / max(1.0, every):.0f} MB/s")
+                        ev = "model.download.progress"
+                        st["last_change"] = now
             else:
                 msg, ev = (f"{tag}still on step {st['step']}/{st['total']} "
                            f"({(now - st['last_change']) / 60:.1f} min on this step)"), "render.status"
@@ -547,10 +559,16 @@ class MfluxEngine:
                 raise FileNotFoundError(f"inputs missing from the batch: {missing}")
             cmd += [e.get("image_flag", "--image-paths"), *paths]
         steps = cmd[cmd.index("--steps") + 1] if "--steps" in cmd else "?"
+        engine_name = cmd[cmd.index("--model") + 1] if "--model" in cmd else cmd[0]
         _log(f"rendering {job['key']}: {'edit of ' + str(len(images)) + ' image(s)' if edit else 'text to image'}, "
-             f"{job.get('width', 1664)}x{job.get('height', 928)}, {steps} steps", event="render.start", key=job["key"], mode="edit" if edit else "t2i", steps=steps)
+             f"{job.get('width', 1664)}x{job.get('height', 928)}, {steps} steps, {Path(engine_name).name}", event="render.start", key=job["key"], mode="edit" if edit else "t2i", steps=steps)
         t0 = time.time()
-        code, tail = run_streaming(cmd, float(self.cfg["seconds_per_job"]) * 6, label=job["key"] + ":")
+        cache = hf_cache_dir(e["hf_repo"]) if e.get("hf_repo") else None
+        if cache is not None and not cache.exists():
+            _log(f"{job['key']}: {e['hf_repo']} is not on this Mac yet; mflux downloads it first (progress every minute)",
+                 event="model.download", model=e["hf_repo"])
+        code, tail = run_streaming(cmd, float(self.cfg["seconds_per_job"]) * 6 + (3600 if cache is not None and not cache.exists() else 0),
+                                   label=job["key"] + ":", cache=cache)
         if code != 0 or not out.exists():
             raise RuntimeError(f"mflux exit {code}: {tail.strip()[-600:]}")
         self._check(out)

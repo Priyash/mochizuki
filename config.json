@@ -178,7 +178,7 @@
     "_note": "Gate 1: reference stills painted on Kaggle from style_bible/ref_prompts.json when style_bible/refs/ lacks them."
   },
   "mac": {
-    "_note": "Your own Apple Silicon Mac renders stills and keyframes for free with mflux (docs/mac-worker.md). Set for a 32 GB Mac: 4-bit models with --low-ram. With 48 GB or more, use mac.engines_8bit instead (better quality).",
+    "_note": "Your Mac renders previews offline with mflux (docs/mac-worker.md): Z-Image Turbo (6B, Apache 2.0) for stills and FLUX.2 [klein] 4B (Apache 2.0) for keyframes, both unquantized so there is no grain, fast on a 32 GB Mac. Final renders stay on Colab with Qwen. The Qwen 4-bit setup tested on 2026-11-27 (grainy, 20-60 min an image) is kept as engines_qwen4bit; engines_8bit needs 48 GB or more.",
     "enabled": false,
     "stages": [
       "refs",
@@ -187,8 +187,64 @@
     "batch_hours": 3,
     "max_wait_hours": 72,
     "stale_minutes": 45,
-    "seconds_per_job": 1400,
+    "seconds_per_job": 300,
     "engines": {
+      "refs": {
+        "cmd": [
+          "mflux-generate-z-image-turbo",
+          "--model",
+          "z-image-turbo",
+          "--steps",
+          "9"
+        ],
+        "hf_repo": "Tongyi-MAI/Z-Image-Turbo"
+      },
+      "keyframe": {
+        "cmd": [
+          "mflux-generate-flux2-edit",
+          "--model",
+          "flux2-klein-4b",
+          "--steps",
+          "4"
+        ],
+        "hf_repo": "black-forest-labs/FLUX.2-klein-4B",
+        "image_flag": "--image-paths",
+        "max_refs": 3
+      }
+    },
+    "engines_8bit": {
+      "refs": {
+        "cmd": [
+          "mflux-generate-qwen",
+          "--model",
+          "mlx-community/Qwen-Image-2512-8bit",
+          "--steps",
+          "30",
+          "--guidance",
+          "4.0",
+          "--negative-prompt",
+          "grainy, noisy, film grain, dithering, speckles, jpeg artifacts, blurry, photographic, live action, text, watermark"
+        ]
+      },
+      "keyframe": {
+        "cmd": [
+          "mflux-generate-qwen-edit",
+          "--model",
+          "mlx-community/qwen-image-edit-2511-8bit",
+          "--steps",
+          "30",
+          "--guidance",
+          "4.0",
+          "--negative-prompt",
+          "grainy, noisy, film grain, dithering, speckles, jpeg artifacts, blurry, photographic, live action, text, watermark"
+        ],
+        "image_flag": "--image-paths",
+        "max_refs": 3
+      }
+    },
+    "_keyframe_note": "mflux 0.24+: --base-model must name the Edit-2511 family (qwen-image-edit-2511) so its reference images are read at timestep 0; 'qwen' is refused.",
+    "_quality_note": "Self-test on the M2 Max 32 GB: 4-bit, 20 steps came out grainy at ~45 s/step. Now 30 steps, guidance 4.0 and a negative prompt against grain (~22 min a still).",
+    "engines_qwen4bit": {
       "refs": {
         "cmd": [
           "mflux-generate-qwen",
@@ -226,39 +282,7 @@
         "image_flag": "--image-paths",
         "max_refs": 3
       }
-    },
-    "engines_8bit": {
-      "refs": {
-        "cmd": [
-          "mflux-generate-qwen",
-          "--model",
-          "mlx-community/Qwen-Image-2512-8bit",
-          "--steps",
-          "30",
-          "--guidance",
-          "4.0",
-          "--negative-prompt",
-          "grainy, noisy, film grain, dithering, speckles, jpeg artifacts, blurry, photographic, live action, text, watermark"
-        ]
-      },
-      "keyframe": {
-        "cmd": [
-          "mflux-generate-qwen-edit",
-          "--model",
-          "mlx-community/qwen-image-edit-2511-8bit",
-          "--steps",
-          "30",
-          "--guidance",
-          "4.0",
-          "--negative-prompt",
-          "grainy, noisy, film grain, dithering, speckles, jpeg artifacts, blurry, photographic, live action, text, watermark"
-        ],
-        "image_flag": "--image-paths",
-        "max_refs": 3
-      }
-    },
-    "_keyframe_note": "mflux 0.24+: --base-model must name the Edit-2511 family (qwen-image-edit-2511) so its reference images are read at timestep 0; 'qwen' is refused.",
-    "_quality_note": "Self-test on the M2 Max 32 GB: 4-bit, 20 steps came out grainy at ~45 s/step. Now 30 steps, guidance 4.0 and a negative prompt against grain (~22 min a still)."
+    }
   },
   "colab": {
     "_note": "Google Colab pay-as-you-go: bf16 GPUs for stills and keyframes (docs/colab.md). The producer sizes each batch to what is left of total_cap_units (the owner's agreed budget: 100 units = $9.99); the runner will not start a VM below min_balance_units. Rates are units per GPU-hour as Colab charged them in 2026.",

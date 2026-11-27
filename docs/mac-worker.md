@@ -1,5 +1,11 @@
 # Rendering stills and keyframes on your Mac
 
+**Engines (since 2026-11-27):** Z-Image Turbo (6B, Apache 2.0) for stills and FLUX.2 [klein] 4B
+(Apache 2.0) for keyframes, both unquantized: no grain, a few minutes an image on a 32 GB Mac. They are
+for offline previews; the final renders are Qwen-Image on Colab. mflux downloads each model the first
+time it is used (about 30 GB in all) and the log shows the progress every minute. The 4-bit Qwen setup
+tested first (grainy, 20-60 minutes an image) is kept in config.json as `mac.engines_qwen4bit`.
+
 Your own Apple Silicon Mac makes the reference stills (gate 1) and the keyframes for free, with
 [mflux](https://pypi.org/project/mflux/) (Apple's MLX, native on M-series chips). Kaggle's T4s
 can't: Qwen-Image overflows in their fp16. Video and the 4K upscale stay on Kaggle. Colab (docs/colab.md) is the paid alternative; switch
