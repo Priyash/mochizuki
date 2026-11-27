@@ -55,6 +55,7 @@ def main(argv=None) -> int:
     a = sub.add_parser("mac-worker", help="on your Apple Silicon Mac: render queued stills and keyframes with mflux")
     a.add_argument("--once", action="store_true", help="take what is waiting, then stop")
     a.add_argument("--self-test", action="store_true", help="make one still locally; nothing is sent to GitHub")
+    a.add_argument("--engines", default="", help="another engine set from config mac.engines_<name>, e.g. zimage_base")
     a.add_argument("--edit-only", action="store_true", help="self-test: reuse the still from the last self-test and test only the keyframe (edit) engine")
     a.add_argument("--engine-set", default="gpu", choices=["gpu", "stub"])
     a.add_argument("--work", default=str(Path.home() / "mochizuki-mac"))
@@ -123,6 +124,12 @@ def main(argv=None) -> int:
     if args.cmd == "mac-worker":
         from . import mac_backend  # noqa: PLC0415
         cfg = mac_backend.settings(p)
+        if args.engines:
+            alt = cfg.get(f"engines_{args.engines}")
+            if not alt:
+                print(f"no engine set mac.engines_{args.engines} in config.json", file=sys.stderr)
+                return 2
+            cfg = {**cfg, "engines": alt}
         from .log import set_file  # noqa: PLC0415
         if os.environ.get("MOCHI_RAW") != "1":       # structured lines only; MOCHI_RAW=1 shows the tools' own bars
             os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"

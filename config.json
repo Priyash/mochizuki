@@ -282,6 +282,34 @@
         "image_flag": "--image-paths",
         "max_refs": 3
       }
+    },
+    "engines_zimage_base": {
+      "refs": {
+        "cmd": [
+          "mflux-generate-z-image",
+          "--model",
+          "z-image",
+          "--steps",
+          "40",
+          "--guidance",
+          "4.0",
+          "--negative-prompt",
+          "2D, hand-drawn, flat colours, sketch, watercolour, photograph, live action, text, watermark"
+        ],
+        "hf_repo": "Tongyi-MAI/Z-Image"
+      },
+      "keyframe": {
+        "cmd": [
+          "mflux-generate-flux2-edit",
+          "--model",
+          "flux2-klein-4b",
+          "--steps",
+          "4"
+        ],
+        "hf_repo": "black-forest-labs/FLUX.2-klein-4B",
+        "image_flag": "--image-paths",
+        "max_refs": 3
+      }
     }
   },
   "colab": {
