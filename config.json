@@ -294,7 +294,7 @@
           "--guidance",
           "4.0",
           "--negative-prompt",
-          "2D, hand-drawn, flat colours, sketch, watercolour, photograph, live action, western oil lantern, kerosene lamp, tears streaming, crying, arms raised overhead, mallet over a person, text, watermark"
+          "2D, hand-drawn, flat colours, sketch, watercolour, photograph, live action, western oil lantern, kerosene lamp, tears streaming, crying, eyes closed, arms raised overhead, cheering, exaggerated expression, mallet over a person, characters far apart, side profile, text, watermark"
         ],
         "hf_repo": "Tongyi-MAI/Z-Image"
       },
