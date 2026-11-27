@@ -27,6 +27,8 @@ class FakeColab:
         self.vms: dict[str, Path] = {}
         self.left = list(leftover)
         self.calls: list[list[str]] = []
+        self.gpu: dict[str, str] = {}
+        self.orphans: list[dict] = []
 
     def run(self, args, timeout=None):
         self.calls.append(args)
@@ -42,6 +44,7 @@ class FakeColab:
                 return 1, "[colab] Backend rejected accelerator"
             self.vms[s] = self.root / s
             self.vms[s].mkdir(parents=True)
+            self.gpu[s] = gpu
             return 0, "connected"
         if cmd == "upload":
             shutil.copyfile(args[3], self.vms[s] / Path(args[4]).name)
@@ -55,6 +58,15 @@ class FakeColab:
             self.vms.pop(s, None)
             return 0, ""
         return 1, f"unknown {args}"
+
+    def assignments(self):
+        return [{"endpoint": k, "accelerator": v} for k, v in self.gpu.items() if k in self.vms] + self.orphans
+
+    def unassign(self, endpoint):
+        self.calls.append(["unassign", endpoint])
+        self.orphans = [o for o in self.orphans if o["endpoint"] != endpoint]
+        self.vms.pop(endpoint, None)
+        return True
 
     def stream(self, args, deadline, on_line=None):
         self.calls.append(args)
@@ -98,9 +110,10 @@ def test_batch_runs_on_colab_and_comes_back(tmp_path):
     assert r["action"] == "built_and_submitted" and r["stage"] == "refs", r
     bid = led.active_batch("colab")["id"]
     assert fr.names() == [f"colab-{bid}.tar.gz"]
-    fake = FakeColab(tmp_path / "vms", grant=("L4",), leftover=["mochi-old"])
+    fake = FakeColab(tmp_path / "vms", grant=("L4",))
+    fake.orphans = [{"endpoint": "old-vm", "accelerator": "A100"}]
     assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", fake, cb.settings(proj), []) == bid
-    assert fake.vms == {} and fake.left == []           # its VM and a leftover one are both stopped
+    assert fake.vms == {} and fake.orphans == []        # its VM and a leftover one are both stopped
     assert ["new", "-s", f"mochi-{bid[-11:]}", "--gpu", "A100"] in fake.calls   # A100 asked first, L4 granted
     r = kg.tick(proj, led, colab, 1, engine_set="stub")
     assert r["action"] == "collected" and r["made"] > 0 and r["failed"] == 0, r
@@ -229,3 +242,31 @@ def test_a_small_balance_shrinks_the_batch_instead_of_running_dry(tmp_path):
     cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", fc, cb.settings(proj), [])
     man = json.loads(next((tmp_path / "w").rglob("in/manifest.json")).read_text())
     assert man["deadline_seconds"] < 1.3 * 3600 - 900
+
+
+def test_a_gpu_vm_left_on_colab_is_stopped_before_anything_else(tmp_path):
+    proj, led, fr, colab = _setup(tmp_path)
+    kg.tick(proj, led, colab, 1, engine_set="stub")
+    fc = FakeColab(tmp_path / "vms")
+    fc.orphans = [{"endpoint": "gpu-a100-xyz", "accelerator": "A100"}, {"endpoint": "cpu-1", "accelerator": "NONE"}]
+    cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", fc, cb.settings(proj), [])
+    assert ["unassign", "gpu-a100-xyz"] in fc.calls      # billing GPU VM stopped
+    assert ["unassign", "cpu-1"] not in fc.calls          # free CPU VM left alone
+
+
+def test_a_gpu_that_comes_up_after_the_request_gave_up_is_stopped(tmp_path):
+    proj = _setup(tmp_path)[0]
+
+    class Late(FakeColab):
+        def run(self, args, timeout=None):
+            if args[0] == "new":                         # the request times out, the VM appears anyway
+                self.calls.append(args)
+                self.orphans.append({"endpoint": "late-" + args[args.index("--gpu") + 1],
+                                     "accelerator": args[args.index("--gpu") + 1]})
+                return 1, "Read timed out."
+            return super().run(args, timeout)
+    fc = Late(tmp_path / "vms")
+    r = cb.run_remote(fc, cb.settings(proj), "mochi-x", tmp_path / "none.tgz", "b", tmp_path / "o.tgz", [])
+    assert r["gpu"] is None
+    assert ["unassign", "late-A100"] in fc.calls and ["unassign", "late-L4"] in fc.calls
+    assert fc.orphans == []

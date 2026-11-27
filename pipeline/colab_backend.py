@@ -28,6 +28,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import tarfile
 import threading
 import time
@@ -200,6 +201,50 @@ class ColabCLI:
         code, out = self.run(["sessions"], timeout=120)
         return re.findall(r"\b(mochi-[\w-]+)", out) if code == 0 else []
 
+    _PY = ("import json,sys\n"
+           "from colab_cli.auth import AuthProvider, get_credentials\n"
+           "from colab_cli.client import Client, Prod\n"
+           "c = Client(Prod(), get_credentials(None, provider=AuthProvider.ADC))\n"
+           "if sys.argv[1] == 'list':\n"
+           "    print(json.dumps([{'endpoint': a.endpoint, 'accelerator': str(a.accelerator.value)}"
+           " for a in c.list_assignments()]))\n"
+           "else:\n"
+           "    c.unassign(sys.argv[2]); print('unassigned')\n")
+
+    def assignments(self) -> list[dict] | None:
+        """Every VM assigned to the account on Colab's side (local CLI state does not survive a runner)."""
+        try:
+            r = subprocess.run([sys.executable, "-c", self._PY, "list"], capture_output=True, text=True, timeout=120)
+            return json.loads(r.stdout.strip().splitlines()[-1]) if r.returncode == 0 else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def unassign(self, endpoint: str) -> bool:
+        try:
+            r = subprocess.run([sys.executable, "-c", self._PY, "unassign", endpoint],
+                               capture_output=True, text=True, timeout=120)
+            return r.returncode == 0
+        except Exception:  # noqa: BLE001
+            return False
+
+
+def stop_gpu_vms(cli, keep: set | None = None, why: str = "left behind") -> int:
+    """Stop every GPU VM on the account except `keep`: a GPU VM nobody is using still bills units.
+    The account's Colab GPUs belong to this pipeline (docs/colab.md)."""
+    found = cli.assignments()
+    if found is None:
+        _log("could not list the account's Colab VMs")
+        return 0
+    n = 0
+    for a in found:
+        acc = str(a.get("accelerator", "")).upper()
+        if a["endpoint"] in (keep or set()) or acc in ("", "NONE", "CPU"):
+            continue
+        ok = cli.unassign(a["endpoint"])
+        _log(f"{'stopped' if ok else 'could not stop'} a {acc} VM {why}")
+        n += ok
+    return n
+
 
 def _wait_cap(cfg: dict) -> float:
     return float(cfg["batch_hours"]) * 3600 + float(cfg["setup_minutes"]) * 60 + 1800
@@ -210,12 +255,14 @@ def run_remote(cli: ColabCLI, cfg: dict, session: str, inputs_tgz: Path, batch_i
     """One VM: open it (first GPU that is granted), run the job, fetch the results, always stop it."""
     gpu = None
     tried = []
+    before = {a["endpoint"] for a in (cli.assignments() or [])}
     for g in cfg["gpus"]:
-        code, out = cli.run(["new", "-s", session, "--gpu", g], timeout=900)
+        code, out = cli.run(["new", "-s", session, "--gpu", g], timeout=2400)
         if code == 0:
             gpu = g
             break
         tried.append(_redact(f"{g}: {out.strip().splitlines()[-1] if out.strip() else code}")[:200])
+        stop_gpu_vms(cli, keep=before, why=f"that came up after the {g} request gave up")
     if gpu is None:
         return {"ok": False, "gpu": None, "error": "no GPU granted: " + "; ".join(tried)}
     t0 = time.time()
@@ -263,9 +310,7 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
     if not waiting:
         _log("no Colab batch is waiting")
         return None
-    for s in cli.sessions():                      # a VM left behind by a run that died still bills: stop it
-        cli.run(["stop", "-s", s], timeout=300)
-        _log(f"stopped leftover session {s}")
+    stop_gpu_vms(cli)                             # a VM left behind by a run that died still bills: stop it
     bal = cli.balance()
     if bal is not None and bal < float(cfg["min_balance_units"]):
         _log(f"only {bal:.1f} compute units left (minimum {cfg['min_balance_units']}); not starting a VM")
@@ -388,6 +433,7 @@ def test_still(p, cli: ColabCLI, cfg: dict, packages: list[str], out_dir: Path, 
     with tarfile.open(full, "w:gz") as t:
         for f in sorted((d / "in").iterdir()):
             t.add(f, arcname=f.name)
+    stop_gpu_vms(cli)
     before = cli.balance()
     if before is not None and before < float(cfg["min_balance_units"]):
         return {"batch": batch_id, "ok": False, "gpu": None, "balance_before": before, "units_used": 0.0,
@@ -480,6 +526,10 @@ def smoke(cli: ColabCLI, work: Path) -> dict:
     if not step("sign-in and balance", bal is not None, f"balance {bal} units" if bal is not None else out):
         return rep
     rep["gpu_needs_units"] = bal < 3
+    vms = cli.assignments()
+    step("list the account's VMs", vms is not None, f"{len(vms)} running: " + ", ".join(
+        str(v.get("accelerator")) for v in vms) if vms is not None else "failed")
+    rep["stopped_left_behind"] = stop_gpu_vms(cli)
     session = time.strftime("mochi-smoke-%H%M%S")
     t0 = time.time()
     code, out = cli.run(["new", "-s", session], timeout=900)

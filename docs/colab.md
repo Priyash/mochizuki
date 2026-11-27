@@ -63,3 +63,10 @@ Third-party connections → "Google Auth Library" → remove access. Then make a
 | `total_cap_units` | the budget you agreed; the producer stops at it |
 | `min_balance_units` | no VM below this balance |
 | `batch_hours` | the most one batch may run (GitHub stops a job at 6 h) |
+
+## Colab GPUs on this account belong to the pipeline
+
+Every colab-run (run, test, smoke) first stops any **GPU** VM on the signed-in Google account,
+because a GPU VM nobody is using still bills compute units, and a VM can come up after a slow
+request has already given up. CPU VMs are left alone. If you want to use a Colab GPU by hand on
+the same account, do it while no colab-run is running.

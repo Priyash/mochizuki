@@ -56,6 +56,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           COLAB_AUTH: adc
+          COLAB_CLI_REQUEST_TIMEOUT: "600"   # A100s can take minutes to assign; the CLI's own default gives up at 120 s
+          COLAB_CLI_ASSIGN_RETRIES: "1"
         run: |
           if [ "${{ inputs.mode || 'run' }}" = "smoke" ]; then
             python -m pipeline colab-smoke --work colab-smoke
