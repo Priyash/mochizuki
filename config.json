@@ -310,7 +310,36 @@
         "image_flag": "--image-paths",
         "max_refs": 3
       }
-    }
+    },
+    "engines_zimage_base_2d": {
+      "refs": {
+        "cmd": [
+          "mflux-generate-z-image",
+          "--model",
+          "z-image",
+          "--steps",
+          "40",
+          "--guidance",
+          "4.0",
+          "--negative-prompt",
+          "3D render, CGI, plastic skin, glossy, photograph, live action, western oil lantern, kerosene lamp, tears streaming, crying, eyes closed, arms raised overhead, cheering, exaggerated expression, mallet over a person, characters far apart, side profile, text, watermark"
+        ],
+        "hf_repo": "Tongyi-MAI/Z-Image"
+      },
+      "keyframe": {
+        "cmd": [
+          "mflux-generate-flux2-edit",
+          "--model",
+          "flux2-klein-4b",
+          "--steps",
+          "4"
+        ],
+        "hf_repo": "black-forest-labs/FLUX.2-klein-4B",
+        "image_flag": "--image-paths",
+        "max_refs": 3
+      }
+    },
+    "_compare_note": "2D vs 3D comparison: mac-worker --self-test --engines zimage_base (3D) and --engines zimage_base_2d --look 2d (2D): same model, prompt and seed; only the look differs."
   },
   "colab": {
     "_note": "Google Colab pay-as-you-go: bf16 GPUs for stills and keyframes (docs/colab.md). The producer sizes each batch to what is left of total_cap_units (the owner's agreed budget: 100 units = $9.99); the runner will not start a VM below min_balance_units. Rates are units per GPU-hour as Colab charged them in 2026.",

@@ -31,6 +31,8 @@ def add_arguments(a: argparse.ArgumentParser) -> None:
     a.add_argument("--once", action="store_true", help="take what is waiting, then stop")
     a.add_argument("--self-test", action="store_true", help="one still and one keyframe here; nothing is sent to GitHub")
     a.add_argument("--edit-only", action="store_true", help="self-test: reuse the last self-test still, test only the keyframe engine")
+    a.add_argument("--look", default="3d", choices=["3d", "2d"],
+                   help="self-test: the 3D (default) or 2D wording of the key art; files get -2d in their name")
     a.add_argument("--video-test", action="store_true", help="animate the self-test still (or --image) into a short take")
     a.add_argument("--image", default="", help="video test: the still to animate")
     a.add_argument("--seconds", type=float, default=2.0, help="video test: length of the take")
@@ -98,7 +100,8 @@ def run(p, args) -> int:
         print(json.dumps(r, indent=1))
         return 0 if r["video"]["ok"] else 3
     if mode == "self-test":
-        r = self_test(p, engines, work / "selftest-style.png", edit_only=args.edit_only)
+        name = "selftest-style.png" if args.look == "3d" else "selftest-style-2d.png"
+        r = self_test(p, engines, work / name, edit_only=args.edit_only, look=args.look)
         print(json.dumps(r, indent=1))
         return 0 if all(v.get("ok", True) for v in r.values()) else 3
 

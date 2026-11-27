@@ -19,12 +19,27 @@ VIDEO_PROMPT = ("The grandmother brings the wooden mallet down into the mortar i
                 "still.")
 
 
-def key_art_prompt(p) -> tuple[str, dict]:
+STYLE_2D = ("Hand-drawn 2D anime feature film, traditional cel animation look with clean ink lines and flat cel "
+            "shading, painted watercolour backgrounds, anime proportions and large expressive eyes, subtle emotional "
+            "acting in faces and hands, cinematic 16:9 framing, Japanese feature-film quality. No text, no logos, no "
+            "watermark.")
+_3D_TO_2D = (("3D CG anime feature film still, cel-shaded 3D character models with clean ink outlines.",
+              "2D hand-drawn anime feature film still, traditional cel animation with clean ink lines."),
+             ("Cel-shaded 3D CG, volumetric light,", "Hand-drawn 2D cel animation, painted light,"))
+
+
+def key_art_prompt(p, look: str = "3d") -> tuple[str, dict]:
+    """The style text plus the key-art prompt. look="2d" swaps every 3D wording for its 2D twin, so
+    the two looks can be compared with everything else the same (model, prompt, seed)."""
     style = p.root / "style_bible" / "style.txt"
     r = next(x for x in p.ref_plan() if x["name"] == "style")
-    prompt = "\n".join(x for x in ((style.read_text(encoding="utf-8").strip() if style.exists() else ""),
-                                   r["prompt"]) if x)
-    return prompt, r
+    style_text = style.read_text(encoding="utf-8").strip() if style.exists() else ""
+    body = r["prompt"]
+    if look == "2d":
+        style_text = STYLE_2D
+        for a, b in _3D_TO_2D:
+            body = body.replace(a, b)
+    return "\n".join(x for x in (style_text, body) if x), r
 
 
 def _step(n: str, what: str, fn):
@@ -41,9 +56,9 @@ def _step(n: str, what: str, fn):
     return {"ok": True, "seconds": took, **(info or {})}
 
 
-def self_test(p, engines, out: Path, edit_only: bool = False) -> dict:
+def self_test(p, engines, out: Path, edit_only: bool = False, look: str = "3d") -> dict:
     """1/2 a reference still from the key-art prompt; 2/2 a keyframe edited from it."""
-    prompt, r = key_art_prompt(p)
+    prompt, r = key_art_prompt(p, look)
     out.parent.mkdir(parents=True, exist_ok=True)
     describe(out.parent)
     if edit_only and not out.exists():
