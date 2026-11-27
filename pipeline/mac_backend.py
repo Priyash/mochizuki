@@ -25,6 +25,7 @@ import shutil
 import socket
 import struct
 import subprocess
+import sys
 import tarfile
 import threading
 import time
@@ -261,6 +262,63 @@ def resolve_cmd(e: dict, models: Path, download=None) -> list[str]:
     return [str(target) if x == "{model_dir}" else x for x in cmd]
 
 
+def _is_hf_repo(x: str) -> bool:
+    return x.count("/") == 1 and not x.startswith((".", "/", "~")) and not Path(x).exists()
+
+
+def prefetch_model(repo: str, download=None) -> None:
+    """Download a Hugging Face model once, with progress, so a render never waits on it silently."""
+    try:
+        from huggingface_hub import HfApi, snapshot_download  # noqa: PLC0415 - comes with mflux
+    except ImportError:
+        return
+    download = download or snapshot_download
+    try:
+        download(repo, local_files_only=True)
+        _log(f"model {repo}: already on this Mac")
+        return
+    except Exception:  # noqa: BLE001 - not cached yet
+        pass
+    size = ""
+    try:
+        gb = sum(f.size or 0 for f in HfApi().model_info(repo, files_metadata=True).siblings) / 1e9
+        size = f", about {gb:.0f} GB"
+    except Exception:  # noqa: BLE001
+        pass
+    _log(f"model {repo}: downloading once{size}; the progress bars below are Hugging Face's")
+    t0 = time.time()
+    download(repo)
+    _log(f"model {repo}: downloaded in {(time.time() - t0) / 60:.1f} min")
+
+
+def run_streaming(cmd: list[str], timeout: float, prefix: str = "  | ") -> tuple[int, str]:
+    """Run a command and show its output live (mflux's step progress included); returns
+    (exit code, last few KB of output) for error messages. Killed after `timeout` seconds."""
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    killer = threading.Timer(timeout, p.kill)
+    killer.start()
+    tail = b""
+    start_of_line = True
+    try:
+        while True:
+            chunk = p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(4096)
+            if not chunk:
+                break
+            tail = (tail + chunk)[-6000:]
+            out = b""
+            for ch in chunk.splitlines(keepends=True):
+                out += (prefix.encode() if start_of_line else b"") + ch
+                start_of_line = ch.endswith((b"\n", b"\r"))
+            sys.stdout.buffer.write(out)
+            sys.stdout.flush()
+        code = p.wait()
+    finally:
+        killer.cancel()
+    if code < 0:
+        _log(f"stopped after {timeout / 60:.0f} min (time limit)")
+    return code, tail.decode("utf-8", "replace")
+
+
 class MfluxEngine:
     """Runs mflux's command line once per image. Text-to-image for reference stills; image edit
     (1 to 3 input images) for derived stills and keyframes. Commands come from config mac.engines."""
@@ -274,7 +332,10 @@ class MfluxEngine:
 
     def _cmd(self, name: str) -> list[str]:
         if name not in self.cmds:
-            self.cmds[name] = resolve_cmd(self.cfg["engines"][name], self.models)
+            cmd = resolve_cmd(self.cfg["engines"][name], self.models)
+            if "--model" in cmd and _is_hf_repo(cmd[cmd.index("--model") + 1]):
+                prefetch_model(cmd[cmd.index("--model") + 1])
+            self.cmds[name] = cmd
         return self.cmds[name]
 
     def run(self, job: dict, inputs: Path, out: Path) -> dict:
@@ -290,12 +351,15 @@ class MfluxEngine:
             if missing:
                 raise FileNotFoundError(f"inputs missing from the batch: {missing}")
             cmd += [e.get("image_flag", "--image-paths"), *paths]
+        steps = cmd[cmd.index("--steps") + 1] if "--steps" in cmd else "?"
+        _log(f"rendering {job['key']}: {'edit of ' + str(len(images)) + ' image(s)' if edit else 'text to image'}, "
+             f"{job.get('width', 1664)}x{job.get('height', 928)}, {steps} steps")
         t0 = time.time()
-        r = subprocess.run(cmd, capture_output=True, text=True,
-                           timeout=float(self.cfg["seconds_per_job"]) * 6)
-        if r.returncode != 0 or not out.exists():
-            raise RuntimeError(f"mflux exit {r.returncode}: {(r.stderr or r.stdout).strip()[-600:]}")
+        code, tail = run_streaming(cmd, float(self.cfg["seconds_per_job"]) * 6)
+        if code != 0 or not out.exists():
+            raise RuntimeError(f"mflux exit {code}: {tail.strip()[-600:]}")
         self._check(out)
+        _log(f"{job['key']}: saved {out} ({time.time() - t0:.0f} s)")
         return {"seconds": round(time.time() - t0, 1), "seed": _seed(job["key"]), "engine": cmd[0],
                 "model": cmd[cmd.index("--model") + 1] if "--model" in cmd else None}
 
@@ -318,9 +382,15 @@ def run_batch(manifest: dict, inputs: Path, out: Path, engine, beat=None) -> dic
     res = {"batch_id": manifest["batch_id"], "jobs": {}, "groups": {"mac": {"host": socket.gethostname()}},
            "error": None}
     jobs = manifest["jobs"]
+    _log(f"batch {manifest['batch_id']}: {len(jobs)} job(s), stage {manifest.get('stage', '?')}, "
+         f"time limit {(deadline - t0) / 3600:.1f} h")
     for i, job in enumerate(jobs):
         if time.time() + float(job.get("est_seconds", 0)) > deadline:
+            _log(f"time limit reached; {len(jobs) - i} job(s) go to the next batch")
             break                                        # the rest go to the next batch
+        if i:
+            per = (time.time() - t0) / i
+            _log(f"[{i + 1}/{len(jobs)}] about {per * (len(jobs) - i) / 60:.0f} min left for this batch")
         target = out / f"{job['key']}.png"
         j0 = time.time()
         try:
@@ -355,7 +425,8 @@ def take_one(rel: Release, work: Path, engine, cfg: dict) -> str | None:
         claim = d / n["claim"]
         claim.write_text(json.dumps({"host": socket.gethostname(), "at": time.time()}))
         rel.upload(claim)
-        _log(f"claimed {batch_id}")
+        worker_loop._idle = 0
+        _log(f"claimed {batch_id}; downloading its inputs")
         rel.download(asset, d / n["inputs"])
         with tarfile.open(d / n["inputs"]) as t:
             try:
@@ -393,6 +464,7 @@ def take_one(rel: Release, work: Path, engine, cfg: dict) -> str | None:
         tgz = d / n["results"]
         with tarfile.open(tgz, "w:gz") as t:
             t.add(d / "out", arcname="out")
+        _log(f"{batch_id}: uploading results ({tgz.stat().st_size / 1e6:.0f} MB)")
         rel.upload(tgz)
         ok = sum(1 for j in res["jobs"].values() if j.get("ok"))
         _log(f"{batch_id}: {ok}/{len(manifest['jobs'])} made, results uploaded")
@@ -411,6 +483,11 @@ def worker_loop(rel: Release, work: Path, engine, cfg: dict, once: bool = False,
             continue
         if once:
             return done
+        idle = getattr(worker_loop, "_idle", 0) + 1
+        worker_loop._idle = idle
+        if idle == 1 or idle % 10 == 0:
+            _log(f"no batch for this Mac yet; checking every {float(cfg['poll_seconds']):.0f} s "
+                 f"({done} batch(es) done so far)")
         sleep(float(cfg["poll_seconds"]))
 
 
@@ -421,12 +498,43 @@ def self_test(p, engine, out: Path) -> dict:
     prompt = "\n".join(x for x in ((style.read_text(encoding="utf-8").strip() if style.exists() else ""),
                                    r["prompt"]) if x)
     out.parent.mkdir(parents=True, exist_ok=True)
+    _about_this_mac(out.parent)
+    _log("self-test 1/2: one reference still (text to image). The first run also downloads the models.")
     t0 = time.time()
     info = engine.run({"key": "selftest-style", "prompt": prompt, "width": r.get("width", 1664),
                        "height": r.get("height", 928)}, p.root, out)
     still = {"file": str(out), "seconds": round(time.time() - t0, 1), **(info or {})}
+    _log(f"self-test 1/2 done in {still['seconds'] / 60:.1f} min: {out}")
     edit_out = out.with_name(out.stem + "-edit.png")             # the keyframe engine, from that still
+    _log("self-test 2/2: one keyframe edited from that still (image edit)")
     t0 = time.time()
     info = engine.run({"key": "selftest-edit", "prompt": "Same place and light, seen from a lower angle at dusk.",
                        "refs": [out.name], "width": 1664, "height": 928}, out.parent, edit_out)
-    return {"still": still, "edit": {"file": str(edit_out), "seconds": round(time.time() - t0, 1), **(info or {})}}
+    edit = {"file": str(edit_out), "seconds": round(time.time() - t0, 1), **(info or {})}
+    _log(f"self-test 2/2 done in {edit['seconds'] / 60:.1f} min: {edit_out}")
+    _log(f"self-test passed. Look at both pictures, then send the lines above. At this speed 24 stills take "
+         f"about {24 * still['seconds'] / 3600:.1f} h (the models are downloaded now, so later stills are faster "
+         "than the first).")
+    return {"still": still, "edit": edit}
+
+
+def _about_this_mac(folder: Path) -> None:
+    def sh(*a):
+        try:
+            return subprocess.run(a, capture_output=True, text=True, timeout=10).stdout.strip()
+        except Exception:  # noqa: BLE001
+            return ""
+    chip = sh("sysctl", "-n", "machdep.cpu.brand_string") or "?"
+    mem = sh("sysctl", "-n", "hw.memsize")
+    ram = f"{int(mem) / 2**30:.0f} GB" if mem.isdigit() else "?"
+    free = shutil.disk_usage(Path.home()).free / 1e9
+    ver = ""
+    try:
+        from importlib.metadata import version  # noqa: PLC0415
+        ver = version("mflux")
+    except Exception:  # noqa: BLE001
+        ver = "not installed"
+    _log(f"this Mac: {chip}, {ram} memory, macOS {sh('sw_vers', '-productVersion') or '?'}, "
+         f"{free:.0f} GB free disk, mflux {ver}; pictures go to {folder}")
+    if free < 45:
+        _log(f"warning: {free:.0f} GB free; the models need about 40 GB")

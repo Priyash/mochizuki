@@ -122,6 +122,8 @@ def main(argv=None) -> int:
     if args.cmd == "mac-worker":
         from . import mac_backend  # noqa: PLC0415
         cfg = mac_backend.settings(p)
+        mac_backend._log(f"mac worker: {'self-test' if args.self_test else 'waiting for batches'}, "
+                         f"engines {args.engine_set}")
         engine = mac_backend.StubEngine() if args.engine_set == "stub" else mac_backend.MfluxEngine(cfg)
         if args.self_test:
             r = mac_backend.self_test(p, engine, Path(args.work) / "selftest-style.png")

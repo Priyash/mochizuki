@@ -37,8 +37,10 @@ pip install -U mflux
 python -m pipeline mac-worker --self-test
 ```
 
-The self-test downloads the models (once; this takes a while), makes one style still and one
-edited frame from it, and prints how long each took. Look at the two pictures it names in
+The self-test prints what it is doing as it goes: your Mac's chip, memory and free disk; each model
+download with Hugging Face's progress bars (once, about 40 GB in all, so this takes a while); then
+mflux's own step-by-step progress for one style still and one frame edited from it, how long each
+took, and an estimate for a 24-still batch. mflux's output is shown indented with `  | `. Look at the two pictures it names in
 `~/mochizuki-mac/`. If either command fails, see "If something fails" below.
 
 ## Running it
