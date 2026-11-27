@@ -6,3 +6,6 @@ ledger.sqlite
 auto.log
 __pycache__/
 .pytest_cache/
+
+# LoRA training runs (made by mac-worker --train-lora; they live under ~/mochizuki-mac)
+training/
