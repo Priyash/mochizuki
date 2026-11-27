@@ -55,6 +55,7 @@ def main(argv=None) -> int:
     a = sub.add_parser("mac-worker", help="on your Apple Silicon Mac: render queued stills and keyframes with mflux")
     a.add_argument("--once", action="store_true", help="take what is waiting, then stop")
     a.add_argument("--self-test", action="store_true", help="make one still locally; nothing is sent to GitHub")
+    a.add_argument("--edit-only", action="store_true", help="self-test: reuse the still from the last self-test and test only the keyframe (edit) engine")
     a.add_argument("--engine-set", default="gpu", choices=["gpu", "stub"])
     a.add_argument("--work", default=str(Path.home() / "mochizuki-mac"))
     a.add_argument("--repo", default=os.environ.get("MOCHI_REPO", ""), help="owner/repo (default: this clone's)")
@@ -129,9 +130,9 @@ def main(argv=None) -> int:
                          mode="self-test" if args.self_test else "worker", log_file=str(lf))
         engine = mac_backend.StubEngine() if args.engine_set == "stub" else mac_backend.MfluxEngine(cfg)
         if args.self_test:
-            r = mac_backend.self_test(p, engine, Path(args.work) / "selftest-style.png")
+            r = mac_backend.self_test(p, engine, Path(args.work) / "selftest-style.png", edit_only=args.edit_only)
             print(json.dumps(r, indent=1))
-            return 0
+            return 0 if r.get("still", {}).get("ok", True) and r.get("edit", {}).get("ok", True) else 3
         repo = args.repo
         if not repo:
             r = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],

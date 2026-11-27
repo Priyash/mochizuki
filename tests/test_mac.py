@@ -107,9 +107,20 @@ def test_model_folder_is_downloaded_once_and_put_in_the_command(tmp_path):
     def fake_download(repo, local_dir, allow_patterns):
         calls.append((repo, allow_patterns))
         (Path(local_dir) / "q4").mkdir(parents=True, exist_ok=True)
+        (Path(local_dir) / "q4" / "transformer.safetensors").write_bytes(b"w")
 
     e = {"cmd": ["mflux-generate-qwen-edit", "--model", "{model_dir}"], "download": {"repo": "a/b", "folder": "q4"}}
     cmd = mb.resolve_cmd(e, tmp_path, fake_download)
     assert cmd[-1] == str(tmp_path / "a--b" / "q4") and calls == [("a/b", ["q4/*"])]
     mb.resolve_cmd(e, tmp_path, fake_download)
     assert len(calls) == 1                                # not downloaded twice
+
+
+def test_an_empty_model_download_is_an_error_not_complete(tmp_path):
+    e = {"cmd": ["x", "--model", "{model_dir}"], "download": {"repo": "a/b", "folder": "gone"}}
+    try:
+        mb.resolve_cmd(e, tmp_path, lambda repo, local_dir, allow_patterns: None)
+        raise AssertionError("should have failed")
+    except RuntimeError as err:
+        assert "nothing was downloaded" in str(err)
+    assert not (tmp_path / "a--b" / "gone" / ".complete").exists()

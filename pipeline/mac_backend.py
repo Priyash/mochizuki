@@ -260,6 +260,13 @@ def resolve_cmd(e: dict, models: Path, download=None) -> list[str]:
         download(d["repo"], local_dir=str(local),
                  allow_patterns=[f"{d['folder']}/*"] if d.get("folder") else None)
         target.mkdir(parents=True, exist_ok=True)
+        weights = [f for f in target.rglob("*") if f.suffix in (".safetensors", ".npz", ".gguf")]
+        if not weights:
+            raise RuntimeError(f"{d['repo']}: nothing was downloaded into {target} (is the folder "
+                               f"'{d.get('folder', '')}' still in that repository?); not marking it complete")
+        gb = sum(f.stat().st_size for f in weights) / 1e9
+        _log(f"downloaded {d['repo']}/{d.get('folder', '')}: {len(weights)} weight file(s), {gb:.1f} GB",
+             event="model.downloaded", model=d["repo"], files=len(weights), gb=round(gb, 1))
         (target / ".complete").write_text("ok")
     return [str(target) if x == "{model_dir}" else x for x in cmd]
 
@@ -493,7 +500,7 @@ def worker_loop(rel: Release, work: Path, engine, cfg: dict, once: bool = False,
         sleep(float(cfg["poll_seconds"]))
 
 
-def self_test(p, engine, out: Path) -> dict:
+def self_test(p, engine, out: Path, edit_only: bool = False) -> dict:
     """One reference still ("style") with the real prompt, nothing sent to GitHub."""
     style = (p.root / "style_bible" / "style.txt")
     r = next(x for x in p.ref_plan() if x["name"] == "style")
@@ -501,22 +508,40 @@ def self_test(p, engine, out: Path) -> dict:
                                    r["prompt"]) if x)
     out.parent.mkdir(parents=True, exist_ok=True)
     _about_this_mac(out.parent)
+    if edit_only and out.exists():
+        _log(f"self-test: reusing {out}; testing only the keyframe engine", event="selftest.edit_only", file=str(out))
+        return _self_test_edit(engine, out, {"file": str(out), "seconds": 0, "reused": True})
     _log("self-test 1/2: one reference still (text to image). The first run also downloads the models.", event="selftest.start", step="1/2")
     t0 = time.time()
-    info = engine.run({"key": "selftest-style", "prompt": prompt, "width": r.get("width", 1664),
-                       "height": r.get("height", 928)}, p.root, out)
+    try:
+        info = engine.run({"key": "selftest-style", "prompt": prompt, "width": r.get("width", 1664),
+                           "height": r.get("height", 928)}, p.root, out)
+    except Exception as e:  # noqa: BLE001
+        _log(f"self-test 1/2 failed after {(time.time() - t0) / 60:.1f} min. Send me this line and the lines above "
+             f"it. Error: {e}", event="selftest.failed", level="error", step="1/2", error=str(e)[-800:])
+        return {"still": {"ok": False, "error": str(e)[-1500:]}}
     still = {"file": str(out), "seconds": round(time.time() - t0, 1), **(info or {})}
     _log(f"self-test 1/2 done in {still['seconds'] / 60:.1f} min: {out}", event="selftest.step_done", step="1/2", seconds=still["seconds"], file=str(out))
+    return _self_test_edit(engine, out, still)
+
+
+def _self_test_edit(engine, out: Path, still: dict) -> dict:
     edit_out = out.with_name(out.stem + "-edit.png")             # the keyframe engine, from that still
     _log("self-test 2/2: one keyframe edited from that still (image edit)", event="selftest.start", step="2/2")
     t0 = time.time()
-    info = engine.run({"key": "selftest-edit", "prompt": "Same place and light, seen from a lower angle at dusk.",
-                       "refs": [out.name], "width": 1664, "height": 928}, out.parent, edit_out)
+    try:
+        info = engine.run({"key": "selftest-edit", "prompt": "Same place and light, seen from a lower angle at dusk.",
+                           "refs": [out.name], "width": 1664, "height": 928}, out.parent, edit_out)
+    except Exception as e:  # noqa: BLE001 - say clearly which half failed, and why
+        _log(f"self-test 2/2 failed after {(time.time() - t0) / 60:.1f} min. Stills (1/2) work; keyframes do not "
+             f"yet. Send me this line and the lines above it. Error: {e}", event="selftest.failed", level="error",
+             step="2/2", error=str(e)[-800:])
+        return {"still": still, "edit": {"ok": False, "error": str(e)[-1500:]}}
     edit = {"file": str(edit_out), "seconds": round(time.time() - t0, 1), **(info or {})}
     _log(f"self-test 2/2 done in {edit['seconds'] / 60:.1f} min: {edit_out}", event="selftest.step_done", step="2/2", seconds=edit["seconds"], file=str(edit_out))
     _log(f"self-test passed. Look at both pictures, then send the lines above. At this speed 24 stills take "
-         f"about {24 * still['seconds'] / 3600:.1f} h (the models are downloaded now, so later stills are faster "
-         "than the first).", event="selftest.passed", est_hours_24=round(24 * still["seconds"] / 3600, 1))
+         f"about {24 * (still['seconds'] or edit['seconds']) / 3600:.1f} h (the models are downloaded now, so later stills are faster "
+         "than the first).", event="selftest.passed", est_hours_24=round(24 * (still["seconds"] or edit["seconds"]) / 3600, 1))
     return {"still": still, "edit": edit}
 
 

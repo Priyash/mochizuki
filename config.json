@@ -187,7 +187,7 @@
     "batch_hours": 3,
     "max_wait_hours": 72,
     "stale_minutes": 45,
-    "seconds_per_job": 360,
+    "seconds_per_job": 1400,
     "engines": {
       "refs": {
         "cmd": [
@@ -195,8 +195,12 @@
           "--model",
           "mlx-community/Qwen-Image-2512-4bit",
           "--steps",
-          "20",
-          "--low-ram"
+          "30",
+          "--low-ram",
+          "--guidance",
+          "4.0",
+          "--negative-prompt",
+          "grainy, noisy, film grain, dithering, speckles, jpeg artifacts, blurry, photographic, live action, text, watermark"
         ]
       },
       "keyframe": {
@@ -205,10 +209,14 @@
           "--model",
           "{model_dir}",
           "--base-model",
-          "qwen",
+          "qwen-image-edit-2511",
           "--steps",
-          "20",
-          "--low-ram"
+          "30",
+          "--low-ram",
+          "--guidance",
+          "4.0",
+          "--negative-prompt",
+          "grainy, noisy, film grain, dithering, speckles, jpeg artifacts, blurry, photographic, live action, text, watermark"
         ],
         "download": {
           "repo": "fcreait/Qwen-Image-Edit-mflux",
@@ -225,7 +233,11 @@
           "--model",
           "mlx-community/Qwen-Image-2512-8bit",
           "--steps",
-          "20"
+          "30",
+          "--guidance",
+          "4.0",
+          "--negative-prompt",
+          "grainy, noisy, film grain, dithering, speckles, jpeg artifacts, blurry, photographic, live action, text, watermark"
         ]
       },
       "keyframe": {
@@ -234,12 +246,18 @@
           "--model",
           "mlx-community/qwen-image-edit-2511-8bit",
           "--steps",
-          "20"
+          "30",
+          "--guidance",
+          "4.0",
+          "--negative-prompt",
+          "grainy, noisy, film grain, dithering, speckles, jpeg artifacts, blurry, photographic, live action, text, watermark"
         ],
         "image_flag": "--image-paths",
         "max_refs": 3
       }
-    }
+    },
+    "_keyframe_note": "mflux 0.24+: --base-model must name the Edit-2511 family (qwen-image-edit-2511) so its reference images are read at timestep 0; 'qwen' is refused.",
+    "_quality_note": "Self-test on the M2 Max 32 GB: 4-bit, 20 steps came out grainy at ~45 s/step. Now 30 steps, guidance 4.0 and a negative prompt against grain (~22 min a still)."
   },
   "colab": {
     "_note": "Google Colab pay-as-you-go: bf16 GPUs for stills and keyframes (docs/colab.md). The producer sizes each batch to what is left of total_cap_units (the owner's agreed budget: 100 units = $9.99); the runner will not start a VM below min_balance_units. Rates are units per GPU-hour as Colab charged them in 2026.",
