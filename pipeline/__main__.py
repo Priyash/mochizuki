@@ -122,8 +122,11 @@ def main(argv=None) -> int:
     if args.cmd == "mac-worker":
         from . import mac_backend  # noqa: PLC0415
         cfg = mac_backend.settings(p)
+        from .log import set_file  # noqa: PLC0415
+        lf = set_file(Path.home() / "mochizuki-mac" / "logs" / time.strftime("worker-%Y%m%d.jsonl"))
         mac_backend._log(f"mac worker: {'self-test' if args.self_test else 'waiting for batches'}, "
-                         f"engines {args.engine_set}")
+                         f"engines {args.engine_set}; JSON log {lf}", event="worker.start",
+                         mode="self-test" if args.self_test else "worker", log_file=str(lf))
         engine = mac_backend.StubEngine() if args.engine_set == "stub" else mac_backend.MfluxEngine(cfg)
         if args.self_test:
             r = mac_backend.self_test(p, engine, Path(args.work) / "selftest-style.png")
@@ -143,6 +146,8 @@ def main(argv=None) -> int:
         return 0
     if args.cmd in ("colab-runner", "colab-test", "colab-smoke", "colab-gpus"):
         from . import colab_backend as cb  # noqa: PLC0415
+        from .log import set_file  # noqa: PLC0415
+        set_file(os.environ.get("MOCHI_LOG_FILE") or "colab-logs/colab.jsonl")
         cfg, cli = cb.settings(p), cb.ColabCLI()
         if args.cmd == "colab-gpus":
             r = cb.gpu_probe(cli)

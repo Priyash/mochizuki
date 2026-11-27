@@ -97,3 +97,16 @@ self-test again.
   or pass `--repo Priyash/mochizuki`.
 
 Nothing here costs money, and the worker never touches Kaggle, Colab or the ledger.
+
+## Logs
+
+Every line on screen has the same shape: time, level (INFO, WARN, ERROR), component (`mac`, and
+`  | ` for mflux's own output), an event name, a message and the key facts as `key=value`:
+
+```
+14:48:49 INFO  mac    render.start     rendering ref-style...: text to image, 1664x928, 20 steps  key=ref-style... mode=t2i steps=20
+14:52:14 INFO  mac    job.ok           ref-style... ok in 205 s [1/24]  key=ref-style... seconds=205 step=1/24
+```
+
+The same events are written as JSON lines to `~/mochizuki-mac/logs/worker-<date>.jsonl`. When
+something fails, send that file. `MOCHI_LOG_LEVEL=debug` shows more.

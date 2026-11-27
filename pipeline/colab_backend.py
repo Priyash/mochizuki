@@ -34,7 +34,8 @@ import threading
 import time
 from pathlib import Path
 
-from .mac_backend import Release, ReleaseBackend, _log, _names
+from .mac_backend import Release, ReleaseBackend, _names
+from .mac_backend import _log as _mac_log
 
 NAME = "colab"
 DEFAULTS = {
@@ -95,6 +96,10 @@ def settings(p) -> dict:
     cfg = {**DEFAULTS, **(p.config.get("colab", {}) if p is not None else {})}
     cfg["units_per_hour"] = {**DEFAULTS["units_per_hour"], **cfg.get("units_per_hour", {})}
     return cfg
+
+
+def _log(msg: str, event: str = "note", level: str = "info", **fields) -> None:
+    _mac_log(msg, event, level, comp="colab", **fields)
 
 
 # ==================================================================== producer side
@@ -233,7 +238,7 @@ def stop_gpu_vms(cli, keep: set | None = None, why: str = "left behind") -> int:
     The account's Colab GPUs belong to this pipeline (docs/colab.md)."""
     found = cli.assignments()
     if found is None:
-        _log("could not list the account's Colab VMs")
+        _log("could not list the account's Colab VMs", event="vms.list_failed", level="warn")
         return 0
     n = 0
     for a in found:
@@ -241,7 +246,7 @@ def stop_gpu_vms(cli, keep: set | None = None, why: str = "left behind") -> int:
         if a["endpoint"] in (keep or set()) or acc in ("", "NONE", "CPU"):
             continue
         ok = cli.unassign(a["endpoint"])
-        _log(f"{'stopped' if ok else 'could not stop'} a {acc} VM {why}")
+        _log(f"{'stopped' if ok else 'could not stop'} a {acc} VM {why}", event="vm.stopped" if ok else "vm.stop_failed", level="info" if ok else "error", gpu=acc)
         n += ok
     return n
 
@@ -266,7 +271,7 @@ def run_remote(cli: ColabCLI, cfg: dict, session: str, inputs_tgz: Path, batch_i
     if gpu is None:
         return {"ok": False, "gpu": None, "error": "no GPU granted: " + "; ".join(tried)}
     t0 = time.time()
-    _log(f"session {session} on {gpu}")
+    _log(f"session {session} on {gpu}", event="vm.granted", session=session, gpu=gpu)
     try:
         code, out = cli.run(["upload", "-s", session, str(inputs_tgz), "/content/in.tar.gz"], timeout=1800)
         if code != 0:
@@ -298,7 +303,7 @@ def run_remote(cli: ColabCLI, cfg: dict, session: str, inputs_tgz: Path, batch_i
         return {"ok": True, "gpu": gpu, "seconds": time.time() - t0}
     finally:
         code, out = cli.run(["stop", "-s", session], timeout=300)
-        _log(f"session {session} stopped" if code == 0 else f"session {session} stop said: {out.strip()[-200:]}")
+        _log(f"session {session} stopped" if code == 0 else f"session {session} stop said: {out.strip()[-200:]}", event="vm.stopped" if code == 0 else "vm.stop_failed", level="info" if code == 0 else "error", session=session)
 
 
 def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[str]) -> str | None:
@@ -308,12 +313,12 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
                       and not x["name"].endswith(".results.tar.gz")), key=lambda x: x.get("created_at", ""))
     waiting = [x for x in waiting if _names(x["name"][len(NAME) + 1:-7], NAME)["claim"] not in a]
     if not waiting:
-        _log("no Colab batch is waiting")
+        _log("no Colab batch is waiting", event="batch.none")
         return None
     stop_gpu_vms(cli)                             # a VM left behind by a run that died still bills: stop it
     bal = cli.balance()
     if bal is not None and bal < float(cfg["min_balance_units"]):
-        _log(f"only {bal:.1f} compute units left (minimum {cfg['min_balance_units']}); not starting a VM")
+        _log(f"only {bal:.1f} compute units left (minimum {cfg['min_balance_units']}); not starting a VM", event="balance.low", level="warn", balance=bal, minimum=cfg["min_balance_units"])
         return None
     asset = waiting[0]
     batch_id = asset["name"][len(NAME) + 1:-7]
@@ -324,7 +329,7 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
     claim = d / n["claim"]
     claim.write_text(json.dumps({"host": socket.gethostname(), "at": time.time(), "balance": bal}))
     rel.upload(claim)
-    _log(f"claimed {batch_id} (balance {bal if bal is not None else '?'} units)")
+    _log(f"claimed {batch_id} (balance {bal if bal is not None else '?'} units)", event="batch.claimed", batch=batch_id, balance=bal)
     rel.download(asset, d / n["inputs"])
     with tarfile.open(d / n["inputs"]) as t:          # the worker travels with the inputs
         try:
@@ -338,11 +343,11 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
         setup = float(cfg["setup_minutes"]) * 60
         afford = (bal - 1.0) / rate * 3600 - setup - 600
         if afford < 900:
-            _log(f"{bal:.1f} units buy under 15 min of work at the {rate} units/h rate; not starting a VM")
+            _log(f"{bal:.1f} units buy under 15 min of work at the {rate} units/h rate; not starting a VM", event="balance.low", level="warn", balance=bal, rate=rate)
             rel.delete(n["claim"])
             return None
         if afford < float(manifest.get("deadline_seconds", 1e9)):
-            _log(f"balance {bal:.1f} units: this batch gets {afford / 60:.0f} min; the rest waits for the next one")
+            _log(f"balance {bal:.1f} units: this batch gets {afford / 60:.0f} min; the rest waits for the next one", event="batch.shrunk", level="warn", batch=batch_id, minutes=round(afford / 60), balance=bal)
             manifest["deadline_seconds"] = afford
             (d / "in" / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
             cfg = {**cfg, "batch_hours": afford / 3600}
@@ -359,7 +364,7 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
         try:
             rel.upload(f)
         except Exception as e:  # noqa: BLE001 - a missed heartbeat is not fatal
-            _log(f"heartbeat failed: {e}")
+            _log(f"heartbeat failed: {e}", event="heartbeat.failed", level="warn")
 
     stop = threading.Event()
     done = {"n": 0}
@@ -380,14 +385,14 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
     finally:
         stop.set()
     if r.get("gpu") is None:                       # no VM opened, nothing billed: the batch waits for the next run
-        _log(f"{batch_id}: {r['error']}; left waiting, nothing billed")
+        _log(f"{batch_id}: {r['error']}; left waiting, nothing billed", event="gpu.none", level="warn", batch=batch_id, billed=0)
         for k in ("claim", "progress"):
             rel.delete(n[k])
         return None
     after = cli.balance()
     usage = {"vm_seconds": round(r.get("seconds", 0) + 120), "gpu": r.get("gpu"),   # + opening the VM
              "units_used": round(bal - after, 2) if bal is not None and after is not None else None}
-    _log(f"{batch_id}: {usage['units_used']} units used, balance now {after}")
+    _log(f"{batch_id}: {usage['units_used']} units used, balance now {after}", event="units.used", batch=batch_id, units=usage["units_used"], balance=after, gpu=usage["gpu"])
     res_tgz = d / n["results"]
     (d / "out").mkdir(exist_ok=True)
     if r["ok"]:
@@ -401,7 +406,7 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
                                                                               "error": "the worker wrote no results"}
         base = found[0].parent if found else d / "res"
     else:                                          # an error result frees the jobs; they do not count against shots
-        _log(f"{batch_id}: {r['error']}")
+        _log(f"{batch_id}: {r['error']}", event="batch.failed", level="error", batch=batch_id, gpu=r.get("gpu"))
         rj, base = {"batch_id": batch_id, "jobs": {}, "error": f"colab: {r['error']}"[:1500]}, d / "out"
     rj.update(usage)
     (base / "results.json").write_text(json.dumps(rj))
@@ -409,7 +414,7 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
         t.add(base, arcname="out")
     rel.upload(res_tgz)
     _log(f"{batch_id}: results uploaded ({'ok' if r['ok'] else 'failed'}, GPU {r.get('gpu')}, "
-         f"{r.get('seconds', 0) / 60:.0f} min on the VM)")
+         f"{r.get('seconds', 0) / 60:.0f} min on the VM)", event="batch.done", batch=batch_id, ok=r["ok"], gpu=r.get("gpu"), vm_min=round(r.get("seconds", 0) / 60))
     return batch_id
 
 
@@ -515,7 +520,7 @@ def smoke(cli: ColabCLI, work: Path) -> dict:
 
     def step(name, ok, detail=""):
         st[name] = {"ok": bool(ok), "detail": _redact(str(detail))[-400:]}
-        _log(f"{'OK  ' if ok else 'FAIL'} {name} {st[name]['detail']}")
+        _log(f"{'OK  ' if ok else 'FAIL'} {name} {st[name]['detail']}", event="smoke.step", level="info" if ok else "error", step=name, ok=bool(ok))
         return ok
 
     code, out = cli.run(["--help"], timeout=60)
@@ -585,7 +590,7 @@ def gpu_probe(cli: ColabCLI, gpus=("T4", "L4", "G4", "A100", "H100"), wait_s: in
             last = re.sub(r"\x1b\[[0-9;]*m", "", out.strip().splitlines()[-1] if out.strip() else str(code))
             rep["gpus"][g] = {"granted": False, "seconds": took, "error": _redact(last)[-250:]}
             stop_gpu_vms(cli, why=f"that came up after the {g} request gave up")
-        _log(f"{g}: {rep['gpus'][g]}")
+        _log(f"{g}: {rep['gpus'][g]}", event="probe.gpu", gpu=g, granted=rep["gpus"][g]["granted"], units_per_hour=rep["gpus"][g].get("units_per_hour"), wait_s=rep["gpus"][g]["seconds"])
     stop_gpu_vms(cli)
     rep["balance_after"] = cli.balance()
     return rep

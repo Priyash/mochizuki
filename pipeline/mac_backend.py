@@ -216,8 +216,10 @@ def from_env(p):
 
 
 # ==================================================================== Mac side
-def _log(msg: str) -> None:
-    print(f"[mac {time.strftime('%H:%M:%S')}] {msg}", flush=True)
+def _log(msg: str, event: str = "note", level: str = "info", comp: str = "mac", **fields) -> None:
+    """A structured log line (pipeline/log.py): level, component, event, message, key=value fields."""
+    from .log import log  # noqa: PLC0415
+    log(comp, event, msg, level, **fields)
 
 
 def _png(path: Path, w: int, h: int) -> None:
@@ -254,7 +256,7 @@ def resolve_cmd(e: dict, models: Path, download=None) -> list[str]:
         if download is None:
             from huggingface_hub import snapshot_download  # noqa: PLC0415 - comes with mflux
             download = snapshot_download
-        _log(f"downloading {d['repo']}/{d.get('folder', '')} (once)")
+        _log(f"downloading {d['repo']}/{d.get('folder', '')} (once)", event="model.download", model=d["repo"], folder=d.get("folder"))
         download(d["repo"], local_dir=str(local),
                  allow_patterns=[f"{d['folder']}/*"] if d.get("folder") else None)
         target.mkdir(parents=True, exist_ok=True)
@@ -275,7 +277,7 @@ def prefetch_model(repo: str, download=None) -> None:
     download = download or snapshot_download
     try:
         download(repo, local_files_only=True)
-        _log(f"model {repo}: already on this Mac")
+        _log(f"model {repo}: already on this Mac", event="model.cached", model=repo)
         return
     except Exception:  # noqa: BLE001 - not cached yet
         pass
@@ -285,10 +287,10 @@ def prefetch_model(repo: str, download=None) -> None:
         size = f", about {gb:.0f} GB"
     except Exception:  # noqa: BLE001
         pass
-    _log(f"model {repo}: downloading once{size}; the progress bars below are Hugging Face's")
+    _log(f"model {repo}: downloading once{size}; the progress bars below are Hugging Face's", event="model.download", model=repo)
     t0 = time.time()
     download(repo)
-    _log(f"model {repo}: downloaded in {(time.time() - t0) / 60:.1f} min")
+    _log(f"model {repo}: downloaded in {(time.time() - t0) / 60:.1f} min", event="model.downloaded", model=repo, minutes=round((time.time() - t0) / 60, 1))
 
 
 def run_streaming(cmd: list[str], timeout: float, prefix: str = "  | ") -> tuple[int, str]:
@@ -315,7 +317,7 @@ def run_streaming(cmd: list[str], timeout: float, prefix: str = "  | ") -> tuple
     finally:
         killer.cancel()
     if code < 0:
-        _log(f"stopped after {timeout / 60:.0f} min (time limit)")
+        _log(f"stopped after {timeout / 60:.0f} min (time limit)", event="cmd.timeout", level="error", limit_min=round(timeout / 60))
     return code, tail.decode("utf-8", "replace")
 
 
@@ -353,13 +355,13 @@ class MfluxEngine:
             cmd += [e.get("image_flag", "--image-paths"), *paths]
         steps = cmd[cmd.index("--steps") + 1] if "--steps" in cmd else "?"
         _log(f"rendering {job['key']}: {'edit of ' + str(len(images)) + ' image(s)' if edit else 'text to image'}, "
-             f"{job.get('width', 1664)}x{job.get('height', 928)}, {steps} steps")
+             f"{job.get('width', 1664)}x{job.get('height', 928)}, {steps} steps", event="render.start", key=job["key"], mode="edit" if edit else "t2i", steps=steps)
         t0 = time.time()
         code, tail = run_streaming(cmd, float(self.cfg["seconds_per_job"]) * 6)
         if code != 0 or not out.exists():
             raise RuntimeError(f"mflux exit {code}: {tail.strip()[-600:]}")
         self._check(out)
-        _log(f"{job['key']}: saved {out} ({time.time() - t0:.0f} s)")
+        _log(f"{job['key']}: saved {out} ({time.time() - t0:.0f} s)", event="render.done", key=job["key"], seconds=round(time.time() - t0), file=str(out))
         return {"seconds": round(time.time() - t0, 1), "seed": _seed(job["key"]), "engine": cmd[0],
                 "model": cmd[cmd.index("--model") + 1] if "--model" in cmd else None}
 
@@ -383,24 +385,24 @@ def run_batch(manifest: dict, inputs: Path, out: Path, engine, beat=None) -> dic
            "error": None}
     jobs = manifest["jobs"]
     _log(f"batch {manifest['batch_id']}: {len(jobs)} job(s), stage {manifest.get('stage', '?')}, "
-         f"time limit {(deadline - t0) / 3600:.1f} h")
+         f"time limit {(deadline - t0) / 3600:.1f} h", event="batch.start", batch=manifest["batch_id"], jobs=len(jobs), stage=manifest.get("stage"))
     for i, job in enumerate(jobs):
         if time.time() + float(job.get("est_seconds", 0)) > deadline:
-            _log(f"time limit reached; {len(jobs) - i} job(s) go to the next batch")
+            _log(f"time limit reached; {len(jobs) - i} job(s) go to the next batch", event="batch.time_limit", level="warn", left=len(jobs) - i)
             break                                        # the rest go to the next batch
         if i:
             per = (time.time() - t0) / i
-            _log(f"[{i + 1}/{len(jobs)}] about {per * (len(jobs) - i) / 60:.0f} min left for this batch")
+            _log(f"[{i + 1}/{len(jobs)}] about {per * (len(jobs) - i) / 60:.0f} min left for this batch", event="batch.progress", step=f"{i + 1}/{len(jobs)}", eta_min=round(per * (len(jobs) - i) / 60))
         target = out / f"{job['key']}.png"
         j0 = time.time()
         try:
             info = engine.run(job, inputs, target)
             res["jobs"][job["key"]] = {"ok": True, "file": target.name, "gpu_seconds": time.time() - j0,
                                        **(info or {})}
-            _log(f"{job['key']} ok in {time.time() - j0:.0f} s [{i + 1}/{len(jobs)}]")
+            _log(f"{job['key']} ok in {time.time() - j0:.0f} s [{i + 1}/{len(jobs)}]", event="job.ok", key=job["key"], seconds=round(time.time() - j0), step=f"{i + 1}/{len(jobs)}")
         except Exception as e:  # noqa: BLE001 - one bad job must not stop the batch
             res["jobs"][job["key"]] = {"ok": False, "error": repr(e)[:800], "gpu_seconds": time.time() - j0}
-            _log(f"{job['key']} failed: {e!r}"[:400])
+            _log(f"{job['key']} failed: {e!r}"[:400], event="job.failed", level="error", key=job["key"], seconds=round(time.time() - j0))
         if beat:
             beat(i + 1, len(jobs))
     res["elapsed"] = time.time() - t0
@@ -426,7 +428,7 @@ def take_one(rel: Release, work: Path, engine, cfg: dict) -> str | None:
         claim.write_text(json.dumps({"host": socket.gethostname(), "at": time.time()}))
         rel.upload(claim)
         worker_loop._idle = 0
-        _log(f"claimed {batch_id}; downloading its inputs")
+        _log(f"claimed {batch_id}; downloading its inputs", event="batch.claimed", batch=batch_id)
         rel.download(asset, d / n["inputs"])
         with tarfile.open(d / n["inputs"]) as t:
             try:
@@ -445,7 +447,7 @@ def take_one(rel: Release, work: Path, engine, cfg: dict) -> str | None:
             try:
                 rel.upload(f)
             except Exception as e:  # noqa: BLE001 - a missed heartbeat is not fatal
-                _log(f"heartbeat failed: {e}")
+                _log(f"heartbeat failed: {e}", event="heartbeat.failed", level="warn")
 
         def beat_loop():
             while not stop.wait(float(cfg["heartbeat_minutes"]) * 60):
@@ -464,10 +466,10 @@ def take_one(rel: Release, work: Path, engine, cfg: dict) -> str | None:
         tgz = d / n["results"]
         with tarfile.open(tgz, "w:gz") as t:
             t.add(d / "out", arcname="out")
-        _log(f"{batch_id}: uploading results ({tgz.stat().st_size / 1e6:.0f} MB)")
+        _log(f"{batch_id}: uploading results ({tgz.stat().st_size / 1e6:.0f} MB)", event="results.upload", batch=batch_id, mb=round(tgz.stat().st_size / 1e6))
         rel.upload(tgz)
         ok = sum(1 for j in res["jobs"].values() if j.get("ok"))
-        _log(f"{batch_id}: {ok}/{len(manifest['jobs'])} made, results uploaded")
+        _log(f"{batch_id}: {ok}/{len(manifest['jobs'])} made, results uploaded", event="batch.done", batch=batch_id, made=ok, jobs=len(manifest["jobs"]))
         return batch_id
     return None
 
@@ -487,7 +489,7 @@ def worker_loop(rel: Release, work: Path, engine, cfg: dict, once: bool = False,
         worker_loop._idle = idle
         if idle == 1 or idle % 10 == 0:
             _log(f"no batch for this Mac yet; checking every {float(cfg['poll_seconds']):.0f} s "
-                 f"({done} batch(es) done so far)")
+                 f"({done} batch(es) done so far)", event="worker.idle", batches_done=done)
         sleep(float(cfg["poll_seconds"]))
 
 
@@ -499,22 +501,22 @@ def self_test(p, engine, out: Path) -> dict:
                                    r["prompt"]) if x)
     out.parent.mkdir(parents=True, exist_ok=True)
     _about_this_mac(out.parent)
-    _log("self-test 1/2: one reference still (text to image). The first run also downloads the models.")
+    _log("self-test 1/2: one reference still (text to image). The first run also downloads the models.", event="selftest.start", step="1/2")
     t0 = time.time()
     info = engine.run({"key": "selftest-style", "prompt": prompt, "width": r.get("width", 1664),
                        "height": r.get("height", 928)}, p.root, out)
     still = {"file": str(out), "seconds": round(time.time() - t0, 1), **(info or {})}
-    _log(f"self-test 1/2 done in {still['seconds'] / 60:.1f} min: {out}")
+    _log(f"self-test 1/2 done in {still['seconds'] / 60:.1f} min: {out}", event="selftest.step_done", step="1/2", seconds=still["seconds"], file=str(out))
     edit_out = out.with_name(out.stem + "-edit.png")             # the keyframe engine, from that still
-    _log("self-test 2/2: one keyframe edited from that still (image edit)")
+    _log("self-test 2/2: one keyframe edited from that still (image edit)", event="selftest.start", step="2/2")
     t0 = time.time()
     info = engine.run({"key": "selftest-edit", "prompt": "Same place and light, seen from a lower angle at dusk.",
                        "refs": [out.name], "width": 1664, "height": 928}, out.parent, edit_out)
     edit = {"file": str(edit_out), "seconds": round(time.time() - t0, 1), **(info or {})}
-    _log(f"self-test 2/2 done in {edit['seconds'] / 60:.1f} min: {edit_out}")
+    _log(f"self-test 2/2 done in {edit['seconds'] / 60:.1f} min: {edit_out}", event="selftest.step_done", step="2/2", seconds=edit["seconds"], file=str(edit_out))
     _log(f"self-test passed. Look at both pictures, then send the lines above. At this speed 24 stills take "
          f"about {24 * still['seconds'] / 3600:.1f} h (the models are downloaded now, so later stills are faster "
-         "than the first).")
+         "than the first).", event="selftest.passed", est_hours_24=round(24 * still["seconds"] / 3600, 1))
     return {"still": still, "edit": edit}
 
 
@@ -535,6 +537,6 @@ def _about_this_mac(folder: Path) -> None:
     except Exception:  # noqa: BLE001
         ver = "not installed"
     _log(f"this Mac: {chip}, {ram} memory, macOS {sh('sw_vers', '-productVersion') or '?'}, "
-         f"{free:.0f} GB free disk, mflux {ver}; pictures go to {folder}")
+         f"{free:.0f} GB free disk, mflux {ver}; pictures go to {folder}", event="mac.info", chip=chip, ram=ram, free_gb=round(free), mflux=ver)
     if free < 45:
-        _log(f"warning: {free:.0f} GB free; the models need about 40 GB")
+        _log(f"warning: {free:.0f} GB free; the models need about 40 GB", event="disk.low", level="warn", free_gb=round(free))

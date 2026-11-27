@@ -75,8 +75,23 @@ def ffmpeg_exe() -> str:
     return imageio_ffmpeg.get_ffmpeg_exe()
 
 
-def log(msg: str) -> None:
-    print(f"[worker {time.strftime('%H:%M:%S')}] {msg}", flush=True)
+LOG_FILE = None          # set by run(): <out>/worker.jsonl travels back with the results
+
+
+def log(msg: str, event: str = "note", level: str = "info", **fields) -> None:
+    """Structured log line, same layout as pipeline/log.py: time, level, component, event, message,
+    key=value fields; also one JSON object per line in LOG_FILE."""
+    now = time.time()
+    kv = "  ".join(f"{k}={v}" for k, v in fields.items() if v is not None)
+    print(f"{time.strftime('%H:%M:%S', time.localtime(now))} {level.upper():5} worker {event:16} {msg}"
+          + (f"  {kv}" if kv else ""), flush=True)
+    if LOG_FILE is not None:
+        try:
+            with open(LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)), "level": level,
+                                    "comp": "worker", "event": event, "msg": msg, **fields}, default=str) + "\n")
+        except OSError:
+            pass
 
 
 # ---------------------------------------------------------------- stub engines (CPU, for tests)
@@ -613,9 +628,13 @@ def free_engine(engine) -> None:
 
 
 def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: str | None = None) -> dict:
+    global LOG_FILE
     t0 = time.time()
     m = json.loads(manifest.read_text(encoding="utf-8"))
     out.mkdir(parents=True, exist_ok=True)
+    LOG_FILE = out / "worker.jsonl"
+    log(f"batch {m['batch_id']}: {len(m['jobs'])} job(s)", event="batch.start", batch=m["batch_id"],
+        jobs=len(m["jobs"]), stage=m.get("stage"), engines=engine_set)
     results = {"batch_id": m["batch_id"], "engine_set": engine_set, "started": t0, "jobs": {},
                "groups": {}, "error": None}
 
@@ -638,10 +657,10 @@ def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: 
             break
         g0 = time.time()
         try:
-            log(f"loading engine {name} for {len(jobs)} jobs")
+            log(f"loading engine {name} for {len(jobs)} jobs", event="engine.load", engine=name, jobs=len(jobs))
             engine = build_engine(name, jobs, m["engines"], engine_set)
         except Exception as e:  # noqa: BLE001
-            log(f"engine {name} failed to load: {e!r}"[:600])
+            log(f"engine {name} failed to load: {e!r}"[:600], event="engine.failed", level="error", engine=name)
             log(traceback.format_exc()[-1500:])
             for job in jobs:
                 results["jobs"][job["key"]] = {"ok": False, "error": f"engine {name} failed to load: {e!r}"[:800]}
@@ -659,12 +678,14 @@ def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: 
                 continue                                   # left for the next session
             if broken >= 2:
                 log(f"stopping {name}: 2 jobs in a row failed the same machine way ({last_err[:120]}); "
-                    f"{len(jobs) - n} left for after a fix, so no more GPU time goes on it")
+                    f"{len(jobs) - n} left for after a fix, so no more GPU time goes on it",
+                    event="group.stopped_broken", level="error", engine=name, left=len(jobs) - n)
                 results["groups"][name]["stopped_broken"] = len(jobs) - n
                 break
             if slow >= 2:
                 log(f"stopping {name}: 2 jobs took over {factor:g}x their estimate; "
-                    f"{len(jobs) - n} left for the next batch")
+                    f"{len(jobs) - n} left for the next batch", event="group.stopped_slow", level="warn",
+                    engine=name, left=len(jobs) - n)
                 results["groups"][name]["stopped_slow"] = len(jobs) - n
                 break
             j0 = time.time()
@@ -675,7 +696,8 @@ def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: 
                 took = time.time() - j0
                 results["jobs"][job["key"]] = {"ok": True, "file": target.name,
                                                "gpu_seconds": took, **(info or {})}
-                log(f"{job['key']} ok in {took:.0f} s (estimate {est:.0f} s) [{n + 1}/{len(jobs)}]")
+                log(f"{job['key']} ok in {took:.0f} s (estimate {est:.0f} s) [{n + 1}/{len(jobs)}]", event="job.ok",
+                    key=job["key"], seconds=round(took), estimate=round(est), step=f"{n + 1}/{len(jobs)}")
                 broken = 0
                 if est > 0 and took > factor * est:
                     slow += 1
@@ -683,7 +705,8 @@ def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: 
                 oom = "out of memory" in str(e).lower()
                 results["jobs"][job["key"]] = {"ok": False, "error": repr(e)[:800], "oom": oom,
                                                "gpu_seconds": time.time() - j0}
-                log(f"{job['key']} failed: {e!r}")
+                log(f"{job['key']} failed: {e!r}", event="job.failed", level="error", key=job["key"],
+                    oom=oom, seconds=round(time.time() - j0))
                 last_err = str(e)
                 if oom or any(k in last_err for k in ("blank or NaN", "CUDA", "same device")):
                     broken += 1
@@ -708,7 +731,8 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     r = run(a.manifest, a.inputs, a.out, a.engine_set, a.expect_batch)
     ok = sum(1 for v in r["jobs"].values() if v.get("ok"))
-    log(f"done: {ok}/{len(r['jobs'])} jobs ok in {r['elapsed'] / 60:.1f} min")
+    log(f"done: {ok}/{len(r['jobs'])} jobs ok in {r['elapsed'] / 60:.1f} min", event="batch.done",
+        ok=ok, jobs=len(r["jobs"]), minutes=round(r["elapsed"] / 60, 1))
     return 0 if r.get("error") is None else 3
 
 
