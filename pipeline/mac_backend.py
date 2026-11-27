@@ -51,7 +51,8 @@ DEFAULTS = {
                          "--low-ram"]},
         "keyframe": {"cmd": ["mflux-generate-qwen-edit", "--model", "{model_dir}", "--base-model", "qwen",
                              "--steps", "20", "--low-ram"],
-                     "download": {"repo": "fcreait/Qwen-Image-Edit-mflux", "folder": "Qwen-Image-Edit-2511-q4"},
+                     "download": {"repo": "fcreait/Qwen-Image-Edit-mflux", "folder": "q4",
+                                  "tokenizer_from": "Qwen/Qwen-Image-Edit-2511"},
                      "image_flag": "--image-paths", "max_refs": 3},
     },
 }
@@ -251,9 +252,12 @@ NEEDED = ("transformer", "text_encoder", "vae")       # what mflux loads from a 
 
 
 def _model_ok(target: Path) -> str | None:
-    """None if the folder holds a loadable model, else what is missing."""
+    """None if the folder holds a loadable model, else what is missing (mflux 0.24 loads the
+    weights from transformer/, text_encoder/, vae/ and the tokenizer from tokenizer/)."""
     missing = [d for d in NEEDED if not _weights(target / d)]
-    return f"no weights in {', '.join(missing)}" if missing else None
+    if not (target / "tokenizer").is_dir() or not any((target / "tokenizer").iterdir()):
+        missing.append("tokenizer")
+    return f"no {', '.join(missing)}" if missing else None
 
 
 def resolve_cmd(e: dict, models: Path, download=None, list_files=None) -> list[str]:
@@ -268,7 +272,7 @@ def resolve_cmd(e: dict, models: Path, download=None, list_files=None) -> list[s
     target = local / folder
     done = target / ".complete"
     if done.exists() and _model_ok(target):          # marked done by an older version, but empty: fetch again
-        _log(f"{d['repo']}/{folder} was marked downloaded but {_model_ok(target)}; downloading again",
+        _log(f"{d['repo']}/{folder} was marked downloaded but has {_model_ok(target)}; downloading again",
              event="model.redownload", level="warn", model=d["repo"], folder=folder)
         done.unlink()
     if not done.exists():
@@ -287,9 +291,14 @@ def resolve_cmd(e: dict, models: Path, download=None, list_files=None) -> list[s
              files=len(mine), gb=round(sum(s for _, s in mine) / 1e9, 1))
         t0 = time.time()
         download(d["repo"], local_dir=str(local), allow_patterns=[n for n, _ in mine])
+        tok = d.get("tokenizer_from")                 # pre-quantized folders may leave the tokenizer out
+        if tok and not ((target / "tokenizer").is_dir() and any((target / "tokenizer").iterdir())):
+            _log(f"{d['repo']}/{folder} has no tokenizer; taking it from {tok}", event="model.tokenizer", source=tok)
+            download(tok, local_dir=str(target), allow_patterns=["tokenizer/*", "added_tokens.json",
+                                                                 "chat_template.jinja"])
         bad = _model_ok(target)
         if bad:
-            raise RuntimeError(f"{d['repo']}/{folder}: downloaded, but {bad} in {target}; not marking it complete")
+            raise RuntimeError(f"{d['repo']}/{folder}: downloaded, but {target} has {bad}; not marking it complete")
         gb = sum(f.stat().st_size for f in _weights(target)) / 1e9
         _log(f"downloaded {d['repo']}/{folder}: {gb:.1f} GB in {(time.time() - t0) / 60:.1f} min",
              event="model.downloaded", model=d["repo"], gb=round(gb, 1), minutes=round((time.time() - t0) / 60, 1))

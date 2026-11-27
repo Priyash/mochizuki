@@ -220,7 +220,8 @@
         ],
         "download": {
           "repo": "fcreait/Qwen-Image-Edit-mflux",
-          "folder": "q4"
+          "folder": "q4",
+          "tokenizer_from": "Qwen/Qwen-Image-Edit-2511"
         },
         "image_flag": "--image-paths",
         "max_refs": 3

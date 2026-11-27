@@ -102,7 +102,8 @@ def test_self_test_writes_one_still(tmp_path):
 
 
 def _fake_repo(tmp_path, folder="q4", parts=("transformer", "text_encoder", "vae")):
-    files = [(f"{folder}/{p}/w.safetensors", 10) for p in parts] + [("other/x.safetensors", 5)]
+    files = [(f"{folder}/{p}/w.safetensors", 10) for p in parts] + [(f"{folder}/tokenizer/vocab.json", 1),
+                                                                    ("other/x.safetensors", 5)]
     calls = []
 
     def download(repo, local_dir, allow_patterns):
@@ -119,7 +120,8 @@ def test_model_folder_is_downloaded_once_and_put_in_the_command(tmp_path):
     e = {"cmd": ["mflux-generate-qwen-edit", "--model", "{model_dir}"], "download": {"repo": "a/b", "folder": "q4"}}
     cmd = mb.resolve_cmd(e, tmp_path, download, lambda repo: files)
     assert cmd[-1] == str(tmp_path / "a--b" / "q4")
-    assert calls == [("a/b", ["q4/text_encoder/w.safetensors", "q4/transformer/w.safetensors", "q4/vae/w.safetensors"])]
+    assert calls == [("a/b", ["q4/text_encoder/w.safetensors", "q4/tokenizer/vocab.json",
+                              "q4/transformer/w.safetensors", "q4/vae/w.safetensors"])]
     mb.resolve_cmd(e, tmp_path, download, lambda repo: files)
     assert len(calls) == 1                                # not downloaded twice
 
@@ -131,7 +133,7 @@ def test_an_empty_model_download_is_an_error_not_complete(tmp_path):
         mb.resolve_cmd(e, tmp_path, lambda repo, local_dir, allow_patterns: None, lambda repo: files)
         raise AssertionError("should have failed")
     except RuntimeError as err:
-        assert "no weights in" in str(err)
+        assert "has no transformer" in str(err)
     assert not (tmp_path / "a--b" / "q4" / ".complete").exists()
 
 
@@ -153,3 +155,24 @@ def test_a_folder_marked_complete_but_empty_is_fetched_again(tmp_path):
     e = {"cmd": ["x", "--model", "{model_dir}"], "download": {"repo": "a/b", "folder": "q4"}}
     mb.resolve_cmd(e, tmp_path, download, lambda repo: files)
     assert len(calls) == 1 and (t / "vae" / "w.safetensors").exists()
+
+
+def test_a_missing_tokenizer_is_taken_from_the_base_model(tmp_path):
+    files = [(f"q4/{p}/w.safetensors", 10) for p in ("transformer", "text_encoder", "vae")]
+    calls = []
+
+    def download(repo, local_dir, allow_patterns):
+        calls.append(repo)
+        for n in allow_patterns:
+            if repo == "base/model" and n.startswith("tokenizer/"):
+                n = "tokenizer/vocab.json"
+            elif repo == "base/model":
+                continue
+            f = Path(local_dir) / n
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(b"w")
+    e = {"cmd": ["x", "--model", "{model_dir}"],
+         "download": {"repo": "a/b", "folder": "q4", "tokenizer_from": "base/model"}}
+    mb.resolve_cmd(e, tmp_path, download, lambda repo: files)
+    assert calls == ["a/b", "base/model"]
+    assert (tmp_path / "a--b" / "q4" / "tokenizer" / "vocab.json").exists()
