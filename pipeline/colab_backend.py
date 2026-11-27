@@ -262,7 +262,8 @@ def run_remote(cli: ColabCLI, cfg: dict, session: str, inputs_tgz: Path, batch_i
     tried = []
     before = {a["endpoint"] for a in (cli.assignments() or [])}
     for g in cfg["gpus"]:
-        code, out = cli.run(["new", "-s", session, "--gpu", g], timeout=2400)
+        hm = ["--high-mem"] if g in cfg.get("high_mem_gpus", []) else []
+        code, out = cli.run(["new", "-s", session, "--gpu", g, *hm], timeout=2400)
         if code == 0:
             gpu = g
             break
@@ -570,27 +571,35 @@ def smoke(cli: ColabCLI, work: Path) -> dict:
     return rep
 
 
-def gpu_probe(cli: ColabCLI, gpus=("T4", "L4", "G4", "A100", "H100"), wait_s: int = 900) -> dict:
+def gpu_probe(cli: ColabCLI, gpus=None, wait_s: int = 900) -> dict:
     """Which GPUs Colab gives this account right now, and the real units per hour of each.
     Each VM is stopped as soon as it is granted."""
+    # MOCHI_PROBE="A100:hm,G4:hm,L4" asks for each GPU in turn; ":hm" adds --high-mem
+    spec = gpus or os.environ.get("MOCHI_PROBE") or "T4,L4,G4,A100,H100"
+    gpus = spec.split(",") if isinstance(spec, str) else list(spec)
     rep = {"balance_before": cli.balance(), "gpus": {}}
     stop_gpu_vms(cli)
-    for g in gpus:
+    for item in gpus:
+        g, _, opt = item.strip().partition(":")
         s = f"mochi-probe-{g.lower()}"
         t0 = time.time()
-        code, out = cli.run(["new", "-s", s, "--gpu", g], timeout=wait_s + 60)
+        g_label = g + (":hm" if opt == "hm" else "")
+        code, out = cli.run(["new", "-s", s, "--gpu", g, *(["--high-mem"] if opt == "hm" else [])],
+                            timeout=wait_s + 60)
         took = round(time.time() - t0)
         if code == 0:
             _, use = cli.run(["usage"], timeout=120)
             m = re.search(r"([\d.]+)\s*(?:compute units\s*)?(?:/|per)\s*h", use)
             cli.run(["stop", "-s", s], timeout=300)
-            rep["gpus"][g] = {"granted": True, "seconds": took, "units_per_hour": float(m.group(1)) if m else None,
+            rep["gpus"][g_label] = {"granted": True, "seconds": took, "units_per_hour": float(m.group(1)) if m else None,
                               "usage": _redact(use.strip())[-300:]}
         else:
             last = re.sub(r"\x1b\[[0-9;]*m", "", out.strip().splitlines()[-1] if out.strip() else str(code))
-            rep["gpus"][g] = {"granted": False, "seconds": took, "error": _redact(last)[-250:]}
+            rep["gpus"][g_label] = {"granted": False, "seconds": took, "error": _redact(last)[-250:]}
             stop_gpu_vms(cli, why=f"that came up after the {g} request gave up")
-        _log(f"{g}: {rep['gpus'][g]}", event="probe.gpu", gpu=g, granted=rep["gpus"][g]["granted"], units_per_hour=rep["gpus"][g].get("units_per_hour"), wait_s=rep["gpus"][g]["seconds"])
+        r_ = rep["gpus"][g_label]
+        _log(f"{g_label}: {r_}", event="probe.gpu", gpu=g_label, granted=r_["granted"],
+             units_per_hour=r_.get("units_per_hour"), wait_s=r_["seconds"])
     stop_gpu_vms(cli)
     rep["balance_after"] = cli.balance()
     return rep
