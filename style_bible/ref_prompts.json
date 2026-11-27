@@ -1,190 +1,190 @@
 {
-  "_note": "The reference stills Kaggle paints when style_bible/refs/ lacks them (gate 1). Each prompt follows style.txt. 'from' paints the still as an edit of an approved one, so faces and objects stay the same across the film. 'match' lists words in a shot's description that call for this still; 'priority' 1 wins when a shot has more matches than reference slots. A ref is painted when the producer reaches its chapter. Never name a studio, a director or an existing film.",
-  "refs": [
-    {
-      "name": "style",
-      "width": 1664,
-      "height": 928,
-      "prompt": "Key art. Dusk on the Noto coast: an old farmhouse porch above terraced rice paddies that fall away to a silver sea. A grandmother and a seven-year-old girl kneel side by side at a stone mortar, the grandmother's wooden mallet raised, the girl laughing with flour on her nose, steam curling up between them. A huge full moon rises over the water, paper lanterns glow amber, the first stars come out. Tender, quiet and bittersweet, like the last ordinary evening before everything changes. Wide cinematic composition, warm lantern rim light against cool indigo moonlight, volumetric light, rich amber and indigo palette."
-    },
-    {
-      "name": "tsumugi_ch1",
-      "width": 1664,
-      "height": 928,
-      "prompt": "Character sheet of Tsumugi, a seven-year-old Japanese village girl: full body front view, three-quarter view and side view, plus three close-up expressions: laughing with flour on her nose, wide-eyed wonder looking up, and holding back tears. Short black bob with a soft fringe, large dark expressive eyes, small scar-free hands, an indigo sashiko-stitched cotton jacket over a plain cream top, dark trousers, straw sandals. Consistent proportions in every view. Plain warm grey background, even soft studio light.",
-      "match": [
-        "tsumugi",
-        "girl",
-        "child"
-      ],
-      "priority": 1
-    },
-    {
-      "name": "sayo",
-      "width": 1664,
-      "height": 928,
-      "prompt": "Character sheet of Sayo, a Japanese grandmother in her seventies from a rice-and-fishing village: full body front view, three-quarter view and side view, plus three close-up expressions: a gentle crinkled smile, fierce focus while swinging a wooden mallet, and grief held quietly behind calm eyes. Silver hair in a low bun, weathered kind face, strong working hands, a faded indigo work kimono with sleeves tied back by a cord, a plain apron. Consistent proportions in every view. Plain warm grey background, even soft studio light.",
-      "match": [
-        "sayo",
-        "grandmother"
-      ],
-      "priority": 1
-    },
-    {
-      "name": "bowl_ch1",
-      "width": 1328,
-      "height": 1328,
-      "prompt": "Still life: a hand-thrown rice bowl with an earthy brown and cream glaze, mended once: a single thin seam of gold kintsugi runs from the rim to the foot. It rests on a worn wooden tray beside a few grains of rice, lit by soft side light through a paper shoji window. Shallow depth of field, intimate and reverent, the gold seam catching the light.",
-      "match": [
-        "bowl"
-      ],
-      "priority": 2
-    },
-    {
-      "name": "farmhouse_ch1",
-      "width": 1664,
-      "height": 928,
-      "prompt": "Environment establishing shot, no people: an old thatched farmhouse with a wide wooden engawa porch on the Noto peninsula at dusk. Terraced rice paddies step down to the Sea of Japan, a stone mortar and wooden mallet rest on the porch, paper lanterns are lit, pampas grass sways, the full moon hangs low over the water. Peaceful, nostalgic, a home worth remembering.",
-      "match": [
-        "farmhouse",
-        "porch",
-        "mortar",
-        "terraces"
-      ],
-      "priority": 3
-    },
-    {
-      "name": "hearth_ch1",
-      "match": [
-        "hearth",
-        "interior",
-        "cushion",
-        "tray",
-        "screen"
-      ],
-      "priority": 3,
-      "prompt": "Environment, no people: the inside of the same old farmhouse at night in winter. A sunken irori hearth with a low fire, a hanging kettle, tatami, sliding paper screens glowing faintly, a lacquered tray of small dishes set before an empty floor cushion. Warm firelight against blue snow-light from the windows. Quiet, sacred, expectant."
-    },
-    {
-      "name": "sayo_ch3",
-      "from": "sayo",
-      "match": [
-        "sayo",
-        "grandmother"
-      ],
-      "priority": 1,
-      "prompt": "Edit: the same woman twenty years later, now very old and frail, in her nineties. Keep her face, eyes and expression recognisably the same; whiter thinner hair, deeper lines, a slight stoop, a padded indigo jacket. Keep the character-sheet layout and the plain background."
-    },
-    {
-      "name": "tsumugi_ch3",
-      "from": "tsumugi_ch1",
-      "match": [
-        "tsumugi",
-        "she",
-        "woman"
-      ],
-      "priority": 1,
-      "prompt": "Edit: the same girl grown up, now a woman of 27 who works as a shrine carpenter. Keep her face, eyes and expression recognisably the same person; hair tied back, an indigo sashiko work jacket like the one she wore as a child, carpenter's apron, an ink-line reel at her belt. Keep the character-sheet layout and the plain background."
-    },
-    {
-      "name": "bowl_ch3",
-      "from": "bowl_ch1",
-      "match": [
-        "bowl"
-      ],
-      "priority": 2,
-      "prompt": "Edit: the same bowl, now mended twice: a second, newer seam of gold kintsugi crosses the first. Keep the glaze, shape, tray and light the same."
-    },
-    {
-      "name": "akari_ch3",
-      "match": [
-        "akari",
-        "lamp",
-        "lantern"
-      ],
-      "priority": 1,
-      "prompt": "Character design, three views and a glowing close-up: Akari, a small ship's lamp that has woken up. A palm-sized rounded lamp of brushed brass and frosted glass with a soft warm living glow, no face and no mouth, expressive only through the pulse and colour of its light. It floats gently. Plain warm grey background."
-    },
-    {
-      "name": "coast_ch3",
-      "match": [
-        "launch",
-        "tower",
-        "sparks",
-        "shrine",
-        "beam"
-      ],
-      "priority": 3,
-      "prompt": "Environment, no people: years after the war, the rebuilt Noto coast at dusk. A half-built wooden shrine of fresh cypress beams in the foreground, a launch tower far off on the horizon catching orange light, welding sparks, long rust-coloured shadows, the sea."
-    },
-    {
-      "name": "tsumugi_ch4",
-      "from": "tsumugi_ch3",
-      "match": [
-        "tsumugi",
-        "she",
-        "old woman",
-        "her"
-      ],
-      "priority": 1,
-      "prompt": "Edit: the same woman sixty years later, now 87, living in a colony on the Moon. Keep her face, eyes and expression recognisably the same person; white hair in a low bun like her grandmother's, deep laugh lines, strong hands, a patched indigo sashiko jacket over a soft grey colony suit. Keep the character-sheet layout and the plain background."
-    },
-    {
-      "name": "bowl_ch4",
-      "from": "bowl_ch3",
-      "match": [
-        "bowl"
-      ],
-      "priority": 2,
-      "prompt": "Edit: the same bowl, now mended three times: a third fine seam of gold joins the other two. Keep the glaze, shape and light; the tray is now pale grey lunar ceramic."
-    },
-    {
-      "name": "akari_ch4",
-      "from": "akari_ch3",
-      "match": [
-        "akari",
-        "lantern",
-        "lamp"
-      ],
-      "priority": 1,
-      "prompt": "Edit: the same living light, now housed in a floating round paper lantern of washi on a thin bamboo frame, glowing warm from inside, no face and no mouth. Keep its warm glow and gentle floating pose. Keep the three-view layout and the plain background."
-    },
-    {
-      "name": "lavatube_ch4",
-      "match": [
-        "lava",
-        "cave",
-        "terraces",
-        "skylight",
-        "tube",
-        "colony"
-      ],
-      "priority": 3,
-      "prompt": "Environment, no people: a lunar colony inside a vast lava tube. Rice terraces of vivid green climb the curved basalt cave walls under rows of strip lamps, a wooden shrine post, a stone mortar, and through a round skylight far above, the blue Earth. Cold white light, lunar grey stone, quiet awe."
-    },
-    {
-      "name": "akari_ch5",
-      "from": "akari_ch4",
-      "match": [
-        "akari",
-        "lantern",
-        "lamp",
-        "ship"
-      ],
-      "priority": 1,
-      "prompt": "Edit: the same paper-lantern light after it was cracked and mended: its casing is now a web of fine gold kintsugi seams, light spilling through them. No face and no mouth. Keep the three-view layout and the plain background."
-    },
-    {
-      "name": "crater_ch5",
-      "match": [
-        "crater",
-        "rim",
-        "horizon",
-        "milky",
-        "stars"
-      ],
-      "priority": 3,
-      "prompt": "Environment: the rim of a lunar crater at night during Obon. Rows of glowing light-sail lanterns along the rim, a few settlers seen small from behind, the Milky Way pouring across a black sky, the Earth low on the horizon. Black and warm gold, vast and tender."
-    }
-  ]
+ "_note": "The reference stills Kaggle paints when style_bible/refs/ lacks them (gate 1). Each prompt follows style.txt. 'from' paints the still as an edit of an approved one, so faces and objects stay the same across the film. 'match' lists words in a shot's description that call for this still; 'priority' 1 wins when a shot has more matches than reference slots. A ref is painted when the producer reaches its chapter. Never name a studio, a director or an existing film.",
+ "refs": [
+  {
+   "name": "style",
+   "width": 1664,
+   "height": 928,
+   "prompt": "Key art. Dusk on the Noto coast, low camera at porch level, close and intimate. An old grandmother and a seven-year-old girl kneel at a stone mortar on the farmhouse porch; the grandmother's long-handled wooden kine is raised at the very top of its swing while the girl's small hands are still turning the rice: the timing game, frozen in one breath. They look only at each other. The girl laughs, flour on her nose; the grandmother smiles with softly glistening eyes, as if memorising her face. Warm amber lantern light falls on the grandmother, cool silver moonlight on the girl; a huge full moon rises over the sea between their faces, and its path on the water leads to the girl. Terraced rice paddies fall away below. In the foreground a rice bowl mended with one thin gold seam catches the moonlight, beside pampas grass in a vase and a small pyramid of white dango on a wooden stand. At the edge of the porch a third cushion lies empty. Steam curls up between them, the first stars come out. Tender, quiet and bittersweet, the last ordinary evening before everything changes. Volumetric light, rich amber and indigo palette, clean and crisp detail."
+  },
+  {
+   "name": "tsumugi_ch1",
+   "width": 1664,
+   "height": 928,
+   "prompt": "Character sheet of Tsumugi, a seven-year-old Japanese village girl: full body front view, three-quarter view and side view, plus three close-up expressions: laughing with flour on her nose, wide-eyed wonder looking up, and holding back tears. Short black bob with a soft fringe, large dark expressive eyes, small scar-free hands, an indigo sashiko-stitched cotton jacket over a plain cream top, dark trousers, straw sandals. Consistent proportions in every view. Plain warm grey background, even soft studio light.",
+   "match": [
+    "tsumugi",
+    "girl",
+    "child"
+   ],
+   "priority": 1
+  },
+  {
+   "name": "sayo",
+   "width": 1664,
+   "height": 928,
+   "prompt": "Character sheet of Sayo, a Japanese grandmother in her seventies from a rice-and-fishing village: full body front view, three-quarter view and side view, plus three close-up expressions: a gentle crinkled smile, fierce focus while swinging a wooden mallet, and grief held quietly behind calm eyes. Silver hair in a low bun, weathered kind face, strong working hands, a faded indigo work kimono with sleeves tied back by a cord, a plain apron. Consistent proportions in every view. Plain warm grey background, even soft studio light.",
+   "match": [
+    "sayo",
+    "grandmother"
+   ],
+   "priority": 1
+  },
+  {
+   "name": "bowl_ch1",
+   "width": 1328,
+   "height": 1328,
+   "prompt": "Still life: a hand-thrown rice bowl with an earthy brown and cream glaze, mended once: a single thin seam of gold kintsugi runs from the rim to the foot. It rests on a worn wooden tray beside a few grains of rice, lit by soft side light through a paper shoji window. Shallow depth of field, intimate and reverent, the gold seam catching the light.",
+   "match": [
+    "bowl"
+   ],
+   "priority": 2
+  },
+  {
+   "name": "farmhouse_ch1",
+   "width": 1664,
+   "height": 928,
+   "prompt": "Environment establishing shot, no people: an old thatched farmhouse with a wide wooden engawa porch on the Noto peninsula at dusk. Terraced rice paddies step down to the Sea of Japan, a stone mortar and wooden mallet rest on the porch, paper lanterns are lit, pampas grass sways, the full moon hangs low over the water. Peaceful, nostalgic, a home worth remembering.",
+   "match": [
+    "farmhouse",
+    "porch",
+    "mortar",
+    "terraces"
+   ],
+   "priority": 3
+  },
+  {
+   "name": "hearth_ch1",
+   "match": [
+    "hearth",
+    "interior",
+    "cushion",
+    "tray",
+    "screen"
+   ],
+   "priority": 3,
+   "prompt": "Environment, no people: the inside of the same old farmhouse at night in winter. A sunken irori hearth with a low fire, a hanging kettle, tatami, sliding paper screens glowing faintly, a lacquered tray of small dishes set before an empty floor cushion. Warm firelight against blue snow-light from the windows. Quiet, sacred, expectant."
+  },
+  {
+   "name": "sayo_ch3",
+   "from": "sayo",
+   "match": [
+    "sayo",
+    "grandmother"
+   ],
+   "priority": 1,
+   "prompt": "Edit: the same woman twenty years later, now very old and frail, in her nineties. Keep her face, eyes and expression recognisably the same; whiter thinner hair, deeper lines, a slight stoop, a padded indigo jacket. Keep the character-sheet layout and the plain background."
+  },
+  {
+   "name": "tsumugi_ch3",
+   "from": "tsumugi_ch1",
+   "match": [
+    "tsumugi",
+    "she",
+    "woman"
+   ],
+   "priority": 1,
+   "prompt": "Edit: the same girl grown up, now a woman of 27 who works as a shrine carpenter. Keep her face, eyes and expression recognisably the same person; hair tied back, an indigo sashiko work jacket like the one she wore as a child, carpenter's apron, an ink-line reel at her belt. Keep the character-sheet layout and the plain background."
+  },
+  {
+   "name": "bowl_ch3",
+   "from": "bowl_ch1",
+   "match": [
+    "bowl"
+   ],
+   "priority": 2,
+   "prompt": "Edit: the same bowl, now mended twice: a second, newer seam of gold kintsugi crosses the first. Keep the glaze, shape, tray and light the same."
+  },
+  {
+   "name": "akari_ch3",
+   "match": [
+    "akari",
+    "lamp",
+    "lantern"
+   ],
+   "priority": 1,
+   "prompt": "Character design, three views and a glowing close-up: Akari, a small ship's lamp that has woken up. A palm-sized rounded lamp of brushed brass and frosted glass with a soft warm living glow, no face and no mouth, expressive only through the pulse and colour of its light. It floats gently. Plain warm grey background."
+  },
+  {
+   "name": "coast_ch3",
+   "match": [
+    "launch",
+    "tower",
+    "sparks",
+    "shrine",
+    "beam"
+   ],
+   "priority": 3,
+   "prompt": "Environment, no people: years after the war, the rebuilt Noto coast at dusk. A half-built wooden shrine of fresh cypress beams in the foreground, a launch tower far off on the horizon catching orange light, welding sparks, long rust-coloured shadows, the sea."
+  },
+  {
+   "name": "tsumugi_ch4",
+   "from": "tsumugi_ch3",
+   "match": [
+    "tsumugi",
+    "she",
+    "old woman",
+    "her"
+   ],
+   "priority": 1,
+   "prompt": "Edit: the same woman sixty years later, now 87, living in a colony on the Moon. Keep her face, eyes and expression recognisably the same person; white hair in a low bun like her grandmother's, deep laugh lines, strong hands, a patched indigo sashiko jacket over a soft grey colony suit. Keep the character-sheet layout and the plain background."
+  },
+  {
+   "name": "bowl_ch4",
+   "from": "bowl_ch3",
+   "match": [
+    "bowl"
+   ],
+   "priority": 2,
+   "prompt": "Edit: the same bowl, now mended three times: a third fine seam of gold joins the other two. Keep the glaze, shape and light; the tray is now pale grey lunar ceramic."
+  },
+  {
+   "name": "akari_ch4",
+   "from": "akari_ch3",
+   "match": [
+    "akari",
+    "lantern",
+    "lamp"
+   ],
+   "priority": 1,
+   "prompt": "Edit: the same living light, now housed in a floating round paper lantern of washi on a thin bamboo frame, glowing warm from inside, no face and no mouth. Keep its warm glow and gentle floating pose. Keep the three-view layout and the plain background."
+  },
+  {
+   "name": "lavatube_ch4",
+   "match": [
+    "lava",
+    "cave",
+    "terraces",
+    "skylight",
+    "tube",
+    "colony"
+   ],
+   "priority": 3,
+   "prompt": "Environment, no people: a lunar colony inside a vast lava tube. Rice terraces of vivid green climb the curved basalt cave walls under rows of strip lamps, a wooden shrine post, a stone mortar, and through a round skylight far above, the blue Earth. Cold white light, lunar grey stone, quiet awe."
+  },
+  {
+   "name": "akari_ch5",
+   "from": "akari_ch4",
+   "match": [
+    "akari",
+    "lantern",
+    "lamp",
+    "ship"
+   ],
+   "priority": 1,
+   "prompt": "Edit: the same paper-lantern light after it was cracked and mended: its casing is now a web of fine gold kintsugi seams, light spilling through them. No face and no mouth. Keep the three-view layout and the plain background."
+  },
+  {
+   "name": "crater_ch5",
+   "match": [
+    "crater",
+    "rim",
+    "horizon",
+    "milky",
+    "stars"
+   ],
+   "priority": 3,
+   "prompt": "Environment: the rim of a lunar crater at night during Obon. Rows of glowing light-sail lanterns along the rim, a few settlers seen small from behind, the Milky Way pouring across a black sky, the Earth low on the horizon. Black and warm gold, vast and tender."
+  }
+ ]
 }
