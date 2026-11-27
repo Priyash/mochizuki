@@ -12,10 +12,29 @@
    "backend": "kaggle"
   },
   {
-   "action": "waiting",
+   "action": "collected",
    "batch": "b20261126-201651-aa6c",
    "backend": "colab",
-   "status": "queued"
+   "status": "error",
+   "made": 0,
+   "failed": 0,
+   "not_reached": 24,
+   "stale": false,
+   "error": "no results.json"
+  },
+  {
+   "action": "built_and_submitted",
+   "batch": "b20261127-100712-1dfc",
+   "backend": "colab",
+   "stage": "refs",
+   "jobs": 24,
+   "deferred": 0,
+   "est_hours": 1.25,
+   "summary": {
+    "made": 24,
+    "deferred": 0
+   },
+   "submitted": true
   }
  ],
  "reviews": {
@@ -30,13 +49,19 @@
   "kernels list --mine": "0: ref                         title             author     lastRunTime                 totalVotes  \n--------------------------  ----------------  ---------  --------------------------  ----------  \npriyash11/mochizuki-worker  mochizuki-worker  Priyash11  2026-11-26 00:21:45.920000           0",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: ACCESS_TOKEN\n- path: None\n- proxy: None\n- competition: None"
  },
+ "colab_log": [
+  "no colab worker took b20261126-201651-aa6c in 14 h; its jobs are freed",
+  "Colab batch budget 4.0 h; about 0 of 100 units used",
+  "colab-b20261127-100712-1dfc.tar.gz (3 KB) waits for the colab worker",
+  "colab-run started"
+ ],
  "uploaded": 0,
  "review": {
   "items": 0
  },
  "notice": {
   "kind": "running",
-  "text": "Chapter 1: Colab batch b20261126-201651-aa6c (refs) is submitted."
+  "text": "Chapter 1: Colab batch b20261127-100712-1dfc (refs) is submitted."
  },
  "status": {
   "waiting_anchor": 26,
