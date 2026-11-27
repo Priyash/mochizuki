@@ -243,31 +243,57 @@ class StubEngine:
         return {"width": w, "height": h, "engine": "stub"}
 
 
-def resolve_cmd(e: dict, models: Path, download=None) -> list[str]:
+def _weights(folder: Path) -> list[Path]:
+    return [f for f in folder.rglob("*") if f.is_file() and f.suffix in (".safetensors", ".npz", ".gguf")]
+
+
+NEEDED = ("transformer", "text_encoder", "vae")       # what mflux loads from a local Qwen model folder
+
+
+def _model_ok(target: Path) -> str | None:
+    """None if the folder holds a loadable model, else what is missing."""
+    missing = [d for d in NEEDED if not _weights(target / d)]
+    return f"no weights in {', '.join(missing)}" if missing else None
+
+
+def resolve_cmd(e: dict, models: Path, download=None, list_files=None) -> list[str]:
     """The engine's command, with {model_dir} replaced by a local copy of e["download"]
-    (a Hugging Face repo and a folder in it), fetched once into `models`."""
+    (a Hugging Face repo and a folder in it), fetched once into `models` and checked."""
     cmd = list(e["cmd"])
     d = e.get("download")
     if not d:
         return cmd
+    folder = d.get("folder", "")
     local = models / d["repo"].replace("/", "--")
-    target = local / d.get("folder", "")
-    if not (target / ".complete").exists():
-        if download is None:
-            from huggingface_hub import snapshot_download  # noqa: PLC0415 - comes with mflux
-            download = snapshot_download
-        _log(f"downloading {d['repo']}/{d.get('folder', '')} (once)", event="model.download", model=d["repo"], folder=d.get("folder"))
-        download(d["repo"], local_dir=str(local),
-                 allow_patterns=[f"{d['folder']}/*"] if d.get("folder") else None)
-        target.mkdir(parents=True, exist_ok=True)
-        weights = [f for f in target.rglob("*") if f.suffix in (".safetensors", ".npz", ".gguf")]
-        if not weights:
-            raise RuntimeError(f"{d['repo']}: nothing was downloaded into {target} (is the folder "
-                               f"'{d.get('folder', '')}' still in that repository?); not marking it complete")
-        gb = sum(f.stat().st_size for f in weights) / 1e9
-        _log(f"downloaded {d['repo']}/{d.get('folder', '')}: {len(weights)} weight file(s), {gb:.1f} GB",
-             event="model.downloaded", model=d["repo"], files=len(weights), gb=round(gb, 1))
-        (target / ".complete").write_text("ok")
+    target = local / folder
+    done = target / ".complete"
+    if done.exists() and _model_ok(target):          # marked done by an older version, but empty: fetch again
+        _log(f"{d['repo']}/{folder} was marked downloaded but {_model_ok(target)}; downloading again",
+             event="model.redownload", level="warn", model=d["repo"], folder=folder)
+        done.unlink()
+    if not done.exists():
+        if list_files is None or download is None:
+            from huggingface_hub import HfApi, snapshot_download  # noqa: PLC0415 - comes with mflux
+            list_files = list_files or (lambda repo: [(f.path, f.size or 0) for f in HfApi().list_repo_tree(
+                repo, recursive=True) if getattr(f, "size", None) is not None])
+            download = download or snapshot_download
+        files = list_files(d["repo"])
+        mine = [(n, sz) for n, sz in files if not folder or n.startswith(folder.rstrip("/") + "/")]
+        if not mine:
+            tops = sorted({n.split("/")[0] for n, _ in files})
+            raise RuntimeError(f"{d['repo']} has no folder '{folder}'; it has: {', '.join(tops)[:400]}")
+        _log(f"downloading {d['repo']}/{folder} once: {len(mine)} files, about {sum(s for _, s in mine) / 1e9:.0f} GB; "
+             "the progress bars below are Hugging Face's", event="model.download", model=d["repo"], folder=folder,
+             files=len(mine), gb=round(sum(s for _, s in mine) / 1e9, 1))
+        t0 = time.time()
+        download(d["repo"], local_dir=str(local), allow_patterns=[n for n, _ in mine])
+        bad = _model_ok(target)
+        if bad:
+            raise RuntimeError(f"{d['repo']}/{folder}: downloaded, but {bad} in {target}; not marking it complete")
+        gb = sum(f.stat().st_size for f in _weights(target)) / 1e9
+        _log(f"downloaded {d['repo']}/{folder}: {gb:.1f} GB in {(time.time() - t0) / 60:.1f} min",
+             event="model.downloaded", model=d["repo"], gb=round(gb, 1), minutes=round((time.time() - t0) / 60, 1))
+        done.write_text("ok")
     return [str(target) if x == "{model_dir}" else x for x in cmd]
 
 
