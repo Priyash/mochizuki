@@ -250,18 +250,21 @@
     ],
     "gpus": [
       "A100",
-      "L4"
+      "L4",
+      "G4"
     ],
     "units_per_hour": {
-      "T4": 1.19,
+      "T4": 1.24,
       "L4": 1.71,
-      "A100": 5.4
+      "A100": 5.4,
+      "G4": 6.0
     },
     "total_cap_units": 100,
     "min_balance_units": 3,
     "batch_hours": 4,
     "setup_minutes": 15,
     "max_wait_hours": 12,
-    "stale_minutes": 30
+    "stale_minutes": 30,
+    "_gpus_note": "bf16 GPUs only (T4 makes Qwen go NaN). G4 = RTX Pro 6000; its rate is unconfirmed, 6.0 is a conservative guess until the runner measures it. H100 is not offered to this account."
   }
 }
