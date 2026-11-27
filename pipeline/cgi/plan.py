@@ -475,7 +475,7 @@ def build(p, shot_id: str, preview: bool = False, frames_only: tuple[int, int] |
         "outline_px": cfg["outline_px"], "blackout": d.blackout,
         "rig": rig, "pieces": pieces, "props": list(props.values()), "characters": list(chars.values()),
         "camera": cam, "timing": d.timing, "notes": d.notes, "cheated_out": hidden,
-        "output": {"dir": str(shot_dir), "frames": str(shot_dir / f"frames-{tag}"),
+        "output": {"dir": str(shot_dir), "frames": str(shot_dir / f"frames-{tag}-{res[0]}x{res[1]}"),
                    "blend": str(shot_dir / f"{shot_id}.blend")},
     }
 

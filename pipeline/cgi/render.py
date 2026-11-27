@@ -137,6 +137,8 @@ def render_shot(p, shot_id: str, preview: bool = False, frames: tuple[int, int] 
         raise RuntimeError(f"{shot_id}: the frames came out blank (one flat colour): check the lights in the .blend")
     enc = cfg["encode"]
     name = f"{shot_id}-preview.mp4" if preview else f"{shot_id}.mp4"
+    if (first, last) != (1, plan["frames"]):               # part of a shot never replaces the whole shot's clip
+        name = name.replace(".mp4", f"-f{first}-{last}.mp4")
     clip = encode(folder, first, plan["fps"], Path(plan["output"]["dir"]) / name,
                   enc["preview_crf"] if preview else enc["crf"], codec or enc.get("codec", "libx264"))
     secs = time.time() - t0
@@ -154,9 +156,9 @@ def board(p, shots: list[str], chapter: int, cols: int = 4, width: int = 480) ->
     work = Path(cfg["work"]) if Path(cfg["work"]).is_absolute() else p.root / cfg["work"]
     tiles = []
     for sid in shots:
-        frames = sorted((work / sid / "frames-preview").glob("*.png"))
-        if frames:
-            tiles.append((sid, frames[len(frames) // 2]))
+        pngs = sorted((work / sid).glob("frames-*/*.png"), key=lambda f: f.stat().st_mtime)
+        if pngs:
+            tiles.append((sid, pngs[-1]))                  # the frame rendered last: the board's own
     if not tiles:
         raise RuntimeError("no frames to put on the board")
     out = work / (f"board-ch{chapter}.png" if chapter else "board.png")

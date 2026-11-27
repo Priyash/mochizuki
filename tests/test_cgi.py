@@ -371,6 +371,9 @@ def test_render_checks_and_encodes(proj, fake_blender, monkeypatch):
                         [str(exe), "--plan", str(plan_file)] + (["--no-render"] if no_render else []))
     r = rnd.render_shot(proj, "1-02", preview=True, frames=(1, 12))
     assert Path(r["clip"]).exists() and r["frames"] == 12 and Path(r["blend"]).exists()
+    assert Path(r["clip"]).name == "1-02-preview-f1-12.mp4"        # a part never replaces the shot's clip
+    whole = rnd.render_shot(proj, "1-08", preview=True)
+    assert Path(whole["clip"]).name == "1-08-preview.mp4"
     monkeypatch.setenv("FAKE_FLAT", "1")
     with pytest.raises(RuntimeError, match="blank"):
         rnd.render_shot(proj, "1-05", preview=True, frames=(1, 4))
