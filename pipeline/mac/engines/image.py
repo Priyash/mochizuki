@@ -6,6 +6,7 @@ mac.loras are added to the commands of the roles they name.
 """
 from __future__ import annotations
 
+import re
 import shutil
 import time
 from pathlib import Path
@@ -30,6 +31,15 @@ def lora_args(cfg: dict, role: str) -> list[str]:
         paths.append(str(path) if path.exists() else str(lo["path"]))
         scales.append(str(lo.get("scale", 1.0)))
     return ["--lora-paths", *paths, "--lora-scales", *scales] if paths else []
+
+
+_SAVED = re.compile(r"Image saved successfully at:\s*(\S.*?\.(?:png|jpe?g|webp))", re.I)
+
+
+def saved_path(output: str) -> Path | None:
+    """Where mflux says it saved the picture (the last such line), if it says so."""
+    found = _SAVED.findall(output or "")
+    return Path(found[-1].strip()) if found else None
 
 
 def lora_triggers(cfg: dict, role: str) -> str:
@@ -87,11 +97,17 @@ class MfluxImageEngine:
         if first_use:
             log(f"{job['key']}: {e['hf_repo']} is not on this Mac yet; mflux downloads it first (progress every "
                 "minute)", event="model.download", model=e["hf_repo"])
+        out.unlink(missing_ok=True)          # mflux never overwrites: with a file there it saves <name>_2.png
         t0 = time.time()
         code, tail = run_streaming(cmd, float(self.cfg["seconds_per_job"]) * 6 + (3600 if first_use else 0),
                                    label=job["key"] + ":", cache=cache)
-        if code != 0 or not out.exists():
-            raise RuntimeError(f"mflux exit {code}: {tail.strip()[-600:]}")
+        saved = saved_path(tail)
+        if code == 0 and saved and saved != out and saved.exists():
+            log(f"mflux saved {saved.name}; moving it to {out.name}", event="render.renamed", level="warn",
+                saved=str(saved), file=str(out))
+            saved.replace(out)
+        if code != 0 or not out.exists() or out.stat().st_mtime < t0:
+            raise RuntimeError(f"mflux exit {code}, no new {out.name}: {tail.strip()[-600:]}")
         check_image(out)
         took = time.time() - t0
         log(f"{job['key']}: saved {out} ({took:.0f} s)", event="render.done", key=job["key"], seconds=round(took),

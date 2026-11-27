@@ -23,9 +23,11 @@ STYLE_2D = ("Hand-drawn 2D anime feature film, traditional cel animation look wi
             "shading, painted watercolour backgrounds, anime proportions and large expressive eyes, subtle emotional "
             "acting in faces and hands, cinematic 16:9 framing, Japanese feature-film quality. No text, no logos, no "
             "watermark.")
-_3D_TO_2D = (("3D CG anime feature film still, cel-shaded 3D character models with clean ink outlines.",
-              "2D hand-drawn anime feature film still, traditional cel animation with clean ink lines."),
-             ("Cel-shaded 3D CG, volumetric light,", "Hand-drawn 2D cel animation, painted light,"))
+_3D_TO_2D = (("3D CGI animated feature film still: fully 3D-rendered cel-shaded character models with toon shading and "
+               "clean ink outlines, 3D lighting with soft shadows and depth.",
+               "2D hand-drawn anime feature film still: traditional cel animation with clean ink lines, flat cel "
+               "shading and painted backgrounds."),
+              ("3D CGI render, cel-shaded 3D models, volumetric light,", "Hand-drawn 2D cel animation, painted light,"))
 
 
 def key_art_prompt(p, look: str = "3d") -> tuple[str, dict]:
@@ -56,11 +58,32 @@ def _step(n: str, what: str, fn):
     return {"ok": True, "seconds": took, **(info or {})}
 
 
-def self_test(p, engines, out: Path, edit_only: bool = False, look: str = "3d") -> dict:
-    """1/2 a reference still from the key-art prompt; 2/2 a keyframe edited from it."""
+def self_test(p, engines, out: Path, edit_only: bool = False, look: str = "3d", variants: int = 1) -> dict:
+    """1/2 a reference still from the key-art prompt (with variants > 1: that many, each with its own
+    seed, named <name>-v1.png ...); 2/2 a keyframe edited from the first one."""
     prompt, r = key_art_prompt(p, look)
     out.parent.mkdir(parents=True, exist_ok=True)
     describe(out.parent)
+    stale = out.with_name(out.stem + "-edit.png")
+    if stale.exists() and not edit_only:
+        stale.unlink()                     # never leave an old edit that could be mistaken for this run's
+    if variants > 1 and not edit_only:
+        made = {}
+        for v in range(1, variants + 1):
+            f = out.with_name(f"{out.stem}-v{v}.png")
+            made[f.name] = _step(f"still {v}/{variants}", f"variant {v} of the reference still (its own seed)",
+                                 lambda f=f, v=v: {**engines.run({"key": f"selftest-style-v{v}", "prompt": prompt,
+                                                                  "width": r.get("width", 1664),
+                                                                  "height": r.get("height", 928)}, p.root, f),
+                                                   "file": str(f)})
+        ok = [n for n, x in made.items() if x["ok"]]
+        if not ok:
+            return {"stills": made}
+        import shutil  # noqa: PLC0415
+        shutil.copyfile(out.with_name(ok[0]), out)     # the keyframe test edits the first good variant
+        log(f"{len(ok)} of {variants} variants made: {', '.join(ok)} in {out.parent}", event="selftest.variants",
+            made=len(ok))
+        edit_only = True
     if edit_only and not out.exists():
         log(f"--edit-only: no still at {out} (moved or renamed?), so making one first", event="selftest.no_still",
             level="warn", file=str(out))

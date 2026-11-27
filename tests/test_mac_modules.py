@@ -188,3 +188,28 @@ def test_streaming_logs_steps_and_other_output(tmp_path, capsys):
     assert "train.loaded" in out and out.count("train.step") == 3
     assert "WARN  mac    mflux-train.out" in out
     assert "%|" not in out                                # the raw bar is not echoed
+
+
+def test_an_old_picture_is_never_taken_for_a_new_one(tmp_path, monkeypatch):
+    """mflux saves <name>_2.png when <name>.png exists; the engine must end up with the new picture."""
+    from pipeline.mac.engines import image as mi
+    fake = tmp_path / "mflux-generate-z-image-turbo"
+    fake.write_text(f"#!{sys.executable}\n" + textwrap.dedent('''
+        import sys, shutil
+        from pathlib import Path
+        a = sys.argv; out = Path(a[a.index("--output") + 1])
+        if out.exists():
+            out = out.with_name(out.stem + "_2" + out.suffix)
+        shutil.copyfile(sys.argv[0] + ".png", out)
+        print(f"INFO: Image saved successfully at: {out}")
+    '''))
+    fake.chmod(0o755)
+    _still(Path(str(fake) + ".png"))
+    monkeypatch.setenv("PATH", f"{tmp_path}:{__import__('os').environ['PATH']}")
+    cfg = {"engines": {"refs": {"cmd": [str(fake), "--model", "z-image-turbo", "--steps", "9"]},
+                       "keyframe": mc.DEFAULTS["engines"]["keyframe"]}, "seconds_per_job": 30, "loras": []}
+    out = tmp_path / "still.png"
+    out.write_bytes(b"old picture")
+    mi.MfluxImageEngine(cfg, models=tmp_path).run({"key": "k", "prompt": "p"}, tmp_path, out)
+    assert out.read_bytes() != b"old picture" and not (tmp_path / "still_2.png").exists()
+    assert mi.saved_path("x\nINFO: Image saved successfully at: /a/b c_2.png\n") == Path("/a/b c_2.png")
