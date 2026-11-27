@@ -276,7 +276,7 @@
       "T4": 1.24,
       "L4": 1.71,
       "A100": 5.4,
-      "G4": 6.0
+      "G4": 8.71
     },
     "total_cap_units": 100,
     "min_balance_units": 3,
@@ -284,6 +284,6 @@
     "setup_minutes": 15,
     "max_wait_hours": 12,
     "stale_minutes": 30,
-    "_gpus_note": "bf16 GPUs only (T4 makes Qwen go NaN). G4 = RTX Pro 6000; its rate is unconfirmed, 6.0 is a conservative guess until the runner measures it. H100 is not offered to this account."
+    "_gpus_note": "bf16 GPUs only (T4 makes Qwen go NaN). Rates as Colab lists them (2026): L4 1.71, A100 40GB 5.40, G4 8.71 units/h. H100 is not offered to this account."
   }
 }
