@@ -109,9 +109,24 @@ class ColabBackend(ReleaseBackend):
         return max(float(r.get(g, 6.0)) for g in self.cfg["gpus"])
 
     def spent_units(self, led) -> float:
-        rows = led.db.execute("SELECT submitted_at, finished_at FROM batches WHERE backend=? "
-                              "AND submitted_at IS NOT NULL", (self.name,)).fetchall()
-        secs = sum(max(0.0, (r["finished_at"] or self.now()) - r["submitted_at"]) for r in rows)
+        """Units the agreed cap has used, counted at the dearest allowed GPU's rate (conservative).
+
+        Only VM time counts, never time a batch spent waiting for a runner or for units:
+          - finished batches count the VM time the runner reported (gpu_seconds);
+          - a finished batch with no report counts nothing if it simply waited out max_wait_hours
+            (no VM ever opened), and a full batch if its runner died mid-run (the VM may have billed);
+          - the open batch counts as a full batch: room is kept for it until it reports."""
+        full = float(self.cfg["batch_hours"]) * 3600 + float(self.cfg["setup_minutes"]) * 60
+        never_taken = float(self.cfg["max_wait_hours"]) * 3600 * 0.95
+        secs = 0.0
+        for r in led.db.execute("SELECT submitted_at, finished_at, gpu_seconds FROM batches WHERE backend=? "
+                                "AND submitted_at IS NOT NULL", (self.name,)).fetchall():
+            if r["finished_at"] is None:
+                secs += full
+            elif r["gpu_seconds"] is not None:
+                secs += float(r["gpu_seconds"])
+            elif r["finished_at"] - r["submitted_at"] < never_taken:
+                secs += min(full, r["finished_at"] - r["submitted_at"])
         return secs / 3600 * self.rate()
 
     def budget(self, p, led) -> tuple[float, float]:
@@ -200,7 +215,7 @@ def run_remote(cli: ColabCLI, cfg: dict, session: str, inputs_tgz: Path, batch_i
         if code == 0:
             gpu = g
             break
-        tried.append(f"{g}: {out.strip().splitlines()[-1] if out.strip() else code}"[:200])
+        tried.append(_redact(f"{g}: {out.strip().splitlines()[-1] if out.strip() else code}")[:200])
     if gpu is None:
         return {"ok": False, "gpu": None, "error": "no GPU granted: " + "; ".join(tried)}
     t0 = time.time()
@@ -273,6 +288,19 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
             t.extractall(d / "in")
     manifest = json.loads((d / "in" / "manifest.json").read_text(encoding="utf-8"))
     total = len(manifest["jobs"])
+    if bal is not None:                            # never let the balance run dry mid-batch: Colab would kill
+        rate = max(float(cfg["units_per_hour"].get(g, 6.0)) for g in cfg["gpus"])   # the VM and lose its stills
+        setup = float(cfg["setup_minutes"]) * 60
+        afford = (bal - 1.0) / rate * 3600 - setup - 600
+        if afford < 900:
+            _log(f"{bal:.1f} units buy under 15 min of work at the {rate} units/h rate; not starting a VM")
+            rel.delete(n["claim"])
+            return None
+        if afford < float(manifest.get("deadline_seconds", 1e9)):
+            _log(f"balance {bal:.1f} units: this batch gets {afford / 60:.0f} min; the rest waits for the next one")
+            manifest["deadline_seconds"] = afford
+            (d / "in" / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+            cfg = {**cfg, "batch_hours": afford / 3600}
     from .kaggle import WORKER  # noqa: PLC0415
     shutil.copyfile(WORKER, d / "in" / "worker.py")
     full = d / "full.tar.gz"
@@ -306,16 +334,34 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
         r = run_remote(cli, cfg, f"mochi-{batch_id[-11:]}", full, batch_id, out_tgz, packages, beat=beat)
     finally:
         stop.set()
+    if r.get("gpu") is None:                       # no VM opened, nothing billed: the batch waits for the next run
+        _log(f"{batch_id}: {r['error']}; left waiting, nothing billed")
+        for k in ("claim", "progress"):
+            rel.delete(n[k])
+        return None
+    after = cli.balance()
+    usage = {"vm_seconds": round(r.get("seconds", 0) + 120), "gpu": r.get("gpu"),   # + opening the VM
+             "units_used": round(bal - after, 2) if bal is not None and after is not None else None}
+    _log(f"{batch_id}: {usage['units_used']} units used, balance now {after}")
     res_tgz = d / n["results"]
+    (d / "out").mkdir(exist_ok=True)
     if r["ok"]:
-        shutil.copyfile(out_tgz, res_tgz)
+        with tarfile.open(out_tgz) as t:
+            try:
+                t.extractall(d / "res", filter="data")
+            except TypeError:
+                t.extractall(d / "res")
+        found = list((d / "res").rglob("results.json"))
+        rj = json.loads(found[0].read_text(encoding="utf-8")) if found else {"batch_id": batch_id, "jobs": {},
+                                                                              "error": "the worker wrote no results"}
+        base = found[0].parent if found else d / "res"
     else:                                          # an error result frees the jobs; they do not count against shots
         _log(f"{batch_id}: {r['error']}")
-        (d / "out").mkdir(exist_ok=True)
-        (d / "out" / "results.json").write_text(json.dumps(
-            {"batch_id": batch_id, "jobs": {}, "error": f"colab: {r['error']}"[:1500]}))
-        with tarfile.open(res_tgz, "w:gz") as t:
-            t.add(d / "out", arcname="out")
+        rj, base = {"batch_id": batch_id, "jobs": {}, "error": f"colab: {r['error']}"[:1500]}, d / "out"
+    rj.update(usage)
+    (base / "results.json").write_text(json.dumps(rj))
+    with tarfile.open(res_tgz, "w:gz") as t:
+        t.add(base, arcname="out")
     rel.upload(res_tgz)
     _log(f"{batch_id}: results uploaded ({'ok' if r['ok'] else 'failed'}, GPU {r.get('gpu')}, "
          f"{r.get('seconds', 0) / 60:.0f} min on the VM)")
@@ -343,6 +389,10 @@ def test_still(p, cli: ColabCLI, cfg: dict, packages: list[str], out_dir: Path, 
         for f in sorted((d / "in").iterdir()):
             t.add(f, arcname=f.name)
     before = cli.balance()
+    if before is not None and before < float(cfg["min_balance_units"]):
+        return {"batch": batch_id, "ok": False, "gpu": None, "balance_before": before, "units_used": 0.0,
+                "error": f"the signed-in Google account has {before} compute units; Colab gives GPUs only to "
+                         "accounts with paid units. Buy units on that same account (docs/colab.md)"}
     small = {**cfg, "batch_hours": 0.75, "setup_minutes": 20}
     res = run_remote(cli, small, f"mochi-test-{batch_id[-6:]}", full, batch_id, d / "out.tar.gz", packages)
     after = cli.balance()
@@ -363,3 +413,103 @@ def test_still(p, cli: ColabCLI, cfg: dict, packages: list[str], out_dir: Path, 
         report["still"] = str(d / "out" / rj["jobs"][job["key"]]["file"]) if report["job"] and \
             report["job"].get("ok") else None
     return report
+
+
+# ==================================================================== smoke test (no GPU, no units)
+SMOKE_JOB = r'''
+import os, sys, time, json, threading, urllib.request, shutil, platform
+out = {"python": sys.version.split()[0], "platform": platform.platform(),
+       "env_ok": os.environ.get("MOCHI_SMOKE") == "42"}
+try:
+    out["input"] = open("/content/smoke_in.txt").read().strip()
+except Exception as e:
+    out["input"] = f"missing: {e}"
+try:
+    from google.colab import runtime
+    out["can_release_vm"] = hasattr(runtime, "unassign")
+except Exception as e:
+    out["can_release_vm"] = f"no: {e}"
+for name, url in (("huggingface", "https://huggingface.co/api/models/Qwen/Qwen-Image-2512"),
+                  ("pypi", "https://pypi.org/simple/diffusers/")):
+    t = time.time()
+    try:
+        urllib.request.urlopen(url, timeout=30).read(2000)
+        out[f"net_{name}"] = f"ok in {time.time() - t:.1f}s"
+    except Exception as e:
+        out[f"net_{name}"] = f"failed: {e}"
+du = shutil.disk_usage("/content")
+out["disk_free_gb"] = round(du.free / 1e9, 1)
+try:
+    out["ram_gb"] = round(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9, 1)
+except Exception:
+    pass
+ticks = []
+threading.Timer(2, lambda: ticks.append(1)).start()
+for i in range(4):
+    print(f"[smoke] still streaming {i}", flush=True)
+    time.sleep(1)
+out["timers_work"] = bool(ticks)
+open("/content/smoke_out.json", "w").write(json.dumps(out))
+print("[smoke] " + json.dumps(out), flush=True)
+print("[job] MOCHI-DONE", flush=True)
+'''
+
+
+def _redact(text: str) -> str:
+    """Action logs are public: never print the Google account's address."""
+    return re.sub(r"[\w.+-]+@[\w-]+\.[\w.]+", "<account>", text or "")
+
+
+def smoke(cli: ColabCLI, work: Path) -> dict:
+    """The whole Colab round trip on a CPU VM (free, no GPU): sign-in, balance, open, upload,
+    exec with --env and streaming, download, stop, and that no VM is left behind."""
+    work.mkdir(parents=True, exist_ok=True)
+    rep: dict = {"steps": {}}
+    st = rep["steps"]
+
+    def step(name, ok, detail=""):
+        st[name] = {"ok": bool(ok), "detail": _redact(str(detail))[-400:]}
+        _log(f"{'OK  ' if ok else 'FAIL'} {name} {st[name]['detail']}")
+        return ok
+
+    code, out = cli.run(["--help"], timeout=60)
+    step("cli installed", code == 0, out.strip().splitlines()[0] if out.strip() else code)
+    code, out = cli.run(["usage"], timeout=120)
+    bal = cli.balance()
+    rep["balance_units"] = bal
+    if not step("sign-in and balance", bal is not None, f"balance {bal} units" if bal is not None else out):
+        return rep
+    rep["gpu_needs_units"] = bal < 3
+    session = time.strftime("mochi-smoke-%H%M%S")
+    t0 = time.time()
+    code, out = cli.run(["new", "-s", session], timeout=900)
+    if not step("open a CPU VM", code == 0, f"in {time.time() - t0:.0f}s" if code == 0 else out):
+        return rep
+    try:
+        (work / "smoke_in.txt").write_text("hello from GitHub\n")
+        (work / "smoke_job.py").write_text(SMOKE_JOB)
+        code, out = cli.run(["upload", "-s", session, str(work / "smoke_in.txt"), "/content/smoke_in.txt"], 600)
+        step("upload", code == 0, out)
+        lines = []
+        code, tail = cli.stream(["exec", "-s", session, "-f", str(work / "smoke_job.py"), "--timeout", "0",
+                                 "--env", "MOCHI_SMOKE=42"], time.time() + 900, lines.append)
+        step("run code (exec, streaming)", "MOCHI-DONE" in tail, f"exit {code}")
+        info = next((json.loads(x.split("[smoke] ", 1)[1]) for x in lines if x.startswith("[smoke] {")), {})
+        rep["vm"] = info
+        step("env passed in", info.get("env_ok"), "")
+        step("uploaded file seen on the VM", info.get("input") == "hello from GitHub", info.get("input"))
+        step("VM can release itself", info.get("can_release_vm") is True, info.get("can_release_vm"))
+        step("VM reaches Hugging Face", str(info.get("net_huggingface", "")).startswith("ok"),
+             info.get("net_huggingface"))
+        step("VM reaches PyPI", str(info.get("net_pypi", "")).startswith("ok"), info.get("net_pypi"))
+        step("timers keep running", info.get("timers_work"), "")
+        dl = work / "smoke_out.json"
+        code, out = cli.run(["download", "-s", session, "/content/smoke_out.json", str(dl)], 600)
+        step("download", code == 0 and dl.exists() and json.loads(dl.read_text()).get("env_ok"), out)
+    finally:
+        code, out = cli.run(["stop", "-s", session], timeout=300)
+        step("stop the VM", code == 0, out)
+    left = cli.sessions()
+    step("no VM left behind", session not in left, ", ".join(left))
+    rep["ok"] = all(v["ok"] for v in st.values())
+    return rep

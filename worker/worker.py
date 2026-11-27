@@ -651,11 +651,17 @@ def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: 
         results["groups"][name] = {"load_seconds": time.time() - g0}
         log(f"engine {name} ready in {time.time() - g0:.0f} s")
         slow = 0
+        broken = 0                                         # machine failures in a row (blank, NaN, CUDA)
         factor = float(m.get("slow_factor", 3))
         for n, job in enumerate(jobs):
             est = float(job.get("est_seconds", 0))
             if time.time() + est > deadline:
                 continue                                   # left for the next session
+            if broken >= 2:
+                log(f"stopping {name}: 2 jobs in a row failed the same machine way ({last_err[:120]}); "
+                    f"{len(jobs) - n} left for after a fix, so no more GPU time goes on it")
+                results["groups"][name]["stopped_broken"] = len(jobs) - n
+                break
             if slow >= 2:
                 log(f"stopping {name}: 2 jobs took over {factor:g}x their estimate; "
                     f"{len(jobs) - n} left for the next batch")
@@ -670,6 +676,7 @@ def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: 
                 results["jobs"][job["key"]] = {"ok": True, "file": target.name,
                                                "gpu_seconds": took, **(info or {})}
                 log(f"{job['key']} ok in {took:.0f} s (estimate {est:.0f} s) [{n + 1}/{len(jobs)}]")
+                broken = 0
                 if est > 0 and took > factor * est:
                     slow += 1
             except Exception as e:  # noqa: BLE001
@@ -677,6 +684,11 @@ def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: 
                 results["jobs"][job["key"]] = {"ok": False, "error": repr(e)[:800], "oom": oom,
                                                "gpu_seconds": time.time() - j0}
                 log(f"{job['key']} failed: {e!r}")
+                last_err = str(e)
+                if oom or any(k in last_err for k in ("blank or NaN", "CUDA", "same device")):
+                    broken += 1
+                else:
+                    broken = 0
                 if oom:
                     free_engine(None)
             save()

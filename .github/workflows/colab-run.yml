@@ -8,11 +8,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "run: the waiting batch; test: one reference still, outside the ledger"
+        description: "run: the waiting batch; test: one reference still, outside the ledger; smoke: round trip on a free CPU VM"
         required: true
         default: run
         type: choice
-        options: [run, test]
+        options: [run, test, smoke]
 concurrency:
   group: colab-runner
   cancel-in-progress: false
@@ -57,7 +57,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           COLAB_AUTH: adc
         run: |
-          if [ "${{ inputs.mode || 'run' }}" = "test" ]; then
+          if [ "${{ inputs.mode || 'run' }}" = "smoke" ]; then
+            python -m pipeline colab-smoke --work colab-smoke
+          elif [ "${{ inputs.mode || 'run' }}" = "test" ]; then
             python -m pipeline colab-test --out colab-test
           else
             python -m pipeline colab-runner --work colab-work

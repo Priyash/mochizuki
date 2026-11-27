@@ -402,7 +402,8 @@ def collect(p: Project, led: Ledger, kg, batch_id: str) -> dict:
             left += 1
     elapsed = results.get("elapsed")
     led.set_batch(batch_id, status="done" if st == "complete" else "failed", finished_at=time.time(),
-                  gpu_seconds=(elapsed + 300) if elapsed else None,    # + pip install before the worker
+                  gpu_seconds=results.get("vm_seconds") if results.get("vm_seconds") is not None
+                  else (elapsed + 300) if elapsed else None,           # + pip install before the worker
                   note=(results.get("error") or st)[:200] if (results.get("error") or st != "complete") else None)
     return {"batch": batch_id, "backend": b["backend"], "status": st, "made": made, "failed": failed,
             "not_reached": left,
