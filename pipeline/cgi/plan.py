@@ -312,9 +312,11 @@ def camera_entry(cfg: dict, d, the_set: dict, chars: dict, props: dict, pieces: 
             fh = PROP_FRAME.get(subject, layout.FRAME_HEIGHT[c.framing]) * {"ECU": 0.45, "CU": 0.7}.get(c.framing, 1.0)
     else:
         piece = next((x for x in pieces if x["kind"] == subject), None)
-        if piece is None:
-            raise ValueError(f"camera.subject {subject!r} is not a character, prop or set piece of this shot")
-        target, loc, far = list(piece["at"]), list(CAMERA_HOME), True
+        if piece is None:                                  # not built in this set yet: frame the place instead
+            target, loc, far = list(the_set.get("vista", [0, 20, 3])), list(CAMERA_HOME), True
+            subject = "vista"
+        else:
+            target, loc, far = list(piece["at"]), list(CAMERA_HOME), True
     if far:
         frame_h = fh or layout.FRAME_HEIGHT.get(c.framing, 7.0)
         if c.angle == "low":
@@ -330,6 +332,27 @@ def camera_entry(cfg: dict, d, the_set: dict, chars: dict, props: dict, pieces: 
     return {"lens": c.lens, "sensor_mm": cfg["sensor_mm"], "fstop": c.fstop, "keys": keys,
             "focus_point": [round(x, 4) for x in focus_pt], "frame_h": round(frame_h, 4), "subject": subject,
             "vfov": layout.vfov(c.lens, cfg["sensor_mm"], aspect)}
+
+
+def follow_head(cam: dict, c: dict, eye_radius: float = 0.1) -> None:
+    """In a close-up the eyes stay where the camera aimed: the camera moves with the head's average
+    turn over the shot (a face looking up at the moon lifts its eyes out of a fixed frame)."""
+    face = c["face"]
+    n = len(face.get("head.pitch", [])) or 1
+    pitch = sum(face.get("head.pitch", [0.0])) / n
+    yaw = sum(face.get("head.yaw", [0.0])) / n
+    if abs(pitch) < 0.02 and abs(yaw) < 0.02:
+        return
+    f = layout.facing_vec(c["yaw"])
+    side = (-f[1], f[0])
+    dz = eye_radius * math.sin(pitch)
+    dside = eye_radius * math.sin(yaw)
+    back = eye_radius * (1 - math.cos(pitch) * math.cos(yaw))
+    delta = [side[0] * dside - f[0] * back, side[1] * dside - f[1] * back, dz]
+    for k in cam["keys"]:
+        k["loc"] = [round(k["loc"][i] + delta[i], 5) for i in range(3)]
+        k["target"] = [round(k["target"][i] + delta[i], 5) for i in range(3)]
+    cam["focus_point"] = [round(cam["focus_point"][i] + delta[i], 4) for i in range(3)]
 
 
 # ---------------------------------------------------------------- keeping the view clear
@@ -440,6 +463,8 @@ def build(p, shot_id: str, preview: bool = False, frames_only: tuple[int, int] |
     for c in chars.values():
         gaze = gaze_curves(d, c, seen_by, props, cam["keys"][0]["loc"], frames, fps)
         c["face"] = face_track(p, cfg, d, c, frames, fps, gaze, shot_dir)
+        if d.camera.framing in ("ECU", "CU", "MCU") and cam["subject"] == c["name"]:
+            follow_head(cam, c)
     tag = "preview" if preview else "final"
     first, last = frames_only or (1, frames)
     return {

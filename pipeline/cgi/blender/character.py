@@ -97,6 +97,16 @@ def maquette(kit: props.Kit, c: dict, frames: int):
         tear.location = (sx * hr * 0.38, -hr * 0.95, -hr * 0.18)
         tear.parent = head
         parts[side] = (eye, shine, brow, blush, tear)
+    hands_z = h * {"standing": 0.55, "walking": 0.55, "kneeling": 0.36, "seiza": 0.34}.get(posture, 0.55)
+    reach = 0.28 * h / 1.45
+    for side, sx in (("L", 1), ("R", -1)):
+        mitt = props.sphere(f"{c['name']}.hand{side}", 0.045 * k, [skin], scale=(0.8, 1.0, 0.6), segments=12)
+        mitt.location = (sx * 0.09 * k, -reach, hands_z)
+        mitt.parent = root
+        arm = props.sphere(f"{c['name']}.arm{side}", 0.04 * k, [body_mat], scale=(1.0, 3.2, 1.0), segments=12)
+        arm.location = (sx * 0.13 * k, -reach * 0.55, hands_z + 0.06 * k)
+        arm.rotation_euler = (-0.5, 0, 0)
+        arm.parent = root
     mouth = props.sphere(f"{c['name']}.mouth", hr * 0.16, [kit.mat("mouth", [0.45, 0.12, 0.14])],
                          scale=(1.4, 0.3, 0.25), segments=12)
     mouth.location = (0, -hr * 0.93, -hr * 0.42)

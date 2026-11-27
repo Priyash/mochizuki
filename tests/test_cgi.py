@@ -418,3 +418,14 @@ def test_the_cut_uses_cg_renders_when_switched_on(proj):
     p = Project(proj.root)
     r = asm.assemble(p, steps.open_ledger(p), 1)
     assert r["from"]["cgi"] == 1 and r["shots"] == len(p.chapter(1))
+
+
+def test_close_up_follows_a_face_that_looks_up(proj):
+    pl = planner.build(proj, "1-16", preview=True)
+    c = pl["characters"][0]
+    assert sum(c["face"]["head.pitch"]) > 0                         # she looks up at the moon
+    assert pl["camera"]["keys"][0]["target"][2] > planner.head_point(c)[2]
+
+
+def test_the_film_opens_on_black(proj):
+    assert planner.build(proj, "1-01", preview=True)["blackout"] is True

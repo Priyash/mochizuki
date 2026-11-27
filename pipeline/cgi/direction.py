@@ -184,6 +184,8 @@ def _camera(text: str, s_type: str, chars: list[str], props: list[str]) -> Camer
         subject = f"{chars[0]}+{chars[1]}"
     elif chars and framing != "INSERT":
         subject = chars[-1] if re.search(r"\bturns\b", t) and len(chars) > 1 else chars[0]
+    elif re.search(r"\bmoon\b", t, re.I) and not props:
+        subject = "moon"
     elif framing in ("WIDE", "MLS"):
         subject = "vista"                             # a wide of a place frames the place, not one thing in it
     elif props:

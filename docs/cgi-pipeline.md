@@ -70,8 +70,8 @@ Continuity is data: the bowl has one gold seam until 3-06 mends the second crack
 one model per age, and the same model appears in every shot. Each shot is saved as a `.blend` file you can open and adjust
 by hand.
 
-**Super fast.** EEVEE is Blender's real-time renderer. On the Mac's GPU it draws a toon frame in about a second, and the
-animatic plays back live. The film is 14,400 frames at 24 fps. At an estimated 0.5–3 s per native 4K frame on the M2 Max,
+**Super fast.** EEVEE is Blender's real-time renderer. On the Mac's GPU it should draw a toon frame in around a second
+(an estimate), and the animatic plays back live in the viewport. The film is 14,400 frames at 24 fps. At an estimated 0.5–3 s per native 4K frame on the M2 Max,
 that is roughly 2–12 hours for the whole film, unattended, with no takes. A re-render is the same shot with your change,
 not a new random performance. `cgi render --chapter 1 --board` makes a storyboard of the whole chapter from the real sets
 in minutes.
@@ -183,7 +183,7 @@ can copy it into `style_bible/acting.json` and edit it.
   * The VRM add-on is MIT/GPL.
   * Models you make in VRoid Studio may be used commercially (pixiv's VRoid Studio guidelines; check the licence of any
     preset or third-party item).
-  * MediaPipe is Apache 2.0, and the face data Live Link Face records is yours.
+  * MediaPipe is Apache 2.0. Live Link Face is a free app; the CSV it records stays on your phone until you share it.
   * SAM 3D Body's licence allows commercial use.
   * Audio2Face-3D is under the NVIDIA Open Model License.
   * Wan is Apache 2.0.

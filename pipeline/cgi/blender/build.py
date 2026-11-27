@@ -169,6 +169,11 @@ def build(plan: dict) -> dict:
     kit = props.Kit(rig.get("toon", {}))
     made = {"pieces": 0, "props": 0, "characters": 0}
     interpolation("CONSTANT")
+    if plan.get("blackout"):                               # a black frame: a camera and nothing to see
+        camera(plan)
+        made["outlined"] = 0
+        say("build.done", f"{plan['shot']}: black", seconds=round(time.time() - t0, 1), **made)
+        return made
     for spec in plan["pieces"]:
         ob = props.build(kit, spec)
         if ob is not None:
