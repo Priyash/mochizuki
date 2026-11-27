@@ -563,3 +563,29 @@ def smoke(cli: ColabCLI, work: Path) -> dict:
     step("no VM left behind", session not in left, ", ".join(left))
     rep["ok"] = all(v["ok"] for v in st.values())
     return rep
+
+
+def gpu_probe(cli: ColabCLI, gpus=("T4", "L4", "G4", "A100", "H100"), wait_s: int = 900) -> dict:
+    """Which GPUs Colab gives this account right now, and the real units per hour of each.
+    Each VM is stopped as soon as it is granted."""
+    rep = {"balance_before": cli.balance(), "gpus": {}}
+    stop_gpu_vms(cli)
+    for g in gpus:
+        s = f"mochi-probe-{g.lower()}"
+        t0 = time.time()
+        code, out = cli.run(["new", "-s", s, "--gpu", g], timeout=wait_s + 60)
+        took = round(time.time() - t0)
+        if code == 0:
+            _, use = cli.run(["usage"], timeout=120)
+            m = re.search(r"([\d.]+)\s*(?:compute units\s*)?(?:/|per)\s*h", use)
+            cli.run(["stop", "-s", s], timeout=300)
+            rep["gpus"][g] = {"granted": True, "seconds": took, "units_per_hour": float(m.group(1)) if m else None,
+                              "usage": _redact(use.strip())[-300:]}
+        else:
+            last = re.sub(r"\x1b\[[0-9;]*m", "", out.strip().splitlines()[-1] if out.strip() else str(code))
+            rep["gpus"][g] = {"granted": False, "seconds": took, "error": _redact(last)[-250:]}
+            stop_gpu_vms(cli, why=f"that came up after the {g} request gave up")
+        _log(f"{g}: {rep['gpus'][g]}")
+    stop_gpu_vms(cli)
+    rep["balance_after"] = cli.balance()
+    return rep

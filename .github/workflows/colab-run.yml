@@ -12,7 +12,7 @@ on:
         required: true
         default: run
         type: choice
-        options: [run, test, smoke]
+        options: [run, test, smoke, gpus]
 concurrency:
   group: colab-runner
   cancel-in-progress: false
@@ -59,7 +59,9 @@ jobs:
           COLAB_CLI_REQUEST_TIMEOUT: "600"   # A100s can take minutes to assign; the CLI's own default gives up at 120 s
           COLAB_CLI_ASSIGN_RETRIES: "1"
         run: |
-          if [ "${{ inputs.mode || 'run' }}" = "smoke" ]; then
+          if [ "${{ inputs.mode || 'run' }}" = "gpus" ]; then
+            python -m pipeline colab-gpus
+          elif [ "${{ inputs.mode || 'run' }}" = "smoke" ]; then
             python -m pipeline colab-smoke --work colab-smoke
           elif [ "${{ inputs.mode || 'run' }}" = "test" ]; then
             python -m pipeline colab-test --out colab-test

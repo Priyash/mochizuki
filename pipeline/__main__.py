@@ -62,6 +62,7 @@ def main(argv=None) -> int:
     a.add_argument("--work", default="colab-work")
     a = sub.add_parser("colab-test", help="one reference still on a Colab VM, outside the ledger")
     a.add_argument("--out", default="colab-test")
+    sub.add_parser("colab-gpus", help="which Colab GPUs this account gets now, and their units per hour")
     a = sub.add_parser("colab-smoke", help="the Colab round trip on a free CPU VM: no GPU, no units")
     a.add_argument("--work", default="colab-smoke")
     a = sub.add_parser("kaggle-probe", help="test the stills engine on a Kaggle T4 outside the ledger")
@@ -138,9 +139,13 @@ def main(argv=None) -> int:
         n = mac_backend.worker_loop(mac_backend.Release(repo), Path(args.work), engine, cfg, once=args.once)
         print(f"{n} batch(es) done")
         return 0
-    if args.cmd in ("colab-runner", "colab-test", "colab-smoke"):
+    if args.cmd in ("colab-runner", "colab-test", "colab-smoke", "colab-gpus"):
         from . import colab_backend as cb  # noqa: PLC0415
         cfg, cli = cb.settings(p), cb.ColabCLI()
+        if args.cmd == "colab-gpus":
+            r = cb.gpu_probe(cli)
+            print(json.dumps(r, indent=1, default=str))
+            return 0
         if args.cmd == "colab-smoke":
             r = cb.smoke(cli, Path(args.work))
             print(json.dumps(r, indent=1, default=str))
