@@ -12,10 +12,29 @@
    "backend": "kaggle"
   },
   {
-   "action": "waiting",
+   "action": "collected",
    "batch": "b20261127-100712-1dfc",
    "backend": "colab",
-   "status": "queued"
+   "status": "error",
+   "made": 0,
+   "failed": 0,
+   "not_reached": 24,
+   "stale": false,
+   "error": "no results.json"
+  },
+  {
+   "action": "built_and_submitted",
+   "batch": "b20261127-221301-fe71",
+   "backend": "colab",
+   "stage": "refs",
+   "jobs": 24,
+   "deferred": 0,
+   "est_hours": 1.25,
+   "summary": {
+    "made": 24,
+    "deferred": 0
+   },
+   "submitted": true
   }
  ],
  "reviews": {
@@ -30,13 +49,19 @@
   "kernels list --mine": "1:  with OAuth via a web-based authorization flow.\nNo token to manage; credentials are cached locally for you.\n    kaggle auth login\n\nIf you'd rather not use OAuth, generate an API token at\n  https://www.kaggle.com/settings/api  (click \"Generate New Token\" under \"API\")\nand supply it to the CLI in one of these ways:\n\n  Option A: Environment variable\n    export KAGGLE_API_TOKEN=xxxxxxxxxxxxxx  # token copied from the settings UI\n\n  Option B: API token file\n    Save the token to ~/.kaggle/access_token",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: LEGACY_API_KEY\n- path: None\n- proxy: None\n- competition: None"
  },
+ "colab_log": [
+  "no colab worker took b20261127-100712-1dfc in 12 h; its jobs are freed",
+  "Colab batch budget 4.0 h; about 0 of 100 units used",
+  "colab-b20261127-221301-fe71.tar.gz (4 KB) waits for the colab worker",
+  "colab-run started"
+ ],
  "uploaded": 0,
  "review": {
   "items": 0
  },
  "notice": {
   "kind": "running",
-  "text": "Chapter 1: Colab batch b20261127-100712-1dfc (refs) is submitted."
+  "text": "Chapter 1: Colab batch b20261127-221301-fe71 (refs) is submitted."
  },
  "status": {
   "waiting_anchor": 26,
