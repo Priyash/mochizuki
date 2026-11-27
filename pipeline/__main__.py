@@ -124,6 +124,8 @@ def main(argv=None) -> int:
         from . import mac_backend  # noqa: PLC0415
         cfg = mac_backend.settings(p)
         from .log import set_file  # noqa: PLC0415
+        if os.environ.get("MOCHI_RAW") != "1":       # structured lines only; MOCHI_RAW=1 shows the tools' own bars
+            os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
         lf = set_file(Path.home() / "mochizuki-mac" / "logs" / time.strftime("worker-%Y%m%d.jsonl"))
         mac_backend._log(f"mac worker: {'self-test' if args.self_test else 'waiting for batches'}, "
                          f"engines {args.engine_set}; JSON log {lf}", event="worker.start",

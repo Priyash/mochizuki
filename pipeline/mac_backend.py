@@ -20,6 +20,7 @@ the producer gives up on it and the jobs are free again. Nothing here costs mone
 from __future__ import annotations
 
 import json
+import re
 import os
 import shutil
 import socket
@@ -287,10 +288,11 @@ def resolve_cmd(e: dict, models: Path, download=None, list_files=None) -> list[s
             tops = sorted({n.split("/")[0] for n, _ in files})
             raise RuntimeError(f"{d['repo']} has no folder '{folder}'; it has: {', '.join(tops)[:400]}")
         _log(f"downloading {d['repo']}/{folder} once: {len(mine)} files, about {sum(s for _, s in mine) / 1e9:.0f} GB; "
-             "the progress bars below are Hugging Face's", event="model.download", model=d["repo"], folder=folder,
+             "progress every 30 s", event="model.download", model=d["repo"], folder=folder,
              files=len(mine), gb=round(sum(s for _, s in mine) / 1e9, 1))
         t0 = time.time()
-        download(d["repo"], local_dir=str(local), allow_patterns=[n for n, _ in mine])
+        with watch_download(local, round(sum(s for _, s in mine) / 1e9, 1), f"{d['repo']}/{folder}"):
+            download(d["repo"], local_dir=str(local), allow_patterns=[n for n, _ in mine])
         tok = d.get("tokenizer_from")                 # pre-quantized folders may leave the tokenizer out
         if tok and not ((target / "tokenizer").is_dir() and any((target / "tokenizer").iterdir())):
             _log(f"{d['repo']}/{folder} has no tokenizer; taking it from {tok}", event="model.tokenizer", source=tok)
@@ -325,41 +327,190 @@ def prefetch_model(repo: str, download=None) -> None:
         pass
     size = ""
     try:
-        gb = sum(f.size or 0 for f in HfApi().model_info(repo, files_metadata=True).siblings) / 1e9
+        gb = round(sum(f.size or 0 for f in HfApi().model_info(repo, files_metadata=True).siblings) / 1e9, 1)
         size = f", about {gb:.0f} GB"
     except Exception:  # noqa: BLE001
         pass
-    _log(f"model {repo}: downloading once{size}; the progress bars below are Hugging Face's", event="model.download", model=repo)
+    _log(f"model {repo}: downloading once{size}; progress every 30 s", event="model.download", model=repo)
     t0 = time.time()
-    download(repo)
+    cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub" / f"models--{repo.replace('/', '--')}"
+    with watch_download(cache, gb if size else None, repo):
+        download(repo)
     _log(f"model {repo}: downloaded in {(time.time() - t0) / 60:.1f} min", event="model.downloaded", model=repo, minutes=round((time.time() - t0) / 60, 1))
 
 
-def run_streaming(cmd: list[str], timeout: float, prefix: str = "  | ") -> tuple[int, str]:
-    """Run a command and show its output live (mflux's step progress included); returns
-    (exit code, last few KB of output) for error messages. Killed after `timeout` seconds."""
+def mac_memory() -> dict:
+    """Free memory, swap and thermal state on macOS (empty elsewhere): what to check when a render crawls."""
+    out = {}
+
+    def sh(*a):
+        try:
+            return subprocess.run(a, capture_output=True, text=True, timeout=10).stdout
+        except Exception:  # noqa: BLE001
+            return ""
+    m = re.search(r"free percentage:\s*(\d+)%", sh("memory_pressure", "-Q"))
+    if m:
+        out["mem_free_pct"] = int(m.group(1))
+    m = re.search(r"used\s*=\s*([\d.]+)([MG])", sh("sysctl", "-n", "vm.swapusage"))
+    if m:
+        out["swap_gb"] = round(float(m.group(1)) / (1024 if m.group(2) == "M" else 1), 1)
+    t = sh("pmset", "-g", "therm")
+    if t:
+        lv = re.findall(r"(thermal|performance) warning level.*?(\d+)", t, re.I)
+        out["thermal"] = "warning" if any(int(v) > 0 for _, v in lv) else "nominal"
+    return out
+
+
+def _dir_gb(path: Path) -> float:
+    try:
+        return sum(f.stat().st_size for f in Path(path).rglob("*") if f.is_file()) / 1e9
+    except OSError:
+        return 0.0
+
+
+class watch_download:
+    """While a download runs: Hugging Face's own bars off, and one structured line every
+    `every` seconds with GB done, speed and time left (measured from the folder's size)."""
+
+    def __init__(self, folder: Path, total_gb: float | None, label: str, every: float = 30.0):
+        self.folder, self.total, self.label, self.every = Path(folder), total_gb, label, every
+        self.stop = threading.Event()
+
+    def __enter__(self):
+        self.old = os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS")
+        os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+        try:
+            from huggingface_hub.utils import disable_progress_bars  # noqa: PLC0415
+            disable_progress_bars()
+        except Exception:  # noqa: BLE001
+            pass
+        self.start_gb, self.t0 = _dir_gb(self.folder), time.time()
+        threading.Thread(target=self._loop, daemon=True).start()
+        return self
+
+    def _loop(self):
+        last_gb, last_t = self.start_gb, self.t0
+        while not self.stop.wait(self.every):
+            gb, now = _dir_gb(self.folder), time.time()
+            rate = max(0.0, gb - last_gb) * 1000 / max(1.0, now - last_t)          # MB/s over the last period
+            last_gb, last_t = gb, now
+            done = gb - self.start_gb
+            left = (f", about {(self.total - done) * 1000 / rate / 60:.0f} min left"
+                    if self.total and rate > 0.1 and self.total > done else "")
+            of = f" of {self.total:.1f}" if self.total else ""
+            _log(f"{self.label}: {done:.1f}{of} GB, {rate:.0f} MB/s{left}", event="model.download.progress",
+                 gb_done=round(done, 1), gb_total=self.total, mb_s=round(rate))
+
+    def __exit__(self, *exc):
+        self.stop.set()
+        if self.old is None:
+            os.environ.pop("HF_HUB_DISABLE_PROGRESS_BARS", None)
+        else:
+            os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = self.old
+        return False
+
+
+_STEP = re.compile(r"(\d+)/(\d+) \[")
+_BAR = re.compile(r"\d+%\|")
+
+
+def run_streaming(cmd: list[str], timeout: float, prefix: str = "", label: str = "",
+                  every: float = 60.0, raw: bool | None = None) -> tuple[int, str]:
+    """Run a command (mflux) and turn its output into structured log lines: one `render.step`
+    per step with seconds per step and time left, `render.loading` while the model loads,
+    `render.status` (memory, swap, thermal) when nothing has moved for `every` seconds, and any
+    other output as `mflux.out` (warn/error when it looks like one). MOCHI_RAW=1 shows mflux's
+    own output instead. Returns (exit code, last few KB of output); killed after `timeout`."""
+    raw = os.environ.get("MOCHI_RAW") == "1" if raw is None else raw
+    t0 = time.time()
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     killer = threading.Timer(timeout, p.kill)
     killer.start()
-    tail = b""
-    start_of_line = True
+    st = {"step": 0, "total": 0, "first_step_at": None, "last_change": t0, "last_log": t0}
+    stop = threading.Event()
+    tag = f"{label} " if label else ""
+
+    def status():
+        while not stop.wait(5):
+            now = time.time()
+            if now - st["last_log"] < every:
+                continue
+            st["last_log"] = now
+            mem = mac_memory()
+            if st["first_step_at"] is None:
+                msg, ev = f"{tag}loading the model into memory ({(now - t0) / 60:.1f} min so far)", "render.loading"
+            else:
+                msg, ev = (f"{tag}still on step {st['step']}/{st['total']} "
+                           f"({(now - st['last_change']) / 60:.1f} min on this step)"), "render.status"
+            level = "info"
+            if now - st["last_change"] > max(900, 6 * every):
+                msg += f"; nothing has moved for {(now - st['last_change']) / 60:.0f} min"
+                level = "warn"
+            if mem.get("swap_gb", 0) > 4 or mem.get("mem_free_pct", 100) < 10:
+                msg += "; memory is tight, close other apps"
+                level = "warn"
+            if mem.get("thermal") == "warning":
+                msg += "; the Mac is throttling for heat"
+                level = "warn"
+            _log(msg, event=ev, level=level, elapsed_min=round((now - t0) / 60, 1), **mem)
+
+    def line(text: str):
+        m = _STEP.search(text)
+        if m:
+            step, total = int(m.group(1)), int(m.group(2))
+            if step == st["step"] or step == 0:
+                return
+            now = time.time()
+            if st["first_step_at"] is None:
+                st["first_step_at"] = now
+                _log(f"{tag}model loaded in {(now - t0) / 60:.1f} min; {total} steps to go", event="render.loaded",
+                     load_min=round((now - t0) / 60, 1), steps=total)
+            per = (now - t0 - (st["first_step_at"] - t0)) / max(1, step - 1) if step > 1 else now - t0
+            st.update(step=step, total=total, last_change=now, last_log=now)
+            mem = mac_memory() if step % 5 == 0 or step == total else {}
+            _log(f"{tag}step {step}/{total}, {per:.0f} s a step, about {per * (total - step) / 60:.0f} min left",
+                 event="render.step", step=f"{step}/{total}", sec_per_step=round(per),
+                 min_left=round(per * (total - step) / 60), **mem)
+            return
+        text = text.strip()
+        if not text or _BAR.search(text):
+            return
+        bad = any(k in text for k in ("Error", "Traceback", "error:", "Killed"))
+        warn = any(k in text for k in ("Warning", "WARNING", "⚠"))
+        _log(text[:500], event="mflux.out", level="error" if bad else "warn" if warn else "info")
+
+    threading.Thread(target=status, daemon=True).start()
+    tail, buf = b"", ""
     try:
         while True:
             chunk = p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(4096)
             if not chunk:
                 break
             tail = (tail + chunk)[-6000:]
-            out = b""
-            for ch in chunk.splitlines(keepends=True):
-                out += (prefix.encode() if start_of_line else b"") + ch
-                start_of_line = ch.endswith((b"\n", b"\r"))
-            sys.stdout.buffer.write(out)
-            sys.stdout.flush()
+            if raw:
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.flush()
+            buf += chunk.decode("utf-8", "replace")
+            parts = re.split(r"[\r\n]", buf)
+            buf = parts.pop()
+            for part in parts:
+                if raw:
+                    m = _STEP.search(part)
+                    if m and st["first_step_at"] is None:
+                        st["first_step_at"] = time.time()
+                    if m:
+                        st.update(step=int(m.group(1)), total=int(m.group(2)), last_change=time.time())
+                else:
+                    line(part)
+        if buf and not raw:
+            line(buf)
         code = p.wait()
     finally:
+        stop.set()
         killer.cancel()
     if code < 0:
-        _log(f"stopped after {timeout / 60:.0f} min (time limit)", event="cmd.timeout", level="error", limit_min=round(timeout / 60))
+        _log(f"stopped after {timeout / 60:.0f} min (time limit)", event="cmd.timeout", level="error",
+             limit_min=round(timeout / 60))
     return code, tail.decode("utf-8", "replace")
 
 
@@ -399,7 +550,7 @@ class MfluxEngine:
         _log(f"rendering {job['key']}: {'edit of ' + str(len(images)) + ' image(s)' if edit else 'text to image'}, "
              f"{job.get('width', 1664)}x{job.get('height', 928)}, {steps} steps", event="render.start", key=job["key"], mode="edit" if edit else "t2i", steps=steps)
         t0 = time.time()
-        code, tail = run_streaming(cmd, float(self.cfg["seconds_per_job"]) * 6)
+        code, tail = run_streaming(cmd, float(self.cfg["seconds_per_job"]) * 6, label=job["key"] + ":")
         if code != 0 or not out.exists():
             raise RuntimeError(f"mflux exit {code}: {tail.strip()[-600:]}")
         self._check(out)
