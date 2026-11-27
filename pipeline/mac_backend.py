@@ -534,6 +534,9 @@ def self_test(p, engine, out: Path, edit_only: bool = False) -> dict:
                                    r["prompt"]) if x)
     out.parent.mkdir(parents=True, exist_ok=True)
     _about_this_mac(out.parent)
+    if edit_only and not out.exists():
+        _log(f"--edit-only: no still at {out} (moved or renamed?), so making one first", event="selftest.no_still",
+             level="warn", file=str(out))
     if edit_only and out.exists():
         _log(f"self-test: reusing {out}; testing only the keyframe engine", event="selftest.edit_only", file=str(out))
         return _self_test_edit(engine, out, {"file": str(out), "seconds": 0, "reused": True})

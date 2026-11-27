@@ -70,7 +70,7 @@ GitHub: Actions → produce → Run workflow.
 ## 48 GB or more: the 8-bit models
 
 The default settings (`mac.engines` in `config.json`) are the 4-bit models for a 32 GB Mac:
-`mlx-community/Qwen-Image-2512-4bit` for stills and the 4-bit Qwen-Image-Edit-2511 from
+`mlx-community/Qwen-Image-2512-4bit` for stills and the 4-bit Qwen-Image-Edit-2511 (folder `q4`) from
 `fcreait/Qwen-Image-Edit-mflux` for keyframes (fetched once into `~/mochizuki-mac/models`).
 With 48 GB or more, copy `mac.engines_8bit` over `mac.engines` for better quality, and run the
 self-test again.
