@@ -56,6 +56,10 @@ def main(argv=None) -> int:
                                          "run self-tests, train LoRAs (docs/mac-worker.md)")
     from .mac import cli as mac_cli  # noqa: PLC0415
     mac_cli.add_arguments(a)
+    a = sub.add_parser("cgi", help="the 3D CG pipeline on your Mac: acting sheets, captures, Blender renders "
+                                  "(docs/cgi-pipeline.md)")
+    from .cgi import cli as cgi_cli  # noqa: PLC0415
+    cgi_cli.add_arguments(a)
     a = sub.add_parser("colab-runner", help="take the waiting Colab batch and run it on a Colab VM (GitHub Actions)")
     a.add_argument("--work", default="colab-work")
     a = sub.add_parser("colab-test", help="one reference still on a Colab VM, outside the ledger")
@@ -120,6 +124,9 @@ def main(argv=None) -> int:
     if args.cmd == "mac-worker":
         from .mac import cli as mac_cli  # noqa: PLC0415
         return mac_cli.run(p, args)
+    if args.cmd == "cgi":
+        from .cgi import cli as cgi_cli  # noqa: PLC0415
+        return cgi_cli.run(p, args)
     if args.cmd in ("colab-runner", "colab-test", "colab-smoke", "colab-gpus"):
         from . import colab_backend as cb  # noqa: PLC0415
         from .log import set_file  # noqa: PLC0415

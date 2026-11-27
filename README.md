@@ -6,7 +6,21 @@ The story runs in five chapters, from a rice-pounding night on the Noto coast to
 
 It costs no money. It does cost time: the free GPU quota is about 30 hours a week.
 
-## How a shot is made
+## The 3D CG pipeline (new)
+
+The moving picture is now made the way 3D CG anime is made. Each character, prop and set is built once. Each shot gets
+an acting sheet (camera, beats, restraint, gaze, timing), and the emotional shots are acted on an iPhone. Blender's
+real-time renderer then draws every frame natively in 4K on the Mac. Shots are coherent because they share one set of
+models, and fast because nothing is generated frame by frame. The generative models below stay for design: character
+sheets, colour keys and storyboards. See **[docs/cgi-pipeline.md](docs/cgi-pipeline.md)**, and start with:
+
+```bash
+python -m pipeline cgi check
+python -m pipeline cgi render 1-02 --preview          # the mallet falls into the mortar
+python -m pipeline cgi render --chapter 1 --board     # chapter 1 as a storyboard from the real sets
+```
+
+## How a shot is made (the generative pipeline)
 
 | Shot type | Count | Model | Native size | Takes |
 | --- | --- | --- | --- | --- |
@@ -157,6 +171,7 @@ Its limits:
 | Reference stills, keyframes | **Google Colab** pay-as-you-go (A100/L4), see [docs/colab.md](docs/colab.md) | Qwen-Image needs bf16; Kaggle's T4s only have fp16 and give blank images |
 | Reference stills, keyframes (free, slower) | **your Mac** (`python -m pipeline mac-worker`, [docs/mac-worker.md](docs/mac-worker.md)); off until you switch `mac.enabled` on | |
 | Video, 4K upscale | **Kaggle** T4s (free, 30 GPU h/week) | |
+| **3D shots: acting sheets, face capture, Blender renders in native 4K** | **your Mac** (`python -m pipeline cgi ...`, [docs/cgi-pipeline.md](docs/cgi-pipeline.md)) | Coherent by construction, no takes, no GPU queue |
 
 Each backend takes only the stages in its `config.json` section (`kaggle.stages`, `colab.stages`, `mac.stages`).
 

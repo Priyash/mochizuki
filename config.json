@@ -365,5 +365,20 @@
     "max_wait_hours": 12,
     "stale_minutes": 30,
     "_gpus_note": "bf16 GPUs only (T4 makes Qwen go NaN). Rates (2026): L4 1.71, A100 40GB 5.40 units/h. G4 (8.71/h) left out: dearer than an A100 and it would make the cap count every batch at its rate. H100 is not offered to this account."
+  },
+  "cgi": {
+    "_note": "The 3D CG pipeline (docs/cgi-pipeline.md): Blender renders every shot from the same character models, props and sets, driven by acting sheets (style_bible/acting.json) and captured performances, so shots are coherent by construction and render natively in 4K on the Mac. Defaults are in pipeline/cgi/config.py; anything set here wins. blender: path to Blender 5.x (empty: /Applications/Blender.app, then PATH). use_in_cut: assemble uses media/cgi/<shot>/<shot>.mp4 renders before takes and keyframes.",
+    "blender": "",
+    "resolution": [
+      3840,
+      2160
+    ],
+    "preview_resolution": [
+      960,
+      540
+    ],
+    "character_step": 2,
+    "outline_px": 2.2,
+    "use_in_cut": false
   }
 }

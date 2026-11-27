@@ -1,7 +1,8 @@
 """Cut a chapter with ffmpeg: a quick animatic, or the 4K picture from upscaled sources.
 
-For each shot, in order: the passing take if there is one, else the selected keyframe
-held for the shot's length, else a plain card. So the cut exists from day one and fills
+For each shot, in order: its 3D render when config cgi.use_in_cut is on (pipeline/cgi), else
+the passing take if there is one, else the selected keyframe held for the shot's length, else a
+plain card. So the cut exists from day one and fills
 in as shots are approved. With --4k, the 3840x2160 versions are used where they exist.
 Stills are held frames here; their slow pushes and particles are added in the editor.
 """
@@ -39,19 +40,37 @@ def _four_k(p: Project, led: Ledger, shot_id: str, source_key: str) -> str | Non
     return None
 
 
+def cgi_clip(p: Project, shot_id: str, four_k: bool) -> str | None:
+    """The shot's 3D render (pipeline/cgi), when config cgi.use_in_cut is on: the final render for the
+    4K cut; the preview, else the final, for the animatic."""
+    cfg = p.config.get("cgi", {})
+    if not cfg.get("use_in_cut"):
+        return None
+    work = Path(cfg.get("work", "media/cgi"))
+    folder = (work if work.is_absolute() else p.root / work) / shot_id
+    names = [f"{shot_id}.mp4", f"{shot_id}.mov"] if four_k else [f"{shot_id}-preview.mp4", f"{shot_id}.mp4"]
+    for name in names:
+        if (folder / name).exists():
+            return str(folder / name)
+    return None
+
+
 def assemble(p: Project, led: Ledger, chapter: int, four_k: bool = False) -> dict:
     w, h, crf = (3840, 2160, 14) if four_k else (640, 360, 23)
     tag = "4k" if four_k else "animatic"
     work = p.media / "animatic" / f"chapter_{chapter}_{tag}_parts"
     work.mkdir(parents=True, exist_ok=True)
-    used = {"take": 0, "keyframe": 0, "card": 0, "4k": 0}
+    used = {"cgi": 0, "take": 0, "keyframe": 0, "card": 0, "4k": 0}
     parts = []
     for n, s in enumerate(p.chapter(chapter)):
         seg = work / f"{n:03d}_{s.id}.mp4"
         passed = [j for j in led.jobs(s.id, "take") if j["status"] == "done" and j["verdict"] == "pass"]
         sel = led.selected(s.id)
         src, kind = None, "card"
-        if passed and p.fetch(passed[-1]["path"]).exists():
+        cg = cgi_clip(p, s.id, four_k)
+        if cg:
+            src, kind, up = cg, "cgi", None
+        elif passed and p.fetch(passed[-1]["path"]).exists():
             src, kind = str(p.fetch(passed[-1]["path"])), "take"
             up = _four_k(p, led, s.id, passed[-1]["key"]) if four_k else None
         elif sel and p.fetch(sel["path"]).exists():
@@ -62,7 +81,7 @@ def assemble(p: Project, led: Ledger, chapter: int, four_k: bool = False) -> dic
         if up:
             src = up
             used["4k"] += 1
-        if kind == "take":
+        if kind in ("take", "cgi"):
             _ff(["-i", src, "-t", str(s.seconds), *_norm(w, h, crf, hold=s.seconds), str(seg)])
         elif kind == "keyframe":
             _ff(["-loop", "1", "-i", src, "-t", str(s.seconds), *_norm(w, h, crf), str(seg)])

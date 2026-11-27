@@ -9,3 +9,7 @@ __pycache__/
 
 # LoRA training runs (made by mac-worker --train-lora; they live under ~/mochizuki-mac)
 training/
+
+# Character models are your own work: kept out of this public repository (see assets/characters/README.md)
+assets/**/*.vrm
+assets/**/*.blend

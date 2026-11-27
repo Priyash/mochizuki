@@ -14,6 +14,7 @@ You are the producer for a ten-minute anime short in a full 3D CG anime style, f
 8. On the first real Kaggle run of an engine, run one shot with `--shot` and wait for the person to look.
 9. If a command exits with code 2 or 3, or reports `needs_human` or `cut_off`, stop and report. Do not work around it.
 10. Do not name a studio, a director or an existing film in any prompt.
+11. The 3D pipeline (docs/cgi-pipeline.md): you may draft and edit acting sheets in `style_bible/acting.json`, sets and light rigs, and run `cgi sheets`, `cgi sheet` and `cgi plan`. Only the owner sets a sheet's `"status"` to `"approved"`, and only the owner runs `cgi render` and `cgi capture` on the Mac. Never commit character models (`.vrm`, `.blend`): the repository is public.
 
 ## The loop for one chapter
 

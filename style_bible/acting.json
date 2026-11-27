@@ -1,0 +1,665 @@
+{
+  "_note": "Hand-written acting sheets (pipeline/cgi/direction.py). Each entry changes only the fields it names in the sheet drafted from shots.csv. Beats: t (seconds), who, emotion (neutral joy sorrow tenderness wonder fear resolve curiosity surprise anger bittersweet), intensity 0-1, restraint 0-1 (how much the feeling is held in: the mouth and brows move less, the eyes do more), gaze, action (for whoever acts the shot), hold (seconds). performance: capture = act it on the iPhone (docs/cgi-pipeline.md), procedural = the beats alone. These are Claude's drafts for chapter 1: every one stays 'draft' until the owner changes it to 'approved'.",
+  "shots": {
+    "1-01": {
+      "blackout": true,
+      "notes": "Black. Only the mallet's slow beat. The cut to 1-02 lands on a thud."
+    },
+    "1-02": {
+      "characters": [],
+      "props": [
+        "mortar",
+        "mallet",
+        "rice",
+        "lantern"
+      ],
+      "camera": {
+        "framing": "INSERT",
+        "subject": "mortar",
+        "angle": "low",
+        "lens": 65,
+        "fstop": 2.2,
+        "move": "static"
+      },
+      "actions": [
+        {
+          "prop": "mallet",
+          "do": "strike",
+          "at": 1.9
+        },
+        {
+          "prop": "lantern",
+          "do": "sway"
+        }
+      ],
+      "impacts": [
+        1.9
+      ],
+      "timing": "mixed",
+      "notes": "The first image of the film. The mallet hangs, lifts a little more (anticipation), falls on ones and the mortar takes it; hold on the hit for three frames, then it rises slowly on twos."
+    },
+    "1-03": {
+      "characters": [
+        "tsumugi"
+      ],
+      "posture": {
+        "tsumugi": "kneeling"
+      },
+      "camera": {
+        "framing": "INSERT",
+        "subject": "tsumugi:hands",
+        "angle": "high",
+        "lens": 85
+      },
+      "timing": "mixed",
+      "actions": [
+        {
+          "prop": "mallet",
+          "do": "strike",
+          "at": 2.4
+        }
+      ],
+      "impacts": [
+        2.4
+      ],
+      "performance": "capture",
+      "beats": [
+        {
+          "t": 0.0,
+          "who": "tsumugi",
+          "emotion": "curiosity",
+          "intensity": 0.5,
+          "action": "hands wait at the rim, fingers ready, counting the beat"
+        },
+        {
+          "t": 0.8,
+          "who": "tsumugi",
+          "emotion": "joy",
+          "intensity": 0.6,
+          "action": "dart in between strikes, fold the rice once, out again: quick and proud",
+          "hold": 0.4
+        }
+      ],
+      "props": [
+        "mortar",
+        "rice",
+        "mallet"
+      ]
+    },
+    "1-04": {
+      "characters": [
+        "sayo",
+        "tsumugi"
+      ],
+      "camera": {
+        "framing": "MS",
+        "angle": "three-quarter",
+        "lens": 40,
+        "subject": "sayo+tsumugi"
+      },
+      "actions": [
+        {
+          "prop": "mallet",
+          "do": "strike",
+          "at": 1.6
+        },
+        {
+          "prop": "mallet",
+          "do": "strike",
+          "at": 3.4
+        },
+        {
+          "prop": "mallet",
+          "do": "strike",
+          "at": 5.2
+        }
+      ],
+      "impacts": [
+        1.6,
+        3.4,
+        5.2
+      ],
+      "performance": "capture",
+      "beats": [
+        {
+          "t": 0.0,
+          "who": "tsumugi",
+          "emotion": "curiosity",
+          "intensity": 0.45,
+          "gaze": "mallet",
+          "action": "eyes on the mallet, waiting for the beat"
+        },
+        {
+          "t": 0.6,
+          "who": "sayo",
+          "emotion": "resolve",
+          "intensity": 0.25,
+          "gaze": "mortar",
+          "action": "an unhurried swing: she has done this ten thousand times"
+        },
+        {
+          "t": 2.0,
+          "who": "tsumugi",
+          "emotion": "joy",
+          "intensity": 0.7,
+          "gaze": "sayo",
+          "action": "turns the rice just in time, then a quick look up: did you see?"
+        },
+        {
+          "t": 3.0,
+          "who": "sayo",
+          "emotion": "tenderness",
+          "intensity": 0.5,
+          "gaze": "tsumugi",
+          "action": "a small nod; she slows her swing for the child without saying so"
+        },
+        {
+          "t": 4.5,
+          "who": "tsumugi",
+          "emotion": "joy",
+          "intensity": 0.85,
+          "action": "laughs on the next beat"
+        }
+      ]
+    },
+    "1-05": {
+      "characters": [
+        "tsumugi"
+      ],
+      "posture": {
+        "tsumugi": "kneeling"
+      },
+      "camera": {
+        "framing": "CU",
+        "angle": "eye",
+        "lens": 85,
+        "move": "push",
+        "amount": 0.05
+      },
+      "performance": "capture",
+      "beats": [
+        {
+          "t": 0.0,
+          "who": "tsumugi",
+          "emotion": "joy",
+          "intensity": 0.55,
+          "action": "the laugh starts in the eyes before the mouth"
+        },
+        {
+          "t": 0.5,
+          "who": "tsumugi",
+          "emotion": "joy",
+          "intensity": 0.95,
+          "hold": 0.8,
+          "action": "the full laugh: head tips back a little, eyes squeezed shut"
+        },
+        {
+          "t": 2.0,
+          "who": "tsumugi",
+          "emotion": "joy",
+          "intensity": 0.6,
+          "gaze": "sayo",
+          "action": "the laugh settles and she looks to her grandmother, to share it"
+        }
+      ]
+    },
+    "1-06": {
+      "camera": {
+        "framing": "WIDE",
+        "subject": "vista",
+        "angle": "low",
+        "lens": 28,
+        "move": "push",
+        "amount": 0.04
+      },
+      "notes": "The establishing wide: the porch small against the terraces and the sea. Let it breathe."
+    },
+    "1-10": {
+      "characters": [],
+      "props": [
+        "bowl",
+        "rice"
+      ],
+      "camera": {
+        "framing": "INSERT",
+        "subject": "bowl",
+        "angle": "high",
+        "lens": 100,
+        "fstop": 2.0,
+        "move": "push",
+        "amount": 0.04
+      },
+      "props_state": {
+        "bowl": {
+          "seams": 1
+        }
+      },
+      "notes": "The bowl and its one gold seam, rim-lit by the lantern. The seam is the film's promise: broken things made better."
+    },
+    "1-11": {
+      "characters": [
+        "sayo",
+        "tsumugi"
+      ],
+      "camera": {
+        "framing": "MS",
+        "angle": "three-quarter",
+        "lens": 50,
+        "subject": "sayo+tsumugi"
+      },
+      "performance": "capture",
+      "props": [
+        "bowl"
+      ],
+      "beats": [
+        {
+          "t": 0.0,
+          "who": "sayo",
+          "emotion": "tenderness",
+          "intensity": 0.4,
+          "gaze": "bowl",
+          "action": "she looks at the bowl first, not at the child: the bowl holds a memory"
+        },
+        {
+          "t": 1.2,
+          "who": "sayo",
+          "emotion": "sorrow",
+          "intensity": 0.35,
+          "restraint": 0.85,
+          "gaze": "bowl",
+          "action": "'It broke the year your mother was born.' The mother is gone; a breath held"
+        },
+        {
+          "t": 2.6,
+          "who": "sayo",
+          "emotion": "tenderness",
+          "intensity": 0.7,
+          "gaze": "tsumugi",
+          "action": "'So we made it better.' She lifts her eyes to Tsumugi and offers the bowl with both hands"
+        },
+        {
+          "t": 3.6,
+          "who": "tsumugi",
+          "emotion": "wonder",
+          "intensity": 0.6,
+          "gaze": "bowl",
+          "action": "takes it with both hands, carefully, as if it could break again"
+        },
+        {
+          "t": 4.6,
+          "who": "tsumugi",
+          "emotion": "joy",
+          "intensity": 0.4,
+          "gaze": "sayo",
+          "action": "looks up: a small, unsure smile"
+        }
+      ]
+    },
+    "1-12": {
+      "characters": [
+        "tsumugi"
+      ],
+      "camera": {
+        "framing": "INSERT",
+        "subject": "tsumugi:hands",
+        "angle": "high",
+        "lens": 100,
+        "fstop": 2.0,
+        "move": "push",
+        "amount": 0.04
+      },
+      "props": [
+        "bowl"
+      ],
+      "performance": "capture",
+      "beats": [
+        {
+          "t": 0.0,
+          "who": "tsumugi",
+          "emotion": "curiosity",
+          "intensity": 0.5,
+          "gaze": "bowl",
+          "action": "a fingertip finds the seam"
+        },
+        {
+          "t": 1.0,
+          "who": "tsumugi",
+          "emotion": "tenderness",
+          "intensity": 0.65,
+          "hold": 1.5,
+          "gaze": "bowl",
+          "action": "traces it slowly, the whole length; the finger slows where the seam turns"
+        },
+        {
+          "t": 3.2,
+          "who": "tsumugi",
+          "emotion": "wonder",
+          "intensity": 0.5,
+          "action": "stops at the rim"
+        }
+      ]
+    },
+    "1-13": {
+      "camera": {
+        "framing": "WIDE",
+        "subject": "moon",
+        "angle": "low",
+        "lens": 50,
+        "move": "tilt",
+        "amount": 4
+      },
+      "actions": [
+        {
+          "prop": "moon",
+          "do": "rise"
+        }
+      ],
+      "notes": "The moon clears the sea. Score enters."
+    },
+    "1-14": {
+      "characters": [
+        "sayo",
+        "tsumugi"
+      ],
+      "camera": {
+        "framing": "MLS",
+        "angle": "behind",
+        "lens": 35,
+        "subject": "sayo+tsumugi"
+      },
+      "performance": "capture",
+      "beats": [
+        {
+          "t": 0.0,
+          "who": "tsumugi",
+          "emotion": "wonder",
+          "intensity": 0.6,
+          "gaze": "up"
+        },
+        {
+          "t": 1.5,
+          "who": "sayo",
+          "emotion": "tenderness",
+          "intensity": 0.5,
+          "gaze": "up",
+          "action": "'See her?'"
+        },
+        {
+          "t": 3.0,
+          "who": "tsumugi",
+          "emotion": "wonder",
+          "intensity": 0.8,
+          "gaze": "up",
+          "action": "leans a little closer to her grandmother"
+        },
+        {
+          "t": 5.0,
+          "who": "sayo",
+          "emotion": "sorrow",
+          "intensity": 0.25,
+          "restraint": 0.9,
+          "gaze": "up",
+          "action": "'If she stops, the moon goes dark': said lightly, meant heavily"
+        }
+      ],
+      "marks": {
+        "sayo": {
+          "at": [
+            0.35,
+            1.15,
+            0
+          ],
+          "yaw": 145,
+          "posture": "standing"
+        },
+        "tsumugi": {
+          "at": [
+            -0.1,
+            1.05,
+            0
+          ],
+          "yaw": 145,
+          "posture": "standing"
+        }
+      },
+      "_why_marks": "They stand at the porch's edge and face the moon (yaw 145 points at it), so the camera behind them sees their backs and the moon."
+    },
+    "1-16": {
+      "characters": [
+        "tsumugi"
+      ],
+      "camera": {
+        "framing": "ECU",
+        "angle": "low",
+        "lens": 100,
+        "move": "push",
+        "amount": 0.04,
+        "fstop": 1.8
+      },
+      "beats": [
+        {
+          "t": 0.0,
+          "who": "tsumugi",
+          "emotion": "wonder",
+          "intensity": 0.85,
+          "gaze": "up",
+          "hold": 2.0,
+          "action": "eyes wide and wet with moonlight; one slow blink"
+        }
+      ],
+      "marks": {
+        "tsumugi": {
+          "at": [
+            -0.1,
+            1.05,
+            0
+          ],
+          "yaw": 145,
+          "posture": "standing"
+        }
+      }
+    },
+    "1-17": {
+      "characters": [],
+      "props": [
+        "mortar",
+        "mallet",
+        "rice"
+      ],
+      "camera": {
+        "framing": "INSERT",
+        "subject": "mortar",
+        "angle": "three-quarter",
+        "lens": 65,
+        "move": "push",
+        "amount": 0.03
+      },
+      "props_state": {
+        "mallet": {
+          "at": [
+            0.0,
+            0.03,
+            0.4
+          ],
+          "rot": [
+            -35,
+            0,
+            0
+          ]
+        }
+      },
+      "notes": "The mallet at rest in the mortar, moonlight only. The last quiet before the snow."
+    },
+    "1-19": {
+      "characters": [
+        "sayo"
+      ],
+      "posture": {
+        "sayo": "walking"
+      },
+      "camera": {
+        "framing": "MLS",
+        "angle": "eye",
+        "lens": 35,
+        "move": "pan",
+        "amount": 20
+      },
+      "beats": [
+        {
+          "t": 0.0,
+          "who": "sayo",
+          "emotion": "sorrow",
+          "intensity": 0.4,
+          "restraint": 0.9,
+          "gaze": "down",
+          "action": "slow, deliberate steps: a ritual, not a walk"
+        }
+      ]
+    },
+    "1-23": {
+      "characters": [
+        "tsumugi"
+      ],
+      "camera": {
+        "framing": "MCU",
+        "angle": "eye",
+        "lens": 65
+      },
+      "performance": "capture",
+      "beats": [
+        {
+          "t": 0.0,
+          "who": "tsumugi",
+          "emotion": "curiosity",
+          "intensity": 0.6,
+          "action": "half her face round the screen's edge"
+        },
+        {
+          "t": 1.5,
+          "who": "tsumugi",
+          "emotion": "curiosity",
+          "intensity": 0.7,
+          "gaze": "sayo",
+          "action": "'Who is it for?', whispered"
+        },
+        {
+          "t": 3.0,
+          "who": "tsumugi",
+          "emotion": "neutral",
+          "intensity": 0.3,
+          "gaze": "sayo",
+          "action": "waits"
+        }
+      ]
+    },
+    "1-24": {
+      "characters": [
+        "sayo"
+      ],
+      "posture": {
+        "sayo": "kneeling"
+      },
+      "camera": {
+        "framing": "MS",
+        "angle": "behind",
+        "lens": 50
+      },
+      "beats": [
+        {
+          "t": 0.0,
+          "who": "sayo",
+          "emotion": "sorrow",
+          "intensity": 0.5,
+          "restraint": 0.95,
+          "gaze": "away",
+          "action": "she does not turn; only her hands stop for a moment"
+        },
+        {
+          "t": 1.5,
+          "who": "sayo",
+          "emotion": "tenderness",
+          "intensity": 0.4,
+          "restraint": 0.9,
+          "action": "'A guest who can't see well.' Her head lowers a little"
+        }
+      ]
+    },
+    "1-26": {
+      "characters": [
+        "tsumugi",
+        "sayo"
+      ],
+      "posture": {
+        "tsumugi": "kneeling",
+        "sayo": "kneeling"
+      },
+      "camera": {
+        "framing": "MS",
+        "angle": "three-quarter",
+        "lens": 50,
+        "subject": "tsumugi"
+      },
+      "performance": "capture",
+      "beats": [
+        {
+          "t": 0.0,
+          "who": "tsumugi",
+          "emotion": "resolve",
+          "intensity": 0.4,
+          "gaze": "sayo",
+          "action": "kneels beside Sayo, watching her hands"
+        },
+        {
+          "t": 1.5,
+          "who": "tsumugi",
+          "emotion": "tenderness",
+          "intensity": 0.5,
+          "gaze": "bowl",
+          "action": "copies the offering exactly, a beat late"
+        },
+        {
+          "t": 3.5,
+          "who": "tsumugi",
+          "emotion": "wonder",
+          "intensity": 0.45,
+          "gaze": "cushion",
+          "action": "looks at the empty cushion as if someone might be there"
+        }
+      ]
+    },
+    "1-27": {
+      "characters": [
+        "tsumugi"
+      ],
+      "posture": {
+        "tsumugi": "kneeling"
+      },
+      "props": [
+        "bowl"
+      ],
+      "camera": {
+        "framing": "INSERT",
+        "subject": "tsumugi:hands",
+        "angle": "eye",
+        "lens": 85
+      },
+      "beats": [
+        {
+          "t": 0.0,
+          "who": "tsumugi",
+          "emotion": "tenderness",
+          "intensity": 0.6,
+          "action": "both hands hold out the bowl; a tiny tremble"
+        },
+        {
+          "t": 2.5,
+          "who": "tsumugi",
+          "emotion": "resolve",
+          "intensity": 0.5,
+          "hold": 1.5,
+          "action": "the hands hold still"
+        }
+      ]
+    }
+  }
+}
