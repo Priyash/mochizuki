@@ -89,13 +89,13 @@ jobs:
       - name: Forget the sign-in
         if: always()
         run: rm -f "$HOME/.config/gcloud/application_default_credentials.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && steps.gate.outputs.go == '1' && inputs.mode == 'test'
         with:
           name: colab-test
           path: colab-test/**/out/
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always() && steps.gate.outputs.go == '1'
         with:
           name: colab-logs

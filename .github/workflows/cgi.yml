@@ -93,7 +93,7 @@ jobs:
         run: |
           python -m engine cgi auto --chapter "$CHAPTER" --stage voices \
             ${ENGINE:+--engine "$ENGINE"} ${SHOTS:+--shots "$SHOTS"}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: voices
           path: |
@@ -152,7 +152,7 @@ jobs:
         run: |
           mkdir -p "$CGI/logs"
           if [ -f "$CGI/logs/cgi.jsonl" ]; then cp "$CGI/logs/cgi.jsonl" "$CGI/logs/shard-${{ matrix.shard }}.jsonl"; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: render-${{ matrix.shard }}
