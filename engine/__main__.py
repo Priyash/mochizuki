@@ -55,6 +55,13 @@ def finish_test(p: Project, args) -> int:
     if not repo:
         print("error: set GITHUB_REPOSITORY (owner/name): the test's files go to its release", file=sys.stderr)
         return 2
+    if args.collect:
+        r = ft.collect(p, Release(repo, tag=ft.RELEASE), Release(repo), args.collect, Path(args.work))
+        print(json.dumps(r, indent=1, default=str))
+        return 0 if r["jobs"] and all(j["ok"] for j in r["jobs"].values()) else 3
+    if not args.shot:
+        print("error: give the shot (or --collect TEST_ID)", file=sys.stderr)
+        return 2
     if args.chosen_refs and p.refs_missing():
         p.store = ReleaseStore(repo)
         done, _, lost = ci.copy_chosen_refs(p, steps.open_ledger(p))
@@ -64,7 +71,7 @@ def finish_test(p: Project, args) -> int:
     r = ft.run(p, kgc, Release(repo, tag=ft.RELEASE), args.shot,
                [e.strip() for e in args.engine.split(",") if e.strip()],
                [c.strip() for c in args.controls.split(",") if c.strip()], Path(args.work), args.minutes,
-               backend=args.backend, batches=Release(repo))
+               backend=args.backend, batches=Release(repo), wait=args.wait, keep=args.keep)
     print("\n".join(kgc.log[-6:]))
     print(json.dumps(r, indent=1, default=str))
     return 0 if r["jobs"] and all(j["ok"] for j in r["jobs"].values()) else 3
@@ -108,7 +115,7 @@ def main(argv=None) -> int:
     a.add_argument("--out", default="probe-out")
     a = sub.add_parser("finish-test", help="one shot's AI finish on a Kaggle T4 (or Colab), outside the ledger "
                                           "(render it with --guides first)")
-    a.add_argument("shot")
+    a.add_argument("shot", nargs="?", help="the shot (not with --collect)")
     a.add_argument("--engine", default=steps.FINISH,
                    help="finish engines, comma-separated: ai_finish, a variant such as ai_finish_720, or both")
     a.add_argument("--controls", default="depth,lines", help="the guides to finish from, one job each")
@@ -116,6 +123,10 @@ def main(argv=None) -> int:
                    help="colab spends the owner's units: only with the owner's yes")
     a.add_argument("--minutes", type=int, default=120, help="the notebook's time limit")
     a.add_argument("--work", default="finish-test")
+    a.add_argument("--keep", action="store_true",
+                   help="colab: the batch stays posted until a runner gets a GPU for it; collect it later")
+    a.add_argument("--wait", type=float, default=None, help="colab with --keep: minutes to wait for the results")
+    a.add_argument("--collect", metavar="TEST_ID", help="collect a kept Colab test whose results came back later")
     a.add_argument("--chosen-refs", action="store_true",
                    help="if style_bible/refs lacks the stills, take the candidates chosen in the ledger "
                         "(a test checkout only: nothing is committed or approved)")

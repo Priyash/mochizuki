@@ -27,8 +27,18 @@ on:
         description: "Render size of the shot and its guides"
         default: "1280x720"
       minutes:
-        description: "The Kaggle notebook's time limit, minutes"
+        description: "The GPU session's time limit, minutes"
         default: "180"
+      keep:
+        description: "colab: keep the batch posted until a runner gets a GPU for it (collect it later if need be)"
+        type: boolean
+        default: false
+      wait:
+        description: "colab with keep: minutes this run waits for the results"
+        default: "300"
+      collect:
+        description: "Only collect a kept Colab test whose results came back later: its test id (ft-...)"
+        default: ""
 concurrency:
   group: finish-test-${{ inputs.backend }}   # one test at a time on each: Kaggle runs at most two GPU sessions
   cancel-in-progress: false
@@ -77,14 +87,14 @@ jobs:
             ${{ env.CGI }}/${{ inputs.shot }}/${{ inputs.shot }}.lines.mp4
           key: finish-test-render-${{ inputs.shot }}-${{ inputs.size }}-${{ env.GUIDES }}-${{ hashFiles('films/*/style_bible/*.json', 'films/*/shots.csv', 'films/*/config.json', 'engine/cgi/**', 'engine/audio/**') }}
       - name: Kokoro (CPU, Python 3.12) for the shot's voice
-        if: steps.render-cache.outputs.cache-hit != 'true'
+        if: steps.render-cache.outputs.cache-hit != 'true' && inputs.collect == ''
         run: |
           python3.12 -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
           python3.12 -m pip install -q -r engine/audio/tts/requirements.txt
           python3.12 -c "import os, sys, unidic; sys.exit(0 if os.path.exists(os.path.join(unidic.DICDIR, 'mecabrc')) else 1)" \
             || python3.12 -m unidic download
       - name: Voiced lines and the Kokoro model (the 3D workflow's cache)
-        if: steps.render-cache.outputs.cache-hit != 'true'
+        if: steps.render-cache.outputs.cache-hit != 'true' && inputs.collect == ''
         uses: actions/cache@v6
         with:
           path: |
@@ -93,20 +103,20 @@ jobs:
           key: cgi-voices-${{ hashFiles('films/*/style_bible/dialogue.json', 'engine/audio/voice.py', 'engine/audio/tts/*') }}
           restore-keys: cgi-voices-
       - name: Voice the shot
-        if: steps.render-cache.outputs.cache-hit != 'true'
+        if: steps.render-cache.outputs.cache-hit != 'true' && inputs.collect == ''
         run: python -m engine cgi voices "$SHOT" --python "$(which python3.12)"
       - name: Blender (bpy, Python 3.13), Kaggle and the review tools
         run: |
           pip install -q -r engine/cgi/render/blender/requirements.txt pillow "kaggle>=1.7" six
           python -c "import bpy; print('bpy', bpy.app.version_string)"
       - name: Render the shot and its guides
-        if: steps.render-cache.outputs.cache-hit != 'true'
+        if: steps.render-cache.outputs.cache-hit != 'true' && inputs.collect == ''
         run: |
           export BLENDER="$(which python)"
           python -m engine cgi render "$SHOT" --size "$SIZE" --guides "${{ inputs.controls }}"
           ls -la "$CGI/$SHOT"
       - name: Keep the render for the next test now, not when this one ends (a test may wait hours on its GPU)
-        if: steps.render-cache.outputs.cache-hit != 'true'
+        if: steps.render-cache.outputs.cache-hit != 'true' && inputs.collect == ''
         uses: actions/cache/save@v6
         with:
           path: |
@@ -124,10 +134,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
+          if [ -n "${{ inputs.collect }}" ]; then
+            python -m engine finish-test --collect "${{ inputs.collect }}" --work finish-work | tee finish-test.txt
+            exit 0
+          fi
           if [ "${{ inputs.backend }}" = "kaggle" ]; then kaggle kernels list --mine || true; fi
+          keep=""
+          if [ "${{ inputs.keep }}" = "true" ]; then keep="--keep --wait ${{ inputs.wait }}"; fi
           python -m engine finish-test "$SHOT" --engine "${{ inputs.engine }}" --controls "${{ inputs.controls }}" \
             --backend "${{ inputs.backend }}" --minutes "${{ inputs.minutes }}" --work finish-work --chosen-refs \
-            | tee finish-test.txt
+            $keep | tee finish-test.txt
       - name: Summary
         if: always()
         run: |

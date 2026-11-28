@@ -432,6 +432,8 @@
     "setup_minutes": 15,
     "max_wait_hours": 12,
     "stale_minutes": 30,
+    "gpu_wait_minutes": 150,
+    "_gpu_wait_note": "29 Nov: Colab answered every A100 and L4 request with Bad Gateway for two runs. A runner now keeps asking, round after round, for up to this long (never so long that the batch's run would outlast the GitHub job); nothing bills until a VM comes up.",
     "_gpus_note": "bf16 GPUs only (T4 makes Qwen go NaN). Rates (2026): L4 1.71, A100 40GB 5.40 units/h. G4 (8.71/h) left out: dearer than an A100 and it would make the cap count every batch at its rate. H100 is not offered to this account.",
     "_stages_note": "28 Nov: keyframes off. The 3D pipeline (docs/cgi-pipeline.md) draws the storyboard from the real sets, so ~400 Colab keyframes (about 90 units) would be spent for nothing. Put 'keyframes' back here to use them again."
   },

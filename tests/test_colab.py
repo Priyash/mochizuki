@@ -392,3 +392,73 @@ def test_a_failed_results_download_keeps_them_in_the_release(tmp_path):
     r = sched.tick(proj, led, colab, 1, engine_set="stub")
     assert r["action"] == "collected" and r["made"] > 0, r
     assert fr.names() == []
+
+
+class _Clock:
+    """time.time for the runner, moved on by its sleeps."""
+
+    def __init__(self):
+        self.now, self.slept = 1_800_000_000.0, []
+
+    def time(self):
+        return self.now
+
+    def sleep(self, s):
+        self.slept.append(s)
+        self.now += s
+
+
+class _GrantsLate(FakeColab):
+    """Colab says Bad Gateway to every request until round `at`, then grants the A100."""
+
+    def __init__(self, root, at, clock):
+        super().__init__(root, grant=())
+        self.at, self.clock, self.asked = at, clock, 0
+
+    def run(self, args, timeout=None):
+        if args[0] == "new":
+            self.asked += 1
+            self.clock.now += 60                          # each request takes a while to fail
+            if (self.asked + 1) // 2 >= self.at:
+                self.grant = {"A100", "L4"}
+            elif args[args.index("--gpu") + 1] not in self.grant:
+                self.calls.append(args)
+                return 1, "accelerator=A100: Bad Gateway"
+        if args[0] == "upload":                           # the test ends once a GPU is granted
+            return 1, "stopped here"
+        return super().run(args, timeout)
+
+
+def test_the_runner_keeps_asking_for_a_gpu_until_one_is_granted(tmp_path, monkeypatch):
+    proj = _setup(tmp_path)[0]
+    clock = _Clock()
+    monkeypatch.setattr(cb.runner.time, "time", clock.time)
+    fc = _GrantsLate(tmp_path / "vms", at=3, clock=clock)
+    r = cb.run_remote(fc, cb.settings(proj), "mochi-x", tmp_path / "none.tgz", "b", tmp_path / "o.tgz", [],
+                      gpu_wait=3600, sleep=clock.sleep)
+    assert r["gpu"] == "A100" and clock.slept == [cb.runner.GPU_RETRY_SECONDS] * 2   # rounds 1 and 2 failed
+
+
+def test_the_runner_stops_asking_when_its_wait_is_over_and_nothing_billed(tmp_path, monkeypatch):
+    proj = _setup(tmp_path)[0]
+    clock = _Clock()
+    monkeypatch.setattr(cb.runner.time, "time", clock.time)
+    fc = _GrantsLate(tmp_path / "vms", at=99, clock=clock)
+    r = cb.run_remote(fc, cb.settings(proj), "mochi-x", tmp_path / "none.tgz", "b", tmp_path / "o.tgz", [],
+                      gpu_wait=900, sleep=clock.sleep)
+    assert r["gpu"] is None and "round(s) of requests" in r["error"] and "Bad Gateway" in r["error"]
+    assert clock.now - 1_800_000_000.0 < 900 + 2 * 60 + cb.runner.GPU_RETRY_SECONDS    # it never overstays
+    assert r["late_vms"] == 0
+
+
+def test_the_gpu_wait_fits_the_github_job_or_is_one_round(tmp_path, monkeypatch):
+    proj = _setup(tmp_path)[0]
+    cfg = {**cb.settings(proj), "gpu_wait_minutes": 150, "batch_hours": 1.0, "setup_minutes": 15}
+    monkeypatch.delenv("COLAB_JOB_DEADLINE", raising=False)
+    assert cb.runner.gpu_wait_seconds(cfg, now=0) == 0                      # no known end: one round only
+    monkeypatch.setenv("COLAB_JOB_DEADLINE", str(330 * 60))
+    run = cb.runner._wait_cap(cfg)                                          # what the batch may need
+    assert cb.runner.gpu_wait_seconds(cfg, now=0) == min(150 * 60, 330 * 60 - run - 300)
+    four = {**cfg, "batch_hours": 4.0}                                       # a production batch: less time to ask
+    assert cb.runner.gpu_wait_seconds(four, now=0) == 330 * 60 - cb.runner._wait_cap(four) - 300
+    assert cb.runner.gpu_wait_seconds({**cfg, "batch_hours": 5.0}, now=0) == 0   # no time left to wait at all
