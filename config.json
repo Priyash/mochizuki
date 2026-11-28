@@ -345,8 +345,7 @@
     "_note": "Google Colab pay-as-you-go: bf16 GPUs for stills and keyframes (docs/colab.md). The producer sizes each batch to what is left of total_cap_units (the owner's agreed budget: 100 units = $9.99); the runner will not start a VM below min_balance_units. Rates are units per GPU-hour as Colab charged them in 2026.",
     "enabled": true,
     "stages": [
-      "refs",
-      "keyframes"
+      "refs"
     ],
     "gpus": [
       "A100",
@@ -364,7 +363,8 @@
     "setup_minutes": 15,
     "max_wait_hours": 12,
     "stale_minutes": 30,
-    "_gpus_note": "bf16 GPUs only (T4 makes Qwen go NaN). Rates (2026): L4 1.71, A100 40GB 5.40 units/h. G4 (8.71/h) left out: dearer than an A100 and it would make the cap count every batch at its rate. H100 is not offered to this account."
+    "_gpus_note": "bf16 GPUs only (T4 makes Qwen go NaN). Rates (2026): L4 1.71, A100 40GB 5.40 units/h. G4 (8.71/h) left out: dearer than an A100 and it would make the cap count every batch at its rate. H100 is not offered to this account.",
+    "_stages_note": "28 Nov: keyframes off. The 3D pipeline (docs/cgi-pipeline.md) draws the storyboard from the real sets, so ~400 Colab keyframes (about 90 units) would be spent for nothing. Put 'keyframes' back here to use them again."
   },
   "cgi": {
     "_note": "The 3D CG pipeline (docs/cgi-pipeline.md): Blender renders every shot from the same character models, props and sets, driven by acting sheets (style_bible/acting.json) and captured performances, so shots are coherent by construction and render natively in 4K on the Mac. Defaults are in pipeline/cgi/config.py; anything set here wins. blender: path to Blender 5.x (empty: /Applications/Blender.app, then PATH). use_in_cut: assemble uses media/cgi/<shot>/<shot>.mp4 renders before takes and keyframes.",
