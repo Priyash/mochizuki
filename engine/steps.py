@@ -6,9 +6,11 @@ SyncExecutor runs it now (mock or paid API); BatchExecutor queues it for one Kag
 from __future__ import annotations
 
 import hashlib
+import subprocess
 from pathlib import Path
 
 from .cgi import config as cgi_config
+from .generators import engine_settings
 from .ledger import BudgetExceeded, Ledger, not_a_failure
 from .project import Project, Shot, job_key, ref_shot
 
@@ -345,10 +347,65 @@ def _fingerprint(f: Path) -> str:
     return hashlib.sha1(f.read_bytes()).hexdigest()[:12]
 
 
-def _finish_key(p: Project, s: Shot, idx: int, clip: Path) -> str:
-    """A finish is one shot, one try, one prompt and one guide clip: a new render or prompt is a new job."""
-    control = p.engine(FINISH).get("control", "depth")
-    return job_key(s.id, "finish", idx, f"{p.prompt(s)}|{control}|{_fingerprint(clip)}")
+def finish_config(p: Project, engine: str = FINISH) -> dict:
+    """The settings of a finish engine: engines.ai_finish, or a variant (ai_finish_720) on top of it."""
+    return engine_settings(p.config.get("engines", {}), engine)
+
+
+def crop_ref(p: Project, ref: Path, box) -> Path:
+    """One view cut out of a reference sheet: box is x, y, width, height as fractions of the picture.
+    Kept with the finished shots (media/finished/refs, never in the stills' release); its name carries
+    the sheet's fingerprint and the box, so a new sheet or box is a new file."""
+    x, y, w, h = (float(v) for v in box)
+    tag = hashlib.sha1(ref.read_bytes() + repr((x, y, w, h)).encode()).hexdigest()[:10]
+    out = p.media / OUT["finish"][0] / "refs" / f"{ref.stem}.{tag}.png"
+    if not out.exists():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(ref), "-vf",
+                        f"crop=iw*{w}:ih*{h}:iw*{x}:ih*{y}", "-frames:v", "1", str(out)], check=True)
+    return out
+
+
+def finish_refs(p: Project, s: Shot, cfg: dict) -> list[Path]:
+    """The stills a shot's finish is painted from: its subjects, characters first, at most max_refs.
+    Never the style still: it is a whole scene, and its people are not the film's cast. A character
+    sheet is cut to the one view engines.ai_finish.crops gives for it, so the model sees one person."""
+    crops = cfg.get("crops") or {}
+    subjects = [r for r in p.refs_for(s, limit=len(p.references())) if not r.stem.lower().startswith("style")]
+    return [crop_ref(p, r, crops[r.stem]) if r.stem in crops else r
+            for r in subjects[: int(cfg.get("max_refs", 2))]]
+
+
+def finish_prompt(p: Project, s: Shot, cfg: dict, refs: list[Path]) -> str:
+    """The finish's prompt: its own look (engines.ai_finish.style, in place of style.txt, which describes
+    the 3D render's toon look), the shot, and who each of its stills shows (engines.ai_finish.who)."""
+    who = cfg.get("who") or {}
+    names = dict.fromkeys(r.name.split(".")[0] for r in refs)
+    return p.prompt(s, extra="\n".join(who[n] for n in names if n in who), style=cfg.get("style"))
+
+
+def _finish_key(p: Project, s: Shot, idx: int, clip: Path, engine: str = FINISH, control: str | None = None) -> str:
+    """A finish is one shot, one try, one prompt, one guide clip and one set of stills: a new render,
+    prompt or still is a new job. A variant engine's finish is its own job."""
+    cfg = finish_config(p, engine)
+    refs = finish_refs(p, s, cfg)
+    stills = ",".join(_fingerprint(r) for r in refs)
+    tail = "" if engine == FINISH else f"|{engine}"
+    return job_key(s.id, "finish", idx, f"{finish_prompt(p, s, cfg, refs)}|{control or cfg.get('control', 'depth')}"
+                                        f"|{_fingerprint(clip)}|{stills}{tail}")
+
+
+def finish_spec(p: Project, s: Shot, idx: int, clip: Path, engine: str = FINISH,
+                control: str | None = None) -> dict | None:
+    """The job that finishes `s` from its guide clip: None while the shot has no reference stills."""
+    cfg = finish_config(p, engine)
+    refs = finish_refs(p, s, cfg)
+    if not refs:
+        return None
+    spec = _spec(p, s, "finish", idx, finish_prompt(p, s, cfg, refs), control=p.rel(clip), engine=engine,
+                 media="video", refs=[p.rel(r) for r in refs])
+    spec["key"] = _finish_key(p, s, idx, clip, engine, control)
+    return spec
 
 
 def finish_state(p: Project, led: Ledger, s: Shot) -> str:
@@ -384,16 +441,12 @@ def finish(p: Project, led: Ledger, ex, chapter: int, only: str | None = None) -
             human.append(s.id)
         if st != "needed":
             continue
-        refs = p.refs_for(s, limit=int(cfg.get("max_refs", 2)))
-        if not refs:                                     # the look comes from the approved stills (gate 1)
-            no_refs.append(s.id)
-            continue
         clip = guide_clip(p, s.id, control)
         assert clip is not None                          # finish_state found it
-        idx = len(led.jobs(s.id, "finish"))
-        spec = _spec(p, s, "finish", idx, p.prompt(s), control=p.rel(clip), engine=FINISH, media="video",
-                     refs=[p.rel(r) for r in refs])
-        spec["key"] = _finish_key(p, s, idx, clip)
+        spec = finish_spec(p, s, len(led.jobs(s.id, "finish")), clip)
+        if spec is None:                                 # the look comes from the approved stills (gate 1)
+            no_refs.append(s.id)
+            continue
         r = ex.submit(p, led, s, spec, 0.0)
         made += r in ("made", "queued")
         deferred += r == "deferred"

@@ -81,8 +81,25 @@ def test_the_ai_finish_settings_are_checked_when_present():
     found = film_check.config_problems(cfg)
     assert any("engines.ai_finish: needs fps" in x for x in found)
     assert any("engines.ai_finish.control" in x for x in found)
+    assert any("engines.ai_finish_720: needs fps" in x for x in found)          # a variant inherits its base's
     del cfg["engines"]["ai_finish"]
+    assert any("needs engines.ai_finish, its base" in x for x in film_check.config_problems(cfg))
+    del cfg["engines"]["ai_finish_720"]
     assert not any("ai_finish" in x for x in film_check.config_problems(cfg))   # a film may go without
+
+
+def test_a_finish_variant_is_checked_as_the_worker_will_see_it():
+    cfg = _cfg()
+    assert not film_check.config_problems(cfg)
+    v = cfg["engines"]["ai_finish_720"]
+    v["crops"] = {"sayo": [0.5, 0.0, 0.6, 1.0]}                                  # runs off the picture
+    v["transformer_gguf"] = {"prefer": ["Q4_K_M"]}                              # no repo
+    v["offload"] = "disk"
+    found = film_check.config_problems(cfg)
+    assert any("ai_finish_720.crops.sayo" in x for x in found)
+    assert any("ai_finish_720.transformer_gguf: needs repo" in x for x in found)
+    assert any("ai_finish_720.offload" in x for x in found)
+    assert not any("engines.ai_finish." in x or "engines.ai_finish:" in x for x in found)   # the base is fine
 
 def test_a_character_table_must_be_keyed_by_chapter():
     cfg = _cfg()

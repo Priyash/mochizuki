@@ -238,15 +238,17 @@ class Project:
                 and (chapter is None or self.ref_chapter(r) <= chapter)]
 
     # ---- prompts
-    def prompt(self, shot: Shot, extra: str = "") -> str:
-        style = self.style_file
+    def prompt(self, shot: Shot, extra: str = "", style: str | None = None) -> str:
+        """The shot's prompt: the look (style.txt, or `style` when given: the AI finish has its own),
+        the chapter's line, the scene's setting, the shot (prompts/<id>.txt, else shots.csv), `extra`."""
         own = self.prompts_dir / f"{shot.id}.txt"
         chapters = self.style_bible / CHAPTER_STYLES_FILE
         chapter_line = json.loads(chapters.read_text(encoding="utf-8")).get(str(shot.chapter), "") \
             if chapters.exists() else ""
         scene_line = self.scene_of(shot)[1].get("setting", "")
-        parts = [style.read_text(encoding="utf-8").strip() if style.exists() else "",
-                 chapter_line, scene_line,
+        if style is None:
+            style = self.style_file.read_text(encoding="utf-8").strip() if self.style_file.exists() else ""
+        parts = [style.strip(), chapter_line, scene_line,
                  own.read_text(encoding="utf-8").strip() if own.exists() else shot.shot,
                  extra]
         return "\n".join(p for p in parts if p)
