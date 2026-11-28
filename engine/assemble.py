@@ -49,6 +49,15 @@ def cut_path(p: Project, chapter: int, four_k: bool = False) -> Path:
     return p.media / CUTS_DIR / f"chapter_{chapter}{'_4k' if four_k else ''}.mp4"
 
 
+def finished_clip(p: Project, led: Ledger, shot_id: str) -> str | None:
+    """The shot's AI finish, when the film's config puts finishes in the cut (engines.ai_finish.use_in_cut):
+    its newest finished job that no one has failed."""
+    if not p.engine("ai_finish").get("use_in_cut"):
+        return None
+    done = [j for j in led.jobs(shot_id, "finish") if j["status"] == "done" and j["verdict"] != "fail"]
+    return str(p.fetch(done[-1]["path"])) if done and p.fetch(done[-1]["path"]).exists() else None
+
+
 def cgi_clip(p: Project, shot_id: str, four_k: bool) -> str | None:
     """The shot's 3D render (engine/cgi), when config cgi.use_in_cut is on: the final render for the
     4K cut; the preview, else the final, for the animatic."""
@@ -68,15 +77,18 @@ def assemble(p: Project, led: Ledger, chapter: int, four_k: bool = False) -> dic
     tag = "4k" if four_k else "animatic"
     work = p.media / CUTS_DIR / f"chapter_{chapter}_{tag}_parts"
     work.mkdir(parents=True, exist_ok=True)
-    used = {"cgi": 0, "take": 0, "keyframe": 0, "card": 0, "4k": 0}
+    used = {"finish": 0, "cgi": 0, "take": 0, "keyframe": 0, "card": 0, "4k": 0}
     parts = []
     for n, s in enumerate(p.chapter(chapter)):
         seg = work / f"{n:03d}_{s.id}.mp4"
         passed = [j for j in led.jobs(s.id, "take") if j["status"] == "done" and j["verdict"] == "pass"]
         sel = led.selected(s.id)
         src, kind = None, "card"
+        fin = finished_clip(p, led, s.id)
         cg = cgi_clip(p, s.id, four_k)
-        if cg:
+        if fin:
+            src, kind, up = fin, "finish", None
+        elif cg:
             src, kind, up = cg, "cgi", None
         elif passed and p.fetch(passed[-1]["path"]).exists():
             src, kind = str(p.fetch(passed[-1]["path"])), "take"
@@ -89,7 +101,7 @@ def assemble(p: Project, led: Ledger, chapter: int, four_k: bool = False) -> dic
         if up:
             src = up
             used["4k"] += 1
-        if kind in ("take", "cgi") and src is not None:
+        if kind in ("take", "cgi", "finish") and src is not None:
             _ff(["-i", src, "-t", str(s.seconds), *_norm(w, h, crf, hold=s.seconds), str(seg)])
         elif kind == "keyframe" and src is not None:
             _ff(["-loop", "1", "-i", src, "-t", str(s.seconds), *_norm(w, h, crf), str(seg)])

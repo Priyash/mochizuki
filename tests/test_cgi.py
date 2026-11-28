@@ -347,6 +347,10 @@ FAKE_BLENDER = textwrap.dedent('''
         for f in range(first, last + 1):
             png(os.path.join(out, f"{f:04d}.png"), 64, 36, os.environ.get("FAKE_FLAT") == "1")
             print("CGI " + json.dumps({"event": "render.frame", "frame": f, "of": last, "seconds": 0.01}))
+        for g, folder in plan["output"].get("guides", {}).items():      # the AI finish's guide passes
+            os.makedirs(folder, exist_ok=True)
+            for f in range(first, last + 1):
+                png(os.path.join(folder, f"{f:04d}.png"), 64, 36, False)
     print("CGI " + json.dumps({"event": "done", "msg": plan["shot"]}))
 ''')
 
@@ -383,6 +387,20 @@ def test_render_checks_and_encodes(proj, fake_blender, monkeypatch):
     built = rnd.render_shot(proj, "1-06", preview=True, no_render=True)
     assert "clip" not in built and Path(built["plan"]).exists()
 
+
+
+@needs_ffmpeg
+def test_render_with_guides_encodes_each_beside_the_shots_clip(proj, fake_blender, monkeypatch):
+    from engine import steps
+    monkeypatch.setattr(rnd, "command", lambda exe, plan_file, no_render=False:
+                        [str(exe), "--plan", str(plan_file)] + (["--no-render"] if no_render else []))
+    r = rnd.render_shot(proj, "1-05", size=(160, 90), guides=("depth", "lines"))
+    assert set(r["guides"]) == {"depth", "lines"}
+    for g, f in r["guides"].items():
+        assert Path(f).exists() and Path(f).name == f"1-05.{g}.mp4"
+    assert steps.guide_clip(proj, "1-05", "depth") == Path(r["guides"]["depth"])   # where the finish looks
+    with pytest.raises(ValueError, match="no guide pass"):
+        planner.build(proj, "1-05", guides=("normals",))
 
 @needs_ffmpeg
 @needs_pillow

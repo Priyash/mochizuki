@@ -56,6 +56,22 @@ def _upscale_wanted(p, led, chapter) -> bool:
         steps.upscale_state(p, led, s) == "needed" for s in p.chapter(chapter))
 
 
+def _finish_wanted(p, led, chapter) -> bool:
+    """Only when the film's config switches it on (engines.ai_finish.auto): a repaint costs GPU time,
+    and the owner looks at the first one before it runs on its own (AGENTS.md)."""
+    return bool(p.engine(steps.FINISH).get("auto")) and not p.refs_missing(chapter) and any(
+        steps.finish_state(p, led, s) == "needed" for s in steps.finish_shots(p, chapter))
+
+
+def _finish_progress(p, led, chapter) -> str:
+    if not p.engine(steps.FINISH):
+        return "not set up"
+    shots = steps.finish_shots(p, chapter)
+    states = [steps.finish_state(p, led, s) for s in shots]
+    auto = "" if p.engine(steps.FINISH).get("auto") else "; by hand (auto off)"
+    return f"{states.count('done')}/{len(shots)} finished, {states.count('no_render')} without a guided render{auto}"
+
+
 def _refs_progress(p, led, chapter) -> str:
     missing = p.refs_missing(chapter)
     if not missing:
@@ -133,9 +149,11 @@ CHAIN: tuple[Stage, ...] = (
           runner=SCHEDULER, generators=("video",), gate=BOARD_GATE,
           skips_unchanged="a take's key holds its prompt's hash", wants=_video_wanted, plan=steps.video,
           progress=_video_progress),
-    Stage("ai_finish", "repaints a 3D render in the reference stills' look, guided by its depth, lines and masks",
+    Stage("ai_finish", "repaints a 3D render in the reference stills' look, guided by its depth or lines",
           consumes=("3D renders", "reference stills"), produces=("finished shots",),
-          runner=SCHEDULER, generators=("ai_finish",), built=False),
+          runner=SCHEDULER, generators=("ai_finish",), gate=REFS_GATE,
+          skips_unchanged="a finish's key holds its guide clip's fingerprint: only a new render repaints",
+          wants=_finish_wanted, plan=steps.finish, progress=_finish_progress),
     Stage("music", "scores the chapter from its music cues",
           consumes=("music cues", "shot sheet"), produces=("music track",),
           runner=SCHEDULER, generators=("music",), built=False),

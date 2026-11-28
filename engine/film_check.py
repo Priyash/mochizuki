@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from .errors import EngineError
-from .generators import CATALOG, GPU
+from .generators import CATALOG, FINISH_KEYS, GPU, GUIDES
 
 SHOT_COLUMNS = ("id", "chapter", "shot", "seconds", "type", "model", "takes")   # "sound" is optional
 VIDEO_ENGINE_KEYS = ("model", "width", "height", "fps", "max_frames")
@@ -72,6 +72,13 @@ def config_problems(cfg: Any) -> list[str]:
         if unknown:
             out.append(f"config.json {section}.stages: {', '.join(unknown)} is not a GPU stage "
                        f"({', '.join(sorted(GPU_STAGES))})")
+    fin = _section(cfg, "engines").get("ai_finish")
+    if fin is not None:
+        lacking = [k for k in FINISH_KEYS if not isinstance(fin, dict) or k not in fin]
+        if lacking:
+            out.append(f"config.json engines.ai_finish: needs {', '.join(lacking)}")
+        if isinstance(fin, dict) and fin.get("control", GUIDES[0]) not in GUIDES:
+            out.append(f"config.json engines.ai_finish.control: must be one of {', '.join(GUIDES)}")
     chars = _section(cfg, "cgi").get("characters", {})
     for name, c in (chars.items() if isinstance(chars, dict) else []):
         if not isinstance(c, dict):

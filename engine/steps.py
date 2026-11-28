@@ -5,13 +5,16 @@ SyncExecutor runs it now (mock or paid API); BatchExecutor queues it for one Kag
 """
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
+from .cgi import config as cgi_config
 from .ledger import BudgetExceeded, Ledger, not_a_failure
 from .project import Project, Shot, job_key, ref_shot
 
 OUT = {"ref": ("refs", ".png"), "keyframe": ("keyframes", ".png"), "variant": ("keyframes", ".png"),
-       "take": ("takes", ".mp4"), "upscale": ("4k", None)}
+       "take": ("takes", ".mp4"), "upscale": ("4k", None), "finish": ("finished", ".mp4")}
+FINISH = "ai_finish"            # the AI finish's engine in the film's config.json (engines.ai_finish)
 
 
 def open_ledger(p: Project) -> Ledger:
@@ -318,6 +321,84 @@ def video(p: Project, led: Ledger, ex, chapter: int, only: str | None = None) ->
             cut_off.append(s.id)
     return {"made": made, "waiting_for_verdict": waiting, "needs_human": human,
             "cut_off": cut_off, "deferred": deferred}
+
+
+
+# ---------------------------------------------------------------- the AI finish
+def guide_clip(p: Project, shot_id: str, control: str) -> Path | None:
+    """The shot's newest whole render with this guide (cgi render --guides): <shot>[-preview].<guide>.mp4."""
+    folder = cgi_config.work_dir(p, cgi_config.settings(p), shot_id)
+    found = [f for f in (folder / f"{shot_id}.{control}.mp4", folder / f"{shot_id}-preview.{control}.mp4")
+             if f.exists()]
+    return max(found, key=lambda f: f.stat().st_mtime) if found else None
+
+
+def finish_shots(p: Project, chapter: int, only: str | None = None) -> list[Shot]:
+    """The shots the AI finish takes: `only`, else engines.ai_finish.shots (a shot type, or a list of ids)."""
+    if only:
+        return [s for s in p.chapter(chapter) if s.id == only]
+    pick = p.engine(FINISH).get("shots", "Hero")
+    return [s for s in p.chapter(chapter) if (s.id in pick if isinstance(pick, list) else s.type == pick)]
+
+
+def _fingerprint(f: Path) -> str:
+    return hashlib.sha1(f.read_bytes()).hexdigest()[:12]
+
+
+def _finish_key(p: Project, s: Shot, idx: int, clip: Path) -> str:
+    """A finish is one shot, one try, one prompt and one guide clip: a new render or prompt is a new job."""
+    control = p.engine(FINISH).get("control", "depth")
+    return job_key(s.id, "finish", idx, f"{p.prompt(s)}|{control}|{_fingerprint(clip)}")
+
+
+def finish_state(p: Project, led: Ledger, s: Shot) -> str:
+    """Where a shot's AI finish stands, for its current guided render and prompt: no_render, in_batch,
+    done, needs_human or needed. A finish of an older render does not count."""
+    jobs = led.jobs(s.id, "finish")
+    if any(j["status"] == "pending" for j in jobs):
+        return "in_batch"
+    clip = guide_clip(p, s.id, p.engine(FINISH).get("control", "depth"))
+    if clip is None:
+        return "no_render"
+    current = [j for j in jobs if j["key"] == _finish_key(p, s, j["idx"], clip)]
+    if any(j["status"] == "done" and j["verdict"] != "fail" for j in current):
+        return "done"
+    tries = sum(1 for j in current if j["status"] == "failed" and not not_a_failure(j["note"]))
+    if tries >= p.config.get("kaggle", {}).get("max_failures_per_shot", 2):
+        return "needs_human"
+    return "needed"
+
+
+def finish(p: Project, led: Ledger, ex, chapter: int, only: str | None = None) -> dict:
+    """One AI finish per chosen shot that has a render with its guide (see finish_state)."""
+    cfg = p.engine(FINISH)
+    if not cfg:
+        raise ValueError(f"no engines.{FINISH} in the film's config.json: the AI finish is not set up")
+    control = cfg.get("control", "depth")
+    made, deferred, no_render, no_refs, human = 0, 0, [], [], []
+    for s in finish_shots(p, chapter, only):
+        st = finish_state(p, led, s)
+        if st == "no_render":
+            no_render.append(s.id)
+        elif st == "needs_human":
+            human.append(s.id)
+        if st != "needed":
+            continue
+        refs = p.refs_for(s, limit=int(cfg.get("max_refs", 2)))
+        if not refs:                                     # the look comes from the approved stills (gate 1)
+            no_refs.append(s.id)
+            continue
+        clip = guide_clip(p, s.id, control)
+        assert clip is not None                          # finish_state found it
+        idx = len(led.jobs(s.id, "finish"))
+        spec = _spec(p, s, "finish", idx, p.prompt(s), control=p.rel(clip), engine=FINISH, media="video",
+                     refs=[p.rel(r) for r in refs])
+        spec["key"] = _finish_key(p, s, idx, clip)
+        r = ex.submit(p, led, s, spec, 0.0)
+        made += r in ("made", "queued")
+        deferred += r == "deferred"
+    return {"made": made, "deferred": deferred, "no_render": no_render, "no_reference_stills": no_refs,
+            "needs_human": human}
 
 
 def upscale(p: Project, led: Ledger, ex, chapter: int, only: str | None = None) -> dict:

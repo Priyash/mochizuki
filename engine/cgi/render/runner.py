@@ -132,14 +132,16 @@ def mux_audio(clip: Path, wav: Path, offset_s: float = 0.0) -> Path:
 
 def render_shot(p, shot_id: str, preview: bool = False, frames: tuple[int, int] | None = None,
                 no_render: bool = False, codec: str | None = None, timeout: float = 6 * 3600,
-                size: tuple[int, int] | None = None) -> dict:
+                size: tuple[int, int] | None = None, guides: tuple[str, ...] = ()) -> dict:
+    """Build and render one shot; with `guides`, also its guide passes for the AI finish, each encoded
+    beside the shot's clip as <clip>.<guide>.mp4 (1-05.depth.mp4)."""
     cfg = settings(p)
     exe = find_blender(cfg)
     if not exe:
         raise RuntimeError("Blender was not found: install Blender 5.x from blender.org (or set config "
                            "cgi.blender / the BLENDER environment variable)")
     t0 = time.time()
-    plan = planner.build(p, shot_id, preview=preview, frames_only=frames, size=size)
+    plan = planner.build(p, shot_id, preview=preview, frames_only=frames, size=size, guides=guides)
     plan_file = planner.write(plan)
     who = {c["name"]: ("model" if c["model"] else ("lantern" if c.get("procedural") else "stand-in"))
            for c in plan["characters"]}
@@ -165,6 +167,13 @@ def render_shot(p, shot_id: str, preview: bool = False, frames: tuple[int, int] 
     track = (plan.get("audio") or {}).get("en") or next(iter((plan.get("audio") or {}).values()), None)
     if track and Path(track).exists() and clip.suffix == ".mp4":
         clip = mux_audio(clip, Path(track), (first - 1) / plan["fps"])
+    made = {}
+    for g in plan["guides"]:
+        check_frames(Path(plan["output"]["guides"][g]), first, last)
+        made[g] = str(encode(Path(plan["output"]["guides"][g]), first, plan["fps"], clip.with_suffix(f".{g}.mp4"),
+                             enc["crf"], "libx264"))
+    if made:
+        result["guides"] = made
     secs = time.time() - t0
     per = [e.get("seconds", 0) for e in events if e.get("event") == "render.frame"]
     result.update({"clip": str(clip), "frames": last - first + 1, "seconds": round(secs, 1),

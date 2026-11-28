@@ -183,6 +183,8 @@ class Project:
             if self.model(shot.model).get("generates_video"):
                 return up.get("gpu_seconds_per_output_second", 0) * self.generated_seconds(shot)
             return 10.0
+        if kind == "finish":                    # the AI finish repaints the whole shot
+            return self.engine("ai_finish").get("gpu_seconds_per_output_second", 0) * shot.seconds
         return 0.0
 
     # ---- scenes: coherence inside a scene and across matched cuts

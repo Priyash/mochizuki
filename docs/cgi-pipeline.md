@@ -256,7 +256,8 @@ can copy it into `style_bible/acting.json` and edit it.
 
 **Phase 3: finish.**
 * Compositing: bloom on the lanterns, film grain, glows.
-* An optional AI pass on hero shots, conditioned on our own outlines and colours.
+* An optional AI pass on hero shots, conditioned on our own depth or lines (built: `engines.ai_finish`,
+  the worker's `WanFinish`, guide passes from `render/blender/guides.py`; the first GPU test is in the README).
 * ProRes into Resolve.
 
 ## Risks, plainly

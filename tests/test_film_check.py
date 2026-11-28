@@ -73,6 +73,17 @@ def test_a_missing_column_stops_the_shot_check_with_one_clear_line():
                      "id, chapter, shot, seconds, type, model, takes"]
 
 
+
+def test_the_ai_finish_settings_are_checked_when_present():
+    cfg = _cfg()
+    del cfg["engines"]["ai_finish"]["fps"]
+    cfg["engines"]["ai_finish"]["control"] = "normals"
+    found = film_check.config_problems(cfg)
+    assert any("engines.ai_finish: needs fps" in x for x in found)
+    assert any("engines.ai_finish.control" in x for x in found)
+    del cfg["engines"]["ai_finish"]
+    assert not any("ai_finish" in x for x in film_check.config_problems(cfg))   # a film may go without
+
 def test_a_character_table_must_be_keyed_by_chapter():
     cfg = _cfg()
     cfg["cgi"]["characters"]["sayo"]["height_m"] = {"one": 1.45}

@@ -53,6 +53,8 @@ def add_arguments(a: argparse.ArgumentParser) -> None:
     s.add_argument("--no-render", action="store_true", help="build and save the .blend only")
     s.add_argument("--prores", action="store_true", help="encode ProRes 422 HQ (.mov) for the edit")
     s.add_argument("--size", default="", help="render at this size instead, e.g. 640x360")
+    s.add_argument("--guides", nargs="?", const="depth,lines", default="",
+                   help="also render the AI finish's guide passes (depth, lines; default both)")
     s.add_argument("--board", action="store_true", help="one frame from the middle of each shot, tiled into "
                                                         "a storyboard sheet (with --chapter)")
     s = sub.add_parser("voices", help="voice the dialogue of a shot or a chapter (text to speech, lip sync, tracks)")
@@ -224,7 +226,7 @@ def run(p, args) -> int:
             try:
                 results.append(rnd.render_shot(p, sid, preview=args.preview or args.board, frames=frames,
                                                no_render=args.no_render, codec="prores" if args.prores else None,
-                                               size=size))
+                                               size=size, guides=tuple(g for g in args.guides.split(",") if g)))
             except Exception as e:  # noqa: BLE001 - one bad shot must not stop a chapter
                 rnd.log("shot.failed", f"{sid}: {e}", level="error", shot=sid)
                 failed.append(sid)

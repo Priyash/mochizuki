@@ -50,7 +50,7 @@ def test_stages_and_generators_name_each_other():
 
 
 def test_the_scheduler_runs_the_chains_gpu_stages_in_its_order():
-    assert sched.STAGES == ("refs", "keyframes", "video", "upscale")
+    assert sched.STAGES == ("refs", "keyframes", "video", "ai_finish", "upscale")
     for s in stages.CHAIN:
         if s.built:
             assert s.progress, s.name

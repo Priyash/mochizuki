@@ -18,7 +18,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import bpy  # noqa: E402
-from blender import character, props, toon  # noqa: E402
+from blender import character, guides, props, toon  # noqa: E402
 from mathutils import Vector  # noqa: E402
 
 
@@ -267,6 +267,7 @@ def main(argv: list[str]) -> int:
     say("blend.saved", blend, path=blend)
     if not a.no_render:
         render(plan)
+        guides.render_guides(plan, say)              # the AI finish's depth and lines, when the plan asks
     say("done", plan["shot"])
     return 0
 

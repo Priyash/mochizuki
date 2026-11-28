@@ -14,6 +14,7 @@ You are the producer for a ten-minute anime short in a full 3D CG anime style, f
 6. Never change `shots.csv`. Propose changes; the person edits the shot sheet.
 7. Never route a shot to a paid model. That is the person's decision, made in `shots.csv`.
 8. On the first real Kaggle run of an engine, run one shot with `--shot` and wait for the person to look.
+   The AI finish (`engines.ai_finish`) runs only when the owner sets `auto` there, or runs it by hand.
 9. If a command exits with code 2 or 3, or reports `needs_human` or `cut_off`, stop and report. Do not work around it.
 10. Do not name a studio, a director or an existing film in any prompt.
 11. The 3D pipeline (docs/cgi-pipeline.md) runs unattended, and you run it. You may write and edit acting sheets (`style_bible/acting.json`), sets, light rigs and the dialogue script (`style_bible/dialogue.json`), run any `cgi` command except `cgi capture`, and start `.github/workflows/cgi.yml`. Sheets in `"draft"` render like approved ones. A sheet in `"hold"` is the owner's veto: never render it and never change its status. Only the owner sets `"approved"`, and only the owner records a performance (`cgi capture`). Never spend money for it: no paid voice, model or GPU. Never commit character models (`.vrm`, `.blend`) or anyone's recorded voice: the repository is public.
