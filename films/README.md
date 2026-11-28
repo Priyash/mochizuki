@@ -9,7 +9,8 @@ films/<name>/
                        cgi.props_state)
   shots.csv            the shot sheet: id, chapter, shot, seconds, type, model, takes, sound
   style_bible/         style.txt, ref_prompts.json, scenes.json, chapter_styles.json, acting.json, sets.json,
-                       lights.json, dialogue.json, and refs/ (the approved reference stills)
+                       lights.json, dialogue.json, arc.json (the intended emotional arc), culture.json (display
+                       rules), and refs/ (the approved reference stills)
   prompts/             optional: <shot id>.txt replaces a shot's prompt
   assets/characters/   optional: your character models (.vrm); never committed
   media/               made by the engine: stills, keyframes, takes, renders, cuts, and ledger.sqlite

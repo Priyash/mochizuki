@@ -26,6 +26,7 @@ from ..audio import dialogue
 from ..log import log as _log
 from . import continuity
 from . import plan as planner
+from .acting import arc
 from .acting import direction as dirn
 from .config import settings, work_dir
 from .render import runner as rnd
@@ -144,17 +145,20 @@ def review_sheet(p, chapter: int, final: bool) -> Path:
     """What Claude's reviewer run looks at: per shot, the acting sheet's intent, the frames to judge
     (start, middle, end), the dialogue placed in it, any line that overruns the shot, each spoken
     line's lip sync in every language (lipsync.sync_report: ok means within broadcast tolerance), and
-    the continuity findings at the cut into it (continuity.check)."""
+    the continuity findings at the cut into it (continuity.check), its feeling against the intended
+    emotional arc (arc.report), and the culture pack's rules that shaped its beats."""
     cfg = settings(p)
     items = []
     cuts: dict[str, list] = {}
+    feel: dict[str, dict] = {}
     try:
         for f in continuity.check(p, chapter):
             cuts.setdefault(f.shot, []).append({k: v for k, v in f.to_dict().items() if k != "shot"})
-    except Exception as e:  # noqa: BLE001 - the review sheet is still worth having without it
-        log("continuity.failed", str(e)[:300], level="error")
+        feel = {x["shot"]: {k: v for k, v in x.items() if k != "shot"} for x in arc.report(p, chapter)["shots"]}
+    except Exception as e:  # noqa: BLE001 - the review sheet is still worth having without them
+        log("review.checks_failed", str(e)[:300], level="error")
     for s in p.chapter(chapter):
-        d = dirn.direction_for(p, s.id)
+        d, played = dirn.directed(p, s.id)
         folder = work_dir(p, cfg, s.id)
         frames = sorted((f for fd in rnd.frame_folders(folder) for f in fd.glob("*.png")),
                         key=lambda f: f.stat().st_mtime)
@@ -169,6 +173,8 @@ def review_sheet(p, chapter: int, final: bool) -> Path:
                       for ln in man.get("lines", [])],
             "overruns": man.get("overruns", []),
             "continuity": cuts.get(s.id, []),
+            "arc": feel.get(s.id, {}),
+            "culture": sorted({c.rule for c in played}),
             "lipsync": [{"who": ln["who"], "language": lang, **rep}
                         for ln in man.get("lines", []) if ln.get("on_screen", True) and not ln.get("nonverbal")
                         for lang, rep in ln.get("sync", {}).items()],

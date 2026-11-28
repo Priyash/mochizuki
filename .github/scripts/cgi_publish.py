@@ -75,6 +75,7 @@ def summary(chapter: int) -> str:
     over = [o for s in review(chapter)["shots"] for o in s.get("overruns", [])]
     off_sync = [(s["shot"], x) for s in review(chapter)["shots"] for x in s.get("lipsync", []) if not x.get("ok")]
     cuts = [(s["shot"], x) for s in review(chapter)["shots"] for x in s.get("continuity", []) if not x.get("accepted")]
+    off_arc = [(s["shot"], s["arc"]["off"]) for s in review(chapter)["shots"] if s.get("arc", {}).get("off")]
     text = [f"## CG chapter {chapter}", "",
             f"Release: `cgi-ch{chapter}` (board, cut with dialogue, dubbed cuts, subtitles, review sheet and frames).",
             ""]
@@ -90,6 +91,12 @@ def summary(chapter: int) -> str:
         text += (
             ["**Continuity at the cuts** (fix the sheet, or accept with a reason in its `continuity`):", ""]
             + [f"- {sid} after {x['after'] or '-'}, {x['rule']}: {x['message']}" for sid, x in cuts]
+            + [""]
+        )
+    if off_arc:
+        text += (
+            ["**Shots off the emotional arc** (style_bible/arc.json):", ""]
+            + [f"- {sid}: {why}" for sid, why in off_arc]
             + [""]
         )
     if off_sync:

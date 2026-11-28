@@ -28,11 +28,14 @@ python -m engine cgi render 1-02 --preview          # the mallet falls into the 
 python -m engine cgi render --chapter 1 --board     # chapter 1 as a storyboard from the real sets
 python -m engine cgi auto --chapter 1               # unattended: voices, renders, board, cut
 python -m engine cgi continuity --chapter 1         # the 180 and 30 degree rules, eyelines, light, props at every cut
+python -m engine cgi arc --chapter 1                # each shot's feeling against the chapter's intended emotional arc
+python -m engine cgi culture --chapter 1            # what the culture pack's display rules change in the acting
 ```
 
 - **Characters from code:** anime bodies, faces and hair for each age, so no modelling is needed.
 - **Dialogue, automated:** every line voiced in English and Japanese (Kokoro-82M), fitted into its shot, lip-synced and subtitled. One audio track per language.
 - **Continuity supervisor:** every cut checked before rendering, from the shots' plans: the 180° and 30° rules, eyelines, light, props and positions. A deliberate break is accepted in the acting sheet, with its reason.
+- **Feeling, by design:** an intended emotional arc per chapter (Russell's circumplex, Reagan's six story shapes) that drafted shots follow and every shot is measured against, and a culture pack of display rules (who shows what, before whom) played into the acting.
 - **Dubbing:** each language has its own lips. Speaking shots are rendered once per language, each chapter gets a dubbed cut (`chapter_1.ja.mp4`), and every line's sync is checked against broadcast limits (ITU-R BT.1359).
 - **Unattended:** GitHub's runners (`.github/workflows/cgi.yml`) remake a chapter whenever its sheets or lines change.
 - The cut uses these renders when `cgi.use_in_cut` is on in `config.json`.

@@ -99,6 +99,8 @@ in minutes.
 | Dialogue: the script in English and Japanese, voices (Kokoro-82M, or any engine by command), lines fitted into their shot, lip sync, one track per language, subtitles | `engine/audio/` (`dialogue.py`, `voice.py`, `lipsync.py`, `subtitles.py`, `mix.py`) | Tested with the stub voice. Kokoro runs on the GitHub runners |
 | The chapter unattended: voices, sharded renders that skip unchanged shots, board, cut, review sheet | `auto.py`, `.github/workflows/cgi.yml` | Tested |
 | Continuity supervisor: the 180° and 30° rules, eyelines, light, props and positions at every cut, from the plans | `continuity.py` | Tested on staged geometry; run on all five chapters |
+| Emotional arc: each shot's feeling on the circumplex against the intended arc, drafted shots filled from it | `acting/arc.py`, `style_bible/arc.json` | Tested; chapter 1 drafted |
+| Culture pack: display rules by emotion, age and company, never over a hand-written field | `acting/culture.py`, `style_bible/culture.json` | Tested |
 
 Sets exist for scenes 1A (porch, Tsukimi night), 1B (snow) and 1C (the hearth). Any other scene renders on a plain
 floor until its set is written.
@@ -202,6 +204,34 @@ editing). A break that is meant is accepted in the shot's acting sheet, with the
 `"continuity": {"axis": "the shot sheet asks for her from behind, not turning"}`. The findings at each cut go in the
 review sheet; the command exits with 3 while any is not accepted.
 
+## The emotional arc
+
+`python -m engine cgi arc --chapter N` shows how the chapter feels, shot by shot, beside how it is meant to feel.
+
+* Every emotion has a place on Russell's circumplex of affect: valence (unpleasant to pleasant) and arousal (calm to
+  excited). A beat sits at its intensity times that place. A shot feels like its beats, each for as long as it lasts.
+* The intended arc is `style_bible/arc.json`. For each chapter it is either points in the chapter's time, or one of
+  the six shapes Reagan et al. found most stories follow (rags to riches, tragedy, man in a hole, Icarus, Cinderella,
+  Oedipus).
+* The report gives each shot's distance from the arc, how closely the chapter's valence follows it (a correlation),
+  and which of the six shapes the chapter actually reads as. Shots more than 0.4 off go in the review sheet.
+* With `"fill_drafts": true`, a drafted shot whose description gives no feeling plays the arc's feeling at that
+  moment. In chapter 1, Sayo shapes the mochi with tenderness and presents the dishes bittersweet. Hand-written
+  beats are never changed.
+
+## The culture pack
+
+`style_bible/culture.json` holds display rules: how a feeling is shown, by whom, and in front of whom. They follow
+Ekman and Friesen's display rules and Matsumoto's measurements across cultures. In Japan, sadness and anger are played
+down, the more so before others, and a child's open feeling is allowed. A rule's `when` names emotions, ages (from each
+character's look by chapter), who else is in the shot, and intensity. Its `then` sets the most or least restraint, a
+scale on intensity, where to look, and a held pause (*ma*).
+
+The rules are played into every acting sheet, but a hand-written beat keeps every field it gives. Restraint is played
+the anime way: the mouth and brows move less, and the eyes do more. `python -m engine cgi culture --chapter N` lists
+every change. In chapter 1 the hand-written sheets already hold Sayo's grief in, so the pack adds held poses after the
+strongest beats and gives the drafted 1-22 the elder's held-in grief, eyes down.
+
 ## Automated end to end
 
 `python -m engine cgi auto --chapter N` makes a chapter with no one at the keyboard:
@@ -216,7 +246,8 @@ review sheet; the command exits with 3 while any is not accepted.
    * three frames to judge;
    * the lines placed in it, and any line that runs over;
    * each spoken line's lip sync check, in every language;
-   * the continuity findings at the cut into it.
+   * the continuity findings at the cut into it;
+   * its feeling against the emotional arc, and the culture rules that shaped its beats.
 
 `.github/workflows/cgi.yml` runs the three stages on GitHub's free runners, splitting the renders across a matrix of
 machines. It runs when acting sheets, sets, lights, dialogue or the CG code change on `main`, or when started by hand.
@@ -272,6 +303,8 @@ can copy it into `style_bible/acting.json` and edit it.
 
 | Work | What we take from it |
 | --- | --- |
+| Russell, circumplex of affect (1980); Reagan et al., six emotional arcs of stories (EPJ Data Science, 2016) | The emotional arc: feelings as valence and arousal, and the shapes a chapter can follow. |
+| Ekman and Friesen, display rules (1969); Matsumoto, display rules across cultures (1990, 2008) | The culture pack: how much of a feeling shows, by whom and before whom. |
 | Arijon, *Grammar of the Film Language* (1976); Bordwell and Thompson, *Film Art* | The continuity supervisor's rules: the line of interest and neutral shots, eyeline matches, the 30° rule. |
 | de Jong and Wempe, syllable nuclei (Behavior Research Methods 41, 2009); ITU-R BT.1359 | Lip sync: syllables on the loudness peaks, and the sync limits viewers notice (45 ms sound first, 125 ms picture first). |
 | AniMatrix (Tencent HY, arXiv 2605.03652, 2026) | Anime is conventions, not physics, so make them explicit categorical directives. That is the acting sheet's fixed vocabulary of framing, timing, emotion and restraint. |

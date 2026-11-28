@@ -287,13 +287,24 @@ def scene_of(p, shot_id: str) -> str:
 
 
 def direction_for(p, shot_id: str) -> Direction:
-    """The acting sheet the shot renders with: the draft, with style_bible/acting.json on top."""
+    """The acting sheet the shot renders with: the draft (its feeling from the arc, where the description
+    gives none: arc.fill_draft), with style_bible/acting.json on top, and the culture's display rules
+    played into whatever the hand-written sheet leaves open (culture.apply)."""
+    return directed(p, shot_id)[0]
+
+
+def directed(p, shot_id: str) -> tuple[Direction, list]:
+    """The acting sheet the shot renders with (direction_for), and what the culture's rules changed in it."""
     s = next((x for x in p.shots if x.id == shot_id), None)
     if s is None:
         raise KeyError(f"no shot {shot_id} in shots.csv")
-    d = draft(p, s, scene_of(p, shot_id))
+    from . import arc, culture  # noqa: PLC0415 - both read the sheets too
     over = load_acting(p).get(shot_id)
-    return merge(d, over) if over else d
+    d = draft(p, s, scene_of(p, shot_id))
+    d = merge(d, over) if over else d
+    if not (over and "beats" in over):                     # the beats are still the draft's
+        d = arc.fill_draft(p, s.chapter, d)
+    return culture.apply(p, s.chapter, d, culture.explicit_fields(over))
 
 
 def problems(d: Direction) -> list[str]:
