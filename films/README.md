@@ -19,7 +19,9 @@ films/<name>/
 ## A new film
 
 1. Copy `films/mochizuki/` to `films/<name>/` and empty `media/` (keep `media/.gitkeep`).
-2. Write the new `shots.csv`, the style bible and the cast (`config.json` → `cgi.characters`).
+2. Write the new `shots.csv`, the style bible and the cast (`config.json` → `cgi.characters`). The emotional arc
+   (`arc.json`) and the culture pack (`culture.json`) are optional; a film set in another culture writes its own
+   display rules, and a film in other languages lists them in `dialogue.json`, each with its own lips and dubbed cut.
 3. Run it with `python -m engine --film films/<name> plan`. With more than one film here, every command needs
    `--film` or the `FILM` environment variable. On GitHub, set the repository variable `FILM`.
 

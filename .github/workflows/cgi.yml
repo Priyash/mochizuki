@@ -1,10 +1,13 @@
 # The 3D CG pipeline, unattended (docs/cgi-pipeline.md):
-#   voices  every line voiced with Kokoro-82M on a CPU, fitted into its shot and lip-synced
+#   voices  every line voiced with Kokoro-82M on a CPU, fitted into its shot and lip-synced in every language
 #   render  the chapter's shots built and rendered with Blender (the bpy module; EEVEE on Mesa's software
-#           OpenGL), split across eight runners; a shot whose plan has not changed is not rendered again
-#   finish  the storyboard, the cut with its dialogue tracks and subtitles, and the review sheet,
-#           uploaded to the release cgi-chN for Claude's review and the owner
-# Runs when acting sheets, sets, lights, dialogue or the CG code change on main, or by hand.
+#           OpenGL), and each speaking shot again per dub language, split across eight runners; a shot
+#           whose plan has not changed is not rendered again
+#   finish  the storyboard, the cut with its dialogue tracks and subtitles, a dubbed cut per language, and
+#           the review sheet (lip sync, continuity at every cut, the emotional arc), uploaded to the
+#           release cgi-chN for Claude's review and the owner
+# Runs when acting sheets, scenes, sets, lights, dialogue, the arc, the culture pack or the CG code change on
+# main, or by hand.
 name: cgi
 on:
   workflow_dispatch:

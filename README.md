@@ -76,7 +76,7 @@ Planned stages (music) are listed and marked not built.
 
 | Stage | Where | Notes |
 | --- | --- | --- |
-| 3D shots: renders, dialogue, the chapter cut | GitHub runners or your Mac | Native 4K, no GPU queue |
+| 3D shots: renders, dialogue and dubs, the chapter cuts | GitHub runners or your Mac | Native 4K, no GPU queue |
 | Reference stills | Google Colab, A100 or L4, pay-as-you-go ([docs/colab.md](docs/colab.md)) | Qwen-Image needs bf16; Kaggle's T4s give blank images |
 | Keyframes | Off since 28 Nov | The 3D pipeline draws the storyboard from the real sets. Add `keyframes` back to `colab.stages` to use them |
 | Stills and keyframes, free but slower | Your Mac ([docs/mac-worker.md](docs/mac-worker.md)) | Off until you set `mac.enabled` |
@@ -143,6 +143,7 @@ Nothing runs on your machine.
 
 - **The producer** (`produce` workflow, every two hours or when kicked) applies Claude's verdicts, collects or starts a batch, uploads media to releases, and posts what is needed to the **Mochizuki production** issue.
 - **The reviewer** is a Claude scheduled task following the "Reviewer run" in `AGENTS.md`.
+- **The 3D renderer** (`cgi` workflow) remakes a chapter whenever its sheets, lines, arc or culture pack change. It uploads the board, a cut per language, the subtitles and a review sheet to the release `cgi-chN`. The review sheet holds each line's lip sync check, the continuity findings at every cut and each shot's feeling against the arc. Claude reviews it by the "CG review" in `AGENTS.md`.
 - **You** approve the gates by commenting on the issue. Only the repository owner's comments count:
 
 | Comment | What it does |
@@ -214,6 +215,8 @@ says; that is far heavier, and best run on a Colab A100.
 | GitHub producer loop and the owner's commands | Tested with stand-ins, and running live |
 | Colab round trip | Run live: 24 reference stills on an A100 (27 Nov) |
 | 3D pipeline: sheets, plans, dialogue, renders | Tested, and rendered in Blender 5.3 |
+| Lip sync and dubbing | Tested on synthetic speech with known timing, and on real English and Japanese speech (macOS voices): every line inside the broadcast limits. **Not yet heard with Kokoro**, which runs on the GitHub runners |
+| Continuity supervisor, emotional arc, culture pack | Tested, and run on all five chapters |
 | **Wan 14B, Wan 5B and the upscalers on a real T4** | **Not run yet.** The first Kaggle run is the test |
 | GPU-time estimates in `config.json` | Estimates, until real runs replace them |
 | AI finish on hero shots | Built and tested with stand-ins; **not run on a GPU yet** (the 1-05 test is next) |
@@ -224,7 +227,7 @@ says; that is far heavier, and best run on a Colab A100.
 ```bash
 ruff check .          # lint
 mypy                  # types (the Blender scripts, which run inside Blender, are left out)
-python -m pytest -q   # 188 tests in about 2 minutes, no GPU or network; they need ffmpeg
+python -m pytest -q   # 254 tests in about 3 minutes, no GPU or network; they need ffmpeg
 ```
 
 ---
@@ -263,14 +266,14 @@ engine/stages/           the chain: every stage, what it consumes and produces, 
 engine/generators.py     every AI model and tool: what it makes, where it is configured, what it needs
 engine/scheduler/        the producer loop, and one batch's life: build, submit, collect
 engine/providers/        where GPU work runs, behind one interface: kaggle/, colab/ (cloud), mac.py (offline)
-engine/cgi/              the 3D CG pipeline: acting/, staging/, plan, render/
-engine/audio/            sound: voice, dialogue, lip sync, subtitles, mix
+engine/cgi/              the 3D CG pipeline: acting/ (sheets, arc, culture), staging/, plan, continuity, render/
+engine/audio/            sound: voice, dialogue, lip sync per language, subtitles, mix
 engine/mac/              the Mac (offline): generators/, runtime/, worker/, training/
 worker/worker.py         runs on Kaggle and Colab: stills, keyframes, Wan takes, 4K upscale
 films/mochizuki/         this film
   shots.csv              the shot sheet: 138 shots, 600 s
   config.json            models, engines, backends, caps, the cast
-  style_bible/           the look: style, reference stills, acting sheets, sets, lights, dialogue
+  style_bible/           the look: style, reference stills, acting sheets, sets, lights, dialogue, arc, culture
   prompts/               optional per-shot prompt files
   assets/characters/     your own character models (never committed)
   media/                 everything the engine makes, and the ledger (never committed)
