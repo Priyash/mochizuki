@@ -1,0 +1,126 @@
+# The AI finish's test on one shot (README "The AI finish"): rendered with its guide on this runner,
+# repainted on Kaggle, collected, and reported with how long it took and what that means for the film.
+# Started by hand: the owner looks at the result before the finish runs on its own (AGENTS.md rule 8).
+# Needs the reference stills approved first (/approve refs): the finish takes its look from them.
+name: finish-test
+on:
+  workflow_dispatch:
+    inputs:
+      shot:
+        description: "The shot to finish"
+        default: "1-05"
+      size:
+        description: "Render size, WxH (the finish's own size and model are in engines.ai_finish)"
+        default: "832x480"
+      wait_minutes:
+        description: "How long to wait for Kaggle before stopping the run there"
+        default: "180"
+concurrency:
+  group: state-branch            # with the producer: only one of them changes the ledger at a time
+  cancel-in-progress: false
+env:
+  FILM: ${{ vars.FILM }}         # the film (blank: the only one in films/)
+  SHOT: ${{ inputs.shot }}
+  SIZE: ${{ inputs.size }}
+  PYTHONUNBUFFERED: "1"
+permissions:
+  contents: write
+  actions: read
+jobs:
+  finish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: state
+          path: state
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"     # bpy 5.3's Python
+      - name: Wait for an owner command that came first (both change the state branch)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/scripts/wait_for_runs.py gates.yml --minutes 20
+      - name: Blender (bpy) on software OpenGL, ffmpeg, Pillow, the Kaggle tool
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ffmpeg libegl1 libegl-mesa0 libgl1 libgl1-mesa-dri libglx-mesa0 libgbm1 \
+            libxkbcommon0 libsm6 libxi6 libxxf86vm1 libxfixes3 libxrender1
+          pip install -q -r engine/cgi/render/blender/requirements.txt pillow "kaggle>=1.7" six
+      - name: Which film, chapter and guide
+        run: |
+          echo "FILM=$(python -m engine where)" >> "$GITHUB_ENV"
+          echo "LEDGER=$(python -m engine where ledger)" >> "$GITHUB_ENV"
+          echo "CGI=$(python -m engine where cgi)" >> "$GITHUB_ENV"
+          python - >> "$GITHUB_ENV" <<'EOF'
+          import os
+          from engine.project import Project, find_film
+          p = Project(find_film())
+          print(f"CHAPTER={p.shot(os.environ['SHOT']).chapter}")
+          print(f"CONTROL={p.engine('ai_finish').get('control', 'depth')}")
+          EOF
+      - name: Restore the ledger
+        run: if [ -f "state/$(basename "$LEDGER")" ]; then cp "state/$(basename "$LEDGER")" "$LEDGER"; fi
+      - name: Render the shot with its guide
+        run: |
+          export BLENDER="$(which python)"
+          python -m engine cgi render "$SHOT" --preview --size "$SIZE" --guides "$CONTROL"   # preview samples: enough for a guide
+      - name: The render and its guide, to look at
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-${{ inputs.shot }}
+          path: ${{ env.CGI }}/${{ inputs.shot }}/*.mp4
+          retention-days: 30
+      - name: Pack the shot and start it on Kaggle
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          python -m engine batch --chapter "$CHAPTER" --stage ai_finish --shot "$SHOT" --kaggle real | tee batch.json
+          python - <<'EOF'
+          import json, sys
+          t = open("batch.json").read()
+          b = json.loads(t[t.rfind("\n{") + 1:] if "\n{" in t else t)     # the command's own JSON, last
+          if not b.get("batch"):
+              print(f"::error::nothing to finish for this shot: {json.dumps(b.get('summary'))}")
+              sys.exit(1)
+          EOF
+          python -m engine submit --kaggle real
+      - name: Wait for Kaggle and collect
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          WAIT_MINUTES: ${{ inputs.wait_minutes }}
+        run: |
+          for i in $(seq 1 "$WAIT_MINUTES"); do
+            python -m engine collect --kaggle real > collect.json || { cat collect.json; exit 1; }
+            st=$(python -c "import json; t=open('collect.json').read(); print(json.loads(t[t.rfind(chr(10)+'{')+1:] if chr(10)+'{' in t else t).get('status', ''))")
+            echo "$(date -u +%H:%M) Kaggle: $st"
+            case "$st" in
+              queued|running|unknown|collecting) sleep 60 ;;
+              *) cat collect.json; exit 0 ;;
+            esac
+          done
+          # Still running after the wait: stop it there, so it cannot spend the week's quota unwatched.
+          kaggle kernels delete "$(python -m engine where kaggle-worker)" -y || true
+          echo "::error::Kaggle did not finish in $WAIT_MINUTES min; the run there was stopped"
+          exit 1
+      - name: The finished shot, and how long it took
+        if: always()
+        run: python .github/scripts/finish_report.py "$SHOT" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: finished-${{ inputs.shot }}
+          path: |
+            ${{ env.FILM }}/media/finished/${{ inputs.shot }}/
+            ${{ env.FILM }}/media/batches/*/download/**/results.json
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Save state (the ledger records the finish and its GPU time)
+        if: always()
+        run: .github/scripts/save_state.sh "AI finish test of ${{ inputs.shot }} (run ${{ github.run_id }})"

@@ -64,3 +64,32 @@ def test_the_production_issue_is_named_after_the_film(tmp_path):
     log = (tmp_path / "log").read_text()
     assert "--title Moon Rabbit production" in log and "/approve refs" in log
     assert (state / "issue.txt").read_text() == "7" and "comment 7 --body refs ready" in log
+
+
+def _report(tmp_path, results: dict | None) -> str:
+    from conftest import copy_film
+    (tmp_path / "film").mkdir(parents=True)
+    film = copy_film(tmp_path / "film")
+    if results is not None:
+        out = film / "media" / "batches" / "b1" / "download" / "out"
+        out.mkdir(parents=True)
+        (out / "results.json").write_text(json.dumps(results))
+    r = subprocess.run([sys.executable, str(SCRIPTS / "finish_report.py"), "1-05"],
+                       capture_output=True, text=True, env={**os.environ, "FILM": str(film)})
+    assert r.returncode == 0, r.stderr
+    return r.stdout
+
+
+def test_the_finish_report_scales_one_shot_to_the_film(tmp_path):
+    text = _report(tmp_path, {"elapsed": 1500, "groups": {"ai_finish": {"load_seconds": 140}},
+                              "jobs": {"1-05.finish0.abc": {"ok": True, "gpu_seconds": 600, "width": 832,
+                                                            "height": 480, "fps": 16}}})
+    assert "**600 s of GPU**: 200 s for each second of film" in text                # 1-05 is 3 s long
+    assert "56 shots (Hero), 256 s of film" in text and "about 14.2 GPU hours" in text
+    assert "Loading the model | 140 s" in text
+
+
+def test_the_finish_report_says_when_it_failed_or_never_came_back(tmp_path):
+    failed = _report(tmp_path, {"jobs": {"1-05.finish0.abc": {"ok": False, "error": "CUDA out of memory"}}})
+    assert "The finish failed" in failed and "CUDA out of memory" in failed
+    assert "No results came back" in _report(tmp_path / "again", None)

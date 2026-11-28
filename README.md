@@ -176,7 +176,10 @@ depth (or its lines) so the camera, staging, timing and lip sync stay exactly as
 configured in the film's `config.json` under `engines.ai_finish`. It never runs on its own until you set
 `auto` there, and finished shots go into the cut only when you set `use_in_cut`.
 
-The first test, one shot (1-05, the laugh):
+The first test, one shot (1-05, the laugh). On GitHub: approve the reference stills (`/approve refs`), then
+**Actions → finish-test → Run workflow**. It renders the shot with its guide on a runner, repaints it on
+Kaggle, and reports how long it took and what that means for the film (the run's summary), with the render,
+its guide and the finished shot as downloads. Or by hand, on your Mac:
 
 ```bash
 # 0. approve the reference stills first (comment /approve refs): the finish takes its look from them
@@ -215,7 +218,7 @@ says; that is far heavier, and best run on a Colab A100.
 ```bash
 ruff check .          # lint
 mypy                  # types (the Blender scripts, which run inside Blender, are left out)
-python -m pytest -q   # 186 tests in about 2 minutes, no GPU or network; they need ffmpeg
+python -m pytest -q   # 188 tests in about 2 minutes, no GPU or network; they need ffmpeg
 ```
 
 ---

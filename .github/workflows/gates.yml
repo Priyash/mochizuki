@@ -21,7 +21,7 @@ jobs:
       startsWith(github.event.comment.body, '/') &&
       github.event.comment.user.login == github.repository_owner
     runs-on: ubuntu-latest
-    timeout-minutes: 75            # it may wait for a producer run that started first
+    timeout-minutes: 420           # it may wait for a producer run or a finish test that started first
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,7 +36,9 @@ jobs:
       - name: Wait for a producer run that started first (both change the state branch)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python .github/scripts/wait_for_runs.py produce.yml --minutes 65
+        run: |
+          python .github/scripts/wait_for_runs.py produce.yml --minutes 65
+          python .github/scripts/wait_for_runs.py finish-test.yml --minutes 330    # it holds the ledger for a while
       - name: Which film
         run: |
           echo "FILM=$(python -m engine where)" >> "$GITHUB_ENV"
