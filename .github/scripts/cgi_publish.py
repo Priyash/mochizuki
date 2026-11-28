@@ -58,15 +58,21 @@ def summary(chapter: int) -> str:
         clip = info.get("clip") and Path(info["clip"]).name
         if not clip:
             missing.append(s.id)
-        rows.append(f"| {s.id} | {s.seconds} s | {clip or '**not rendered**'} | {info.get('seconds_per_frame') or ''} | {lines or ''} |")
+        rows.append(
+            f"| {s.id} | {s.seconds} s | {clip or '**not rendered**'} "
+            f"| {info.get('seconds_per_frame') or ''} | {lines or ''} |"
+        )
     over = [o for s in review(chapter)["shots"] for o in s.get("overruns", [])]
     text = [f"## CG chapter {chapter}", "",
             f"Release: `cgi-ch{chapter}` (board, cut with dialogue, subtitles, review sheet and frames).", ""]
     if missing:
         text += [f"**{len(missing)} shots have no render:** {', '.join(missing)}. See the render jobs' logs.", ""]
     if over:
-        text += ["**Lines that run past their shot:**", ""] + [f"- {o['who']} ({o['language']}): {o['text']}… by {o['by_seconds']} s"
-                                                             for o in over] + [""]
+        text += (
+            ["**Lines that run past their shot:**", ""]
+            + [f"- {o['who']} ({o['language']}): {o['text']}… by {o['by_seconds']} s" for o in over]
+            + [""]
+        )
     text += ["| Shot | Length | Clip | s/frame | Lines |", "| --- | --- | --- | --- | --- |", *rows]
     return "\n".join(text) + "\n"
 

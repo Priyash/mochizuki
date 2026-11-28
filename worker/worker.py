@@ -213,8 +213,11 @@ class QwenKeyframes:
     def __init__(self, cfg: dict, dtype_name: str):
         import diffusers  # noqa: PLC0415
         import torch  # noqa: PLC0415
-        from diffusers import (GGUFQuantizationConfig, PipelineQuantizationConfig,  # noqa: PLC0415
-                               QwenImageTransformer2DModel)
+        from diffusers import (  # noqa: PLC0415
+            GGUFQuantizationConfig,
+            PipelineQuantizationConfig,
+            QwenImageTransformer2DModel,
+        )
         self.cfg, self.torch = cfg, torch
         dtype = pick_dtype(dtype_name)
         g = cfg.get("transformer_gguf") or {}
@@ -295,8 +298,11 @@ class QwenStills:
             t1 = time.time()
             with torch.inference_mode():
                 e, m = tp.encode_prompt(prompt=text, device=enc)
-            self.embeds[text] = (e.cpu(), None if m is None else m.cpu())   # m is None when every token counts
-            log(f"prompt {len(self.embeds)}/{len(set(prompts + [negative]))} encoded on the {enc.type} in {time.time() - t1:.0f} s")
+            self.embeds[text] = (e.cpu(), None if m is None else m.cpu())  # m is None when every token counts
+            log(
+                f"prompt {len(self.embeds)}/{len(set(prompts + [negative]))} encoded on the {enc.type} "
+                f"in {time.time() - t1:.0f} s"
+            )
         log(f"encoded {len(self.embeds)} prompts on the {enc.type} in {time.time() - t0:.0f} s")
         del tp
         gc.collect()
@@ -400,8 +406,12 @@ class WanVideo:
 
     def __init__(self, cfg: dict, dtype_name: str, prompts: list[str], negative: str):
         import torch  # noqa: PLC0415
-        from diffusers import (AutoencoderKLWan, GGUFQuantizationConfig,  # noqa: PLC0415
-                               WanImageToVideoPipeline, WanTransformer3DModel)
+        from diffusers import (  # noqa: PLC0415
+            AutoencoderKLWan,
+            GGUFQuantizationConfig,
+            WanImageToVideoPipeline,
+            WanTransformer3DModel,
+        )
         from transformers import AutoTokenizer, UMT5EncoderModel  # noqa: PLC0415
         self.cfg, self.torch = cfg, torch
         dtype = pick_dtype(dtype_name)

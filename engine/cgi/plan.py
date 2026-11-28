@@ -14,15 +14,14 @@ import math
 from pathlib import Path
 from typing import Any
 
+from ..audio import dialogue
 from ..generators import seed_for
 from ..project import SETS_FILE
-
-from ..audio import dialogue
 from .acting import direction as dirn
 from .acting import retarget, timing
 from .acting.capture import Track, resample, smooth
-from .staging import figure, layout, palette
 from .config import by_chapter, settings, work_dir
+from .staging import figure, layout, palette
 
 POSTURE_HEAD = {"standing": 0.9, "walking": 0.9, "kneeling": 0.54, "seiza": 0.52}   # eye height / body height
 POSTURE_HANDS = {"standing": 0.55, "walking": 0.55, "kneeling": 0.36, "seiza": 0.34}

@@ -214,7 +214,9 @@ def _beats(text: str, seconds: float, chars: list[str]) -> list[Beat]:
 def _posture(text: str, chars: list[str], chapter: int) -> dict:
     out = {}
     for c in chars:
-        if re.search(r"\bkneel", text, re.I) or (chapter == 1 and c == "tsumugi" and re.search(r"rice|mortar|hands", text, re.I)):
+        if re.search(r"\bkneel", text, re.I) or (
+            chapter == 1 and c == "tsumugi" and re.search(r"rice|mortar|hands", text, re.I)
+        ):
             out[c] = "kneeling"
         elif re.search(r"\bwalks?\b|\bchases?\b|\bcarr", text, re.I):
             out[c] = "walking"

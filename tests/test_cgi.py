@@ -15,12 +15,12 @@ from pathlib import Path
 
 import pytest
 
+from engine.cgi import plan as planner
 from engine.cgi.acting import capture as cap
 from engine.cgi.acting import direction as dirn
 from engine.cgi.acting import retarget, timing
-from engine.cgi.staging import layout
-from engine.cgi import plan as planner
 from engine.cgi.render import runner as rnd
+from engine.cgi.staging import layout
 from engine.project import Project, Shot
 
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
@@ -53,7 +53,9 @@ def test_draft_reads_framing_angle_and_feeling(proj):
 
 
 def test_draft_dialogue_mallet_and_blackout(proj):
-    d = dirn.draft(proj, shot("Two-shot: Sayo hands her the bowl", sound="Sayo: It broke the year your mother was born."))
+    d = dirn.draft(
+        proj, shot("Two-shot: Sayo hands her the bowl", sound="Sayo: It broke the year your mother was born.")
+    )
     assert d.dialogue.startswith("Sayo:") and d.camera.angle == "three-quarter"
     m = dirn.draft(proj, shot("CU mallet falls into the stone mortar, lamplight", kind="Simple"))
     assert m.impacts and any(a["do"] == "strike" for a in m.actions) and m.characters == [] and m.beats == []

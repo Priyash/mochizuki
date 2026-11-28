@@ -46,7 +46,9 @@ def _keyframes_wanted(p, led, chapter) -> bool:
 
 
 def _video_wanted(p, led, chapter) -> bool:
-    return led.approved(chapter, BOARD_GATE) and any(s in ("needs_take", "needs_variants") for s in _states(p, led, chapter))
+    return led.approved(chapter, BOARD_GATE) and any(
+        s in ("needs_take", "needs_variants") for s in _states(p, led, chapter)
+    )
 
 
 def _upscale_wanted(p, led, chapter) -> bool:

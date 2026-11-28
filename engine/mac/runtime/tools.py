@@ -5,13 +5,13 @@ import os
 import re
 import subprocess
 import sys
-from typing import Any
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
-from .shared import log
 from .health import dir_gb, health, health_warning
+from .shared import log
 
 _STEP = re.compile(r"(\d+)/(\d+) \[")         # tqdm: "12/30 [01:02<..."
 _BAR = re.compile(r"\d+%\|")

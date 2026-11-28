@@ -81,7 +81,12 @@ def stop_gpu_vms(cli, keep: set | None = None, why: str = "left behind") -> int 
         if a["endpoint"] in (keep or set()) or acc in ("", "NONE", "CPU"):
             continue
         ok = cli.unassign(a["endpoint"])
-        _log(f"{'stopped' if ok else 'could not stop'} a {acc} VM {why}", event="vm.stopped" if ok else "vm.stop_failed", level="info" if ok else "error", gpu=acc)
+        _log(
+            f"{'stopped' if ok else 'could not stop'} a {acc} VM {why}",
+            event="vm.stopped" if ok else "vm.stop_failed",
+            level="info" if ok else "error",
+            gpu=acc,
+        )
         n += ok
     return n
 
@@ -150,7 +155,12 @@ def run_remote(cli: ColabCLI, cfg: dict, session: str, inputs_tgz: Path, batch_i
         return {"ok": True, "gpu": gpu, "late_vms": late, "seconds": time.time() - t0}
     finally:
         code, out = cli.run(["stop", "-s", session], timeout=300)
-        _log(f"session {session} stopped" if code == 0 else f"session {session} stop said: {out.strip()[-200:]}", event="vm.stopped" if code == 0 else "vm.stop_failed", level="info" if code == 0 else "error", session=session)
+        _log(
+            f"session {session} stopped" if code == 0 else f"session {session} stop said: {out.strip()[-200:]}",
+            event="vm.stopped" if code == 0 else "vm.stop_failed",
+            level="info" if code == 0 else "error",
+            session=session,
+        )
         # Anything still up now bills for nothing: a GPU granted late while this one ran, or this
         # one if `stop` failed.
         stop_gpu_vms(cli, keep=before, why="still running after the batch")
@@ -185,7 +195,13 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
         return None
     bal = cli.balance()
     if bal is not None and bal < float(cfg["min_balance_units"]):
-        _log(f"only {bal:.1f} compute units left (minimum {cfg['min_balance_units']}); not starting a VM", event="balance.low", level="warn", balance=bal, minimum=cfg["min_balance_units"])
+        _log(
+            f"only {bal:.1f} compute units left (minimum {cfg['min_balance_units']}); not starting a VM",
+            event="balance.low",
+            level="warn",
+            balance=bal,
+            minimum=cfg["min_balance_units"],
+        )
         return None
     asset = waiting[0]
     batch_id = asset["name"][len(NAME) + 1:-7]
@@ -196,7 +212,12 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
     claim = d / n["claim"]
     claim.write_text(json.dumps({"host": socket.gethostname(), "at": time.time(), "balance": bal}))
     rel.upload(claim)
-    _log(f"claimed {batch_id} (balance {bal if bal is not None else '?'} units)", event="batch.claimed", batch=batch_id, balance=bal)
+    _log(
+        f"claimed {batch_id} (balance {bal if bal is not None else '?'} units)",
+        event="batch.claimed",
+        batch=batch_id,
+        balance=bal,
+    )
     rel.download(asset, d / n["inputs"])
     with tarfile.open(d / n["inputs"]) as t:          # the worker travels with the inputs
         try:
@@ -210,11 +231,24 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
         setup = float(cfg["setup_minutes"]) * 60
         afford = (bal - 1.0) / rate * 3600 - setup - 600
         if afford < 900:
-            _log(f"{bal:.1f} units buy under 15 min of work at the {rate} units/h rate; not starting a VM", event="balance.low", level="warn", balance=bal, rate=rate)
+            _log(
+                f"{bal:.1f} units buy under 15 min of work at the {rate} units/h rate; not starting a VM",
+                event="balance.low",
+                level="warn",
+                balance=bal,
+                rate=rate,
+            )
             rel.delete(n["claim"])
             return None
         if afford < float(manifest.get("deadline_seconds", 1e9)):
-            _log(f"balance {bal:.1f} units: this batch gets {afford / 60:.0f} min; the rest waits for the next one", event="batch.shrunk", level="warn", batch=batch_id, minutes=round(afford / 60), balance=bal)
+            _log(
+                f"balance {bal:.1f} units: this batch gets {afford / 60:.0f} min; the rest waits for the next one",
+                event="batch.shrunk",
+                level="warn",
+                batch=batch_id,
+                minutes=round(afford / 60),
+                balance=bal,
+            )
             manifest["deadline_seconds"] = afford
             (d / "in" / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
             cfg = {**cfg, "batch_hours": afford / 3600}
@@ -269,7 +303,14 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
     after = cli.balance()
     usage = {"vm_seconds": round(r.get("seconds", 0) + 120), "gpu": r.get("gpu"),   # + opening the VM
              "units_used": round(bal - after, 2) if bal is not None and after is not None else None}
-    _log(f"{batch_id}: {usage['units_used']} units used, balance now {after}", event="units.used", batch=batch_id, units=usage["units_used"], balance=after, gpu=usage["gpu"])
+    _log(
+        f"{batch_id}: {usage['units_used']} units used, balance now {after}",
+        event="units.used",
+        batch=batch_id,
+        units=usage["units_used"],
+        balance=after,
+        gpu=usage["gpu"],
+    )
     res_tgz = d / n["results"]
     (d / "out").mkdir(exist_ok=True)
     rj, base = _read_results(out_tgz, d / "res") if (r["ok"] or r.get("partial")) else (None, None)
@@ -288,8 +329,15 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
     with tarfile.open(res_tgz, "w:gz") as t:
         t.add(base, arcname="out")
     _retry(lambda: rel.upload(res_tgz), what=f"upload of {res_tgz.name}")
-    _log(f"{batch_id}: results uploaded ({'ok' if r['ok'] else 'failed'}, GPU {r.get('gpu')}, "
-         f"{r.get('seconds', 0) / 60:.0f} min on the VM)", event="batch.done", batch=batch_id, ok=r["ok"], gpu=r.get("gpu"), vm_min=round(r.get("seconds", 0) / 60))
+    _log(
+        f"{batch_id}: results uploaded ({'ok' if r['ok'] else 'failed'}, GPU {r.get('gpu')}, "
+        f"{r.get('seconds', 0) / 60:.0f} min on the VM)",
+        event="batch.done",
+        batch=batch_id,
+        ok=r["ok"],
+        gpu=r.get("gpu"),
+        vm_min=round(r.get("seconds", 0) / 60),
+    )
     return batch_id
 
 

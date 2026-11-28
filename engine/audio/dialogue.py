@@ -17,9 +17,8 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from ..project import DIALOGUE_FILE
-
 from ..cgi.config import by_chapter, settings, work_dir
+from ..project import DIALOGUE_FILE
 from . import lipsync, voice
 
 GAP = 0.25            # seconds between two lines in the same shot

@@ -13,18 +13,26 @@ import time
 from pathlib import Path
 
 import pytest
+from conftest import FILM
 
 from engine import assemble as asm
-from engine import scheduler as sched
-from engine.errors import BatchError, BudgetUsedUp
-from engine.providers.kaggle import KaggleError, KaggleProvider, LocalKaggle, week_start
-from engine.scheduler import batches, loop
 from engine import plan as planner
 from engine import providers, steps
-from engine.project import (CONFIG_FILE, REF_PROMPTS_FILE, REFS_DIR, SCENES_FILE, SHOTS_FILE, STYLE_BIBLE_DIR, Project,
-                            wan_frames, wan_segments)
-
-from conftest import FILM
+from engine import scheduler as sched
+from engine.errors import BatchError, BudgetUsedUp
+from engine.project import (
+    CONFIG_FILE,
+    REF_PROMPTS_FILE,
+    REFS_DIR,
+    SCENES_FILE,
+    SHOTS_FILE,
+    STYLE_BIBLE_DIR,
+    Project,
+    wan_frames,
+    wan_segments,
+)
+from engine.providers.kaggle import KaggleError, KaggleProvider, LocalKaggle, week_start
+from engine.scheduler import batches, loop
 
 REPO = Path(__file__).resolve().parents[1]
 HAS_FFMPEG = shutil.which("ffmpeg") is not None
@@ -140,7 +148,7 @@ def test_4k_geometry_covers_the_frame_exactly(src):
     w = load_worker()
     sw, sh, left, top = w.cover_crop_box(*src, 3840, 2160)
     assert sw >= 3840 and sh >= 2160
-    assert 0 <= left and left + 3840 <= sw and 0 <= top and top + 2160 <= sh
+    assert left >= 0 and left + 3840 <= sw and top >= 0 and top + 2160 <= sh
     assert abs(sw / sh - src[0] / src[1]) < 0.01                # no stretching
 
 

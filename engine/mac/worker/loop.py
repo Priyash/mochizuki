@@ -15,8 +15,8 @@ import time
 from pathlib import Path
 
 from ...providers.release import Release, names
-from ..runtime.shared import log
 from ..config import NAME
+from ..runtime.shared import log
 
 
 def _suffix(engine, job: dict) -> str:

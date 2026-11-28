@@ -8,14 +8,15 @@ import re
 import shutil
 import tarfile
 import time
-from typing import Any
 from pathlib import Path
+from typing import Any
 
 from ..base import WORKER
 from .cli import ColabCLI, _redact
 from .config import NAME, SESSION_PREFIX
 from .config import log as _log
 from .runner import run_remote, stop_gpu_vms
+
 
 def test_still(p, cli: ColabCLI, cfg: dict, packages: list[str], out_dir: Path, ref: str = "style") -> dict:
     """One reference still on Colab, outside the ledger and the release: proves sign-in, GPU, engine."""
@@ -112,7 +113,13 @@ def smoke(cli: ColabCLI, work: Path) -> dict:
 
     def step(name, ok, detail=""):
         st[name] = {"ok": bool(ok), "detail": _redact(str(detail))[-400:]}
-        _log(f"{'OK  ' if ok else 'FAIL'} {name} {st[name]['detail']}", event="smoke.step", level="info" if ok else "error", step=name, ok=bool(ok))
+        _log(
+            f"{'OK  ' if ok else 'FAIL'} {name} {st[name]['detail']}",
+            event="smoke.step",
+            level="info" if ok else "error",
+            step=name,
+            ok=bool(ok),
+        )
         return ok
 
     code, out = cli.run(["--help"], timeout=60)
@@ -183,8 +190,12 @@ def gpu_probe(cli: ColabCLI, gpus=None, wait_s: int = 900) -> dict:
             _, use = cli.run(["usage"], timeout=120)
             m = re.search(r"([\d.]+)\s*(?:compute units\s*)?(?:/|per)\s*h", use)
             cli.run(["stop", "-s", s], timeout=300)
-            rep["gpus"][g_label] = {"granted": True, "seconds": took, "units_per_hour": float(m.group(1)) if m else None,
-                              "usage": _redact(use.strip())[-300:]}
+            rep["gpus"][g_label] = {
+                "granted": True,
+                "seconds": took,
+                "units_per_hour": float(m.group(1)) if m else None,
+                "usage": _redact(use.strip())[-300:],
+            }
         else:
             last = re.sub(r"\x1b\[[0-9;]*m", "", out.strip().splitlines()[-1] if out.strip() else str(code))
             rep["gpus"][g_label] = {"granted": False, "seconds": took, "error": _redact(last)[-250:]}

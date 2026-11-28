@@ -18,9 +18,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import bpy  # noqa: E402
-from mathutils import Vector  # noqa: E402
-
 from blender import character, props, toon  # noqa: E402
+from mathutils import Vector  # noqa: E402
 
 
 def say(event: str, msg: str = "", **kw) -> None:

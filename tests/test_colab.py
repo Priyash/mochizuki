@@ -10,15 +10,15 @@ import tarfile
 import time
 from pathlib import Path
 
+from test_mac import FakeRelease
+from test_pipeline import copy_project
+
 from engine import scheduler as sched
+from engine import steps
 from engine.providers import colab as cb
 from engine.providers.base import WORKER
 from engine.providers.kaggle import LocalKaggle
 from engine.providers.release import Release
-from engine import steps
-
-from test_mac import FakeRelease
-from test_pipeline import copy_project
 
 
 class FakeColab:
@@ -77,9 +77,24 @@ class FakeColab:
         env = dict(a.split("=", 1) for a in args[args.index("--env"):][1::2])
         with tarfile.open(vm / "in.tar.gz") as t:
             t.extractall(vm / "in", filter="data")
-        r = subprocess.run([sys.executable, str(vm / "in" / "worker.py"), "--manifest", str(vm / "in" / "manifest.json"),
-                            "--inputs", str(vm / "in"), "--out", str(vm / "out"), "--engine-set", "stub",
-                            "--expect-batch", env["MOCHI_BATCH"]], capture_output=True, text=True)
+        r = subprocess.run(
+            [
+                sys.executable,
+                str(vm / "in" / "worker.py"),
+                "--manifest",
+                str(vm / "in" / "manifest.json"),
+                "--inputs",
+                str(vm / "in"),
+                "--out",
+                str(vm / "out"),
+                "--engine-set",
+                "stub",
+                "--expect-batch",
+                env["MOCHI_BATCH"],
+            ],
+            capture_output=True,
+            text=True,
+        )
         lines = (r.stdout + r.stderr).splitlines() + ["[job] MOCHI-DONE"]
         for ln in lines:
             if on_line:
@@ -349,7 +364,10 @@ def test_a_run_that_does_not_finish_keeps_what_it_made(tmp_path):
         def stream(self, args, deadline, on_line=None):  # packed its outputs as it went
             code, tail = super().stream(args, deadline, on_line)
             return 255, tail.replace("[job] MOCHI-DONE", "connection went stale")
-    assert cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", Dropped(tmp_path / "vms"), cb.settings(proj), []) == bid
+
+    assert (
+        cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", Dropped(tmp_path / "vms"), cb.settings(proj), []) == bid
+    )
     r = sched.tick(proj, led, colab, 1, engine_set="stub")
     assert r["action"] == "collected" and r["made"] > 0 and not r["stale"], r   # "stale" in the log drops nothing
 
@@ -358,7 +376,9 @@ def test_a_failed_results_download_keeps_them_in_the_release(tmp_path):
     proj, led, fr, colab = _setup(tmp_path)
     sched.tick(proj, led, colab, 1, engine_set="stub")
     bid = led.active_batch("colab")["id"]
-    assert cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", FakeColab(tmp_path / "vms"), cb.settings(proj), []) == bid
+    assert (
+        cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", FakeColab(tmp_path / "vms"), cb.settings(proj), []) == bid
+    )
     fails = {"n": 1}
     def flaky(url, dest):
         if fails["n"]:

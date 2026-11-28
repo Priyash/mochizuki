@@ -23,8 +23,8 @@ from ..log import set_file
 from . import plan as planner
 from .acting import capture as cap
 from .acting import direction as dirn
-from .render import runner as rnd
 from .config import by_chapter, settings, work_dir
+from .render import runner as rnd
 
 
 def _size(text: str | None) -> tuple[int, int] | None:

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import subprocess
 import time
-from enum import Enum
+from enum import StrEnum
 
 from .. import steps
 from ..errors import BudgetUsedUp
@@ -22,8 +22,8 @@ BROKEN_AFTER_RUNS = 2      # batches in a row that made nothing (machine errors)
 STUCK_PREFIX = "stuck in "
 
 
-class Action(str, Enum):
-    """What one step did. A str, so it equals its value: Action.IDLE == "idle"."""
+class Action(StrEnum):
+    """What one step did. A StrEnum: it equals its value: Action.IDLE == "idle"."""
     IDLE = "idle"                         # nothing to run, or waiting for a person
     WAITING = "waiting"                   # a run is in flight
     COLLECTED = "collected"
@@ -35,8 +35,6 @@ class Action(str, Enum):
     ERROR = "error"
     SKIPPED = "skipped"                   # no provider can run at all
 
-    def __str__(self) -> str:
-        return self.value
 
 
 def stuck_note(name: str) -> str:
@@ -70,8 +68,16 @@ def tick(p: Project, led: Ledger, provider: Provider, chapter: int, engine_set: 
                 time.time() - (active["submitted_at"] or time.time()) > patience and \
                 (can_hand_over(active["stage"]) if callable(can_hand_over) else True):
             cancelled, why = cancel_run(p, provider, active)
-            discard(led, active["id"], f"{stuck_note(name)}; handed to the other backend; " + (
-                "the queued run was cancelled" if cancelled else f"the queued run could not be cancelled and may still start: {why}"))
+            discard(
+                led,
+                active["id"],
+                f"{stuck_note(name)}; handed to the other backend; "
+                + (
+                    "the queued run was cancelled"
+                    if cancelled
+                    else f"the queued run could not be cancelled and may still start: {why}"
+                ),
+            )
             return {"action": Action.HANDED_OVER, "backend": name, "batch": active["id"], "cancelled": cancelled,
                     "reason": f"queued on {name.title()} for over {patience / 3600:.0f} h; "
                               + ("cancelled there" if cancelled else f"could not cancel it there ({why})")}

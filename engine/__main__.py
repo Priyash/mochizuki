@@ -10,11 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from . import assemble as asm
-from . import ci
+from . import ci, providers, scheduler, stages, steps
 from . import plan as planner
-from . import providers, scheduler, stages, steps
 from .cgi import config as cgi_config
 from .errors import EngineError
+from .film_check import FilmError
 from .ledger import BudgetExceeded
 from .project import CONFIG_FILE, REPO, Project, find_film
 from .providers.base import WORKER_PACKAGES
@@ -23,7 +23,6 @@ from .providers.kaggle import week_start
 from .providers.release import Release
 from .providers.release import names as release_names
 from .scheduler import Action
-
 
 # `python -m engine where <what>`: the film's paths, so workflows and scripts never spell them
 WHERE = {
@@ -81,45 +80,66 @@ def main(argv=None) -> int:
     a.add_argument("--variants", default="fp16,fp32", help="precisions to try, in order (fp16, fp32, bf16, config)")
     a.add_argument("--minutes", type=int, default=60)
     a.add_argument("--out", default="probe-out")
-    a = sub.add_parser("plan", help="dry run: GPU time and money, nothing is called"); chap(a, False)
+    a = sub.add_parser("plan", help="dry run: GPU time and money, nothing is called")
+    chap(a, False)
 
     # run-now steps (mock for testing, fal for the paid fallback)
     for name in ("keyframes", "video", "upscale"):
-        a = sub.add_parser(name, help=f"{name} right now with a sync provider"); chap(a); sync(a)
+        a = sub.add_parser(name, help=f"{name} right now with a sync provider")
+        chap(a)
+        sync(a)
 
     # Kaggle
-    a = sub.add_parser("batch", help="pack the next Kaggle batch for one stage"); chap(a); backend(a)
-    a.add_argument("--stage", required=True, choices=scheduler.STAGES); a.add_argument("--shot")
+    a = sub.add_parser("batch", help="pack the next Kaggle batch for one stage")
+    chap(a)
+    backend(a)
+    a.add_argument("--stage", required=True, choices=scheduler.STAGES)
+    a.add_argument("--shot")
     a.add_argument("--engine-set", default="gpu", choices=["gpu", "stub"])
-    a = sub.add_parser("submit", help="push the open batch to Kaggle"); backend(a)
-    a = sub.add_parser("collect", help="download and record the open batch if it has finished"); backend(a)
-    a = sub.add_parser("auto", help="one automation step: collect or start the next batch"); chap(a); backend(a)
+    a = sub.add_parser("submit", help="push the open batch to Kaggle")
+    backend(a)
+    a = sub.add_parser("collect", help="download and record the open batch if it has finished")
+    backend(a)
+    a = sub.add_parser("auto", help="one automation step: collect or start the next batch")
+    chap(a)
+    backend(a)
     a.add_argument("--loop", action="store_true", help="keep going until a person is needed")
     a.add_argument("--every", type=int, default=0, help="minutes between steps (default: poll_seconds)")
     a.add_argument("--engine-set", default="gpu", choices=["gpu", "stub"])
 
     # review and gates
-    a = sub.add_parser("queue", help="what is waiting for a verdict"); chap(a)
+    a = sub.add_parser("queue", help="what is waiting for a verdict")
+    chap(a)
     a = sub.add_parser("verdict", help="record a critic's verdict")
-    a.add_argument("key"); a.add_argument("verdict", choices=["pass", "fail"])
-    a.add_argument("--by", default="agent", choices=["agent", "human"]); a.add_argument("--note", default="")
-    a = sub.add_parser("select", help="choose the keyframe a shot will use"); a.add_argument("key")
-    a = sub.add_parser("approve", help="a person approves a gate"); chap(a)
+    a.add_argument("key")
+    a.add_argument("verdict", choices=["pass", "fail"])
+    a.add_argument("--by", default="agent", choices=["agent", "human"])
+    a.add_argument("--note", default="")
+    a = sub.add_parser("select", help="choose the keyframe a shot will use")
+    a.add_argument("key")
+    a = sub.add_parser("approve", help="a person approves a gate")
+    chap(a)
     a.add_argument("gate", choices=["board", "animatic"])
     a.add_argument("--by", required=True, choices=["human"])
-    a = sub.add_parser("status", help="shot states, 4K progress, GPU time used"); chap(a, False)
+    a = sub.add_parser("status", help="shot states, 4K progress, GPU time used")
+    chap(a, False)
     a = sub.add_parser("resolve", help="close a job whose call was cut off")
-    a.add_argument("key"); a.add_argument("--charged", required=True, choices=["yes", "no"])
-    a = sub.add_parser("assemble", help="cut the chapter: animatic, or --4k picture"); chap(a)
+    a.add_argument("key")
+    a.add_argument("--charged", required=True, choices=["yes", "no"])
+    a = sub.add_parser("assemble", help="cut the chapter: animatic, or --4k picture")
+    chap(a)
     a.add_argument("--4k", dest="four_k", action="store_true")
 
     # GitHub Actions
-    a = sub.add_parser("ci-step", help="one producer run on GitHub Actions"); chap(a, False)
+    a = sub.add_parser("ci-step", help="one producer run on GitHub Actions")
+    chap(a, False)
     a.add_argument("--state", default="state", help="checkout of the state branch")
-    a.add_argument("--engine-set", default="gpu", choices=["gpu", "stub"]); backend(a)
+    a.add_argument("--engine-set", default="gpu", choices=["gpu", "stub"])
+    backend(a)
     a.add_argument("--no-store", action="store_true", help="keep media on this machine (testing)")
     a = sub.add_parser("gate", help="run the owner's command from an issue comment (COMMENT_BODY)")
     a.add_argument("--state", default="state")
+    sub.add_parser("check", help="check the film's config.json and shots.csv; every problem at once")
     a = sub.add_parser("chain", help="where the film stands, stage by stage (one chapter, or every chapter)")
     chap(a, False)
     a = sub.add_parser("where", help="print one of the film's paths, for scripts and workflows")
@@ -133,7 +153,18 @@ def main(argv=None) -> int:
         print(f"error: {e}", file=sys.stderr)
         return 2
     load_env(root)                       # a film may add its own (its own Kaggle account, say)
-    p = Project(root)
+    try:
+        p = Project(root)
+    except FilmError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    if args.cmd == "check":
+        chapters = sorted({s.chapter for s in p.shots})
+        print(f"{p.name}: no problems. {len(p.shots)} shots in {len(chapters)} chapters, "
+              f"{sum(s.seconds for s in p.shots)} s; {len(p.config['models'])} models, "
+              f"{len(p.config['engines'])} engines")
+        return 0
 
     if args.cmd == "where":
         path = WHERE[args.what](p)
@@ -152,8 +183,8 @@ def main(argv=None) -> int:
         from .cgi import cli as cgi_cli  # noqa: PLC0415
         return cgi_cli.run(p, args)
     if args.cmd in ("colab-runner", "colab-test", "colab-smoke", "colab-gpus", "colab-sweep"):
-        from .providers import colab as cb  # noqa: PLC0415
         from .log import set_file  # noqa: PLC0415
+        from .providers import colab as cb  # noqa: PLC0415
         set_file(os.environ.get("MOCHI_LOG_FILE") or "colab-logs/colab.jsonl")
         cfg, cli = cb.settings(p), cb.ColabCLI()
         if args.cmd == "colab-sweep":
@@ -248,23 +279,27 @@ def main(argv=None) -> int:
         elif args.cmd == "queue":
             out = steps.review_queue(p, led, args.chapter)
         elif args.cmd == "verdict":
-            led.verdict(args.key, args.verdict, args.by, args.note); out = {"ok": True}
+            led.verdict(args.key, args.verdict, args.by, args.note)
+            out = {"ok": True}
         elif args.cmd == "select":
-            led.select(args.key); out = {"ok": True}
+            led.select(args.key)
+            out = {"ok": True}
         elif args.cmd == "approve":
             if args.gate == "board":
                 missing = [s.id for s in p.chapter(args.chapter) if not led.selected(s.id)]
                 if missing:
                     print(f"cannot approve: no keyframe selected for {missing}")
                     return 2
-            led.approve(args.chapter, args.gate, args.by); out = {"ok": True}
+            led.approve(args.chapter, args.gate, args.by)
+            out = {"ok": True}
         elif args.cmd == "status":
             out = steps.status(p, led, args.chapter)
             out["kaggle_gpu_hours_this_week"] = round(led.gpu_seconds_since(week_start()) / 3600, 2)
             out["kaggle_weekly_cap_hours"] = kaggle_settings(p).get("weekly_gpu_hours")
             out["open_batches"] = [dict(b) for b in led.active_batches()]
         elif args.cmd == "resolve":
-            led.resolve(args.key, args.charged == "yes"); out = {"ok": True}
+            led.resolve(args.key, args.charged == "yes")
+            out = {"ok": True}
         elif args.cmd == "assemble":
             out = asm.assemble(p, led, args.chapter, four_k=args.four_k)
         else:  # pragma: no cover

@@ -36,7 +36,9 @@ def line_key(spec: dict, text: str, language: str, instruct: str = "") -> str:
 
 def kokoro_lang(voice: str) -> str:
     """Kokoro's language code from the voice name: af_/am_ American, bf_/bm_ British, jf_/jm_ Japanese."""
-    return {"a": "a", "b": "b", "j": "j", "z": "z", "e": "e", "f": "f", "h": "h", "i": "i", "p": "p"}.get(voice[:1], "a")
+    return {"a": "a", "b": "b", "j": "j", "z": "z", "e": "e", "f": "f", "h": "h", "i": "i", "p": "p"}.get(
+        voice[:1], "a"
+    )
 
 
 def stub_speech(text: str, language: str, kana: str = "", rate: int = RATE, seed: int = 0) -> list[float]:

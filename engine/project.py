@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import film_check
+from .film_check import FilmError
 from .generators import wan_frames, wan_segments  # noqa: F401 - re-exported: engine.project.wan_frames
 
 REPO = Path(__file__).resolve().parents[1]
@@ -96,16 +98,18 @@ class Project:
         self.assets_dir = self.root / ASSETS_DIR
         self.media = self.root / MEDIA_DIR
         self.ledger_file = self.root / LEDGER_FILE
-        self.config = json.loads(self.config_file.read_text(encoding="utf-8"))
+        try:
+            self.config = json.loads(self.config_file.read_text(encoding="utf-8"))
+        except ValueError as e:
+            raise FilmError(self.name, [f"{CONFIG_FILE}: not valid JSON ({e})"]) from e
         with open(self.shots_file, newline="", encoding="utf-8") as f:
-            self.shots = [
-                Shot(r["id"], int(r["chapter"]), r["shot"], int(r["seconds"]),
-                     r["type"], r["model"], int(r["takes"]), r.get("sound", ""))
-                for r in csv.DictReader(f)
-            ]
-        unknown = {s.model for s in self.shots} - set(self.config["models"])
-        if unknown:
-            raise ValueError(f"{SHOTS_FILE} names models missing from {CONFIG_FILE}: {sorted(unknown)}")
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        found = film_check.problems(self.config, rows, list(reader.fieldnames or []))
+        if found:
+            raise FilmError(self.name, found)
+        self.shots = [Shot(r["id"], int(r["chapter"]), r["shot"], int(r["seconds"]), r["type"], r["model"],
+                           int(r["takes"]), r.get("sound", "")) for r in rows]
         self.store: Any = None     # where media lives when it is not on this machine (store.py)
 
     # ---- files. The ledger keeps paths relative to the project, so it can move between machines.
@@ -292,5 +296,5 @@ def ref_shot(name: str) -> Shot:
 
 def job_key(shot_id: str, kind: str, idx: int, prompt: str) -> str:
     """Same shot, kind, index and prompt is the same job: it is never made twice."""
-    h = hashlib.sha1(f"{shot_id}|{kind}|{idx}|{prompt}".encode("utf-8")).hexdigest()[:10]
+    h = hashlib.sha1(f"{shot_id}|{kind}|{idx}|{prompt}".encode()).hexdigest()[:10]
     return f"{shot_id}.{kind}{idx}.{h}"

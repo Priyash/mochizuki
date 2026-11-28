@@ -10,23 +10,25 @@ from pathlib import Path
 import pytest
 
 from engine.mac import config as mc
-from engine.mac.training import lora as mt
 from engine.mac.generators import Engines, StubImageEngine, StubVideoEngine, build, lora_args, segments
 from engine.mac.generators import video as mv
 from engine.mac.generators.image import lora_triggers
 from engine.mac.runtime.tools import run_streaming
+from engine.mac.training import lora as mt
 
-FAKE_WAN = textwrap.dedent('''
+FAKE_WAN = textwrap.dedent("""
     import sys, time, subprocess
     a = sys.argv
     out = a[a.index("--output-path") + 1]; n = int(a[a.index("--num-frames") + 1])
     for i in range(1, 4):
-        sys.stderr.write(f"\\rDiffusion: {i*33}%|##| {i}/3 [00:0{i}<00:00, 0.1s/it]"); sys.stderr.flush(); time.sleep(0.05)
+        sys.stderr.write(f"\\rDiffusion: {i*33}%|##| {i}/3 [00:0{i}<00:00, 0.1s/it]")
+        sys.stderr.flush()
+        time.sleep(0.05)
     print()
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", f"testsrc=size=128x64:rate=24",
                     "-frames:v", str(n), "-pix_fmt", "yuv420p", out], check=True)
     print("Video saved to", out)
-''')
+""")
 
 FAKE_TRAIN = textwrap.dedent('''
     import sys, json, zipfile, time

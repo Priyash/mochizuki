@@ -348,10 +348,16 @@ FACE = {   # in head heights, from the head's centre; x towards the character's 
             "mouth_w": 1.0, "nose_z": -0.19, "chin": 0.2},
 }
 MOUTH = {  # half width, top, bottom, corner lift (in head heights)
-    "basis": (0.045, 0.004, 0.005, 0.0), "Fcl_MTH_A": (0.040, 0.012, 0.056, 0.006), "Fcl_MTH_I": (0.055, 0.006, 0.02, 0.004),
-    "Fcl_MTH_U": (0.022, 0.016, 0.02, 0.0), "Fcl_MTH_E": (0.048, 0.01, 0.032, 0.004), "Fcl_MTH_O": (0.03, 0.022, 0.034, 0.0),
-    "Fcl_MTH_Joy": (0.056, 0.004, 0.007, 0.02), "Fcl_MTH_Sorrow": (0.042, 0.003, 0.004, -0.016),
-    "Fcl_MTH_Surprised": (0.026, 0.02, 0.03, 0.0), "Fcl_MTH_Angry": (0.046, 0.004, 0.009, -0.009),
+    "basis": (0.045, 0.004, 0.005, 0.0),
+    "Fcl_MTH_A": (0.040, 0.012, 0.056, 0.006),
+    "Fcl_MTH_I": (0.055, 0.006, 0.02, 0.004),
+    "Fcl_MTH_U": (0.022, 0.016, 0.02, 0.0),
+    "Fcl_MTH_E": (0.048, 0.01, 0.032, 0.004),
+    "Fcl_MTH_O": (0.03, 0.022, 0.034, 0.0),
+    "Fcl_MTH_Joy": (0.056, 0.004, 0.007, 0.02),
+    "Fcl_MTH_Sorrow": (0.042, 0.003, 0.004, -0.016),
+    "Fcl_MTH_Surprised": (0.026, 0.02, 0.03, 0.0),
+    "Fcl_MTH_Angry": (0.046, 0.004, 0.009, -0.009),
 }
 
 
@@ -397,7 +403,8 @@ def figure(kit: props.Kit, c: dict, frames: int):
     kid = band == "child"
 
     # ---- the body: jacket with sleeves, trousers, sash, collar, neck, hands, feet
-    r = (lambda a, b=None: (a * H, (b if b is not None else a) * H))
+    def r(a, b=None):
+        return a * H, (b if b is not None else a) * H
     hem = j["pelvis"] + Vector((0, 0, -0.28 * H))
     verts = [hem, j["pelvis"], j["waist"], j["chest"], j["neck"],
              j["shoulder_L"], j["elbow_L"], j["wrist_L"], j["shoulder_R"], j["elbow_R"], j["wrist_R"]]
@@ -412,7 +419,15 @@ def figure(kit: props.Kit, c: dict, frames: int):
         radii = [r(0.5, 0.38), r(0.46, 0.33), r(0.38, 0.28), r(0.47, 0.33), r(0.16, 0.14),
                  r(0.16), r(0.13), r(0.135), r(0.16), r(0.13), r(0.135)]
     skin_body(f"{name}.jacket", verts, edges, radii, jacket, root)
-    legs = [j["pelvis"] + Vector((0, 0, -0.05 * H)), j["hip_L"], j["knee_L"], j["ankle_L"], j["hip_R"], j["knee_R"], j["ankle_R"]]
+    legs = [
+        j["pelvis"] + Vector((0, 0, -0.05 * H)),
+        j["hip_L"],
+        j["knee_L"],
+        j["ankle_L"],
+        j["hip_R"],
+        j["knee_R"],
+        j["ankle_R"],
+    ]
     lr = [r(0.36, 0.28), r(0.2), r(0.16), r(0.125), r(0.2), r(0.16), r(0.125)] if kid else \
         [r(0.42, 0.31), r(0.23), r(0.17), r(0.13), r(0.23), r(0.17), r(0.13)]
     skin_body(f"{name}.trousers", legs, [(0, 1), (1, 2), (2, 3), (0, 4), (4, 5), (5, 6)], lr, trousers, root)
@@ -494,7 +509,10 @@ def _face(kit, c, lk, head: Head, head_ob, H: float, f: dict, frames: int, band:
     sad_e = ch(face, "Fcl_EYE_Sorrow", fr)
     ang_e = ch(face, "Fcl_EYE_Angry", fr)
     arch = [max(0.0, min(1.0, (jv - 0.45) / 0.3)) for jv in joy]
-    opened = [max(0.0, min(1.0, 1.0 - cl - 0.25 * s - 0.15 * a)) * (1.0 - ar) for cl, s, a, ar in zip(close, sad_e, ang_e, arch)]
+    opened = [
+        max(0.0, min(1.0, 1.0 - cl - 0.25 * s - 0.15 * a)) * (1.0 - ar)
+        for cl, s, a, ar in zip(close, sad_e, ang_e, arch)
+    ]
     for side, sx in (("L", 1), ("R", -1)):
         cx = sx * ex
         outline = _eye_outline(cx, ez, w, h, sx)
@@ -515,13 +533,22 @@ def _face(kit, c, lk, head: Head, head_ob, H: float, f: dict, frames: int, band:
         lid = face_band(f"{name}.lid{side}", head, upper, lower, line, head_ob, lift * 1.6, anchor=(cx, anchor_z))
         bottom = _edge(outline, False)
         part = [p for p in bottom if sx * (p[0] - cx) > 0.05 * w]
-        lash = face_band(f"{name}.lash{side}", head, part, [(x, z - 0.01 * H) for x, z in part], line, head_ob, lift * 1.4,
-                         anchor=(cx, anchor_z))
+        lash = face_band(
+            f"{name}.lash{side}",
+            head,
+            part,
+            [(x, z - 0.01 * H) for x, z in part],
+            line,
+            head_ob,
+            lift * 1.4,
+            anchor=(cx, anchor_z),
+        )
         arc = sorted([(cx + sx * w * 0.45 * t, ez - 0.05 * h + 0.32 * h * (1 - abs(t) ** 1.7))
                       for t in [i / 10 - 1 for i in range(21)]], key=lambda p: p[0])
         happy = face_band(f"{name}.happy{side}", head, [(x, z + 0.02 * H) for x, z in arc], arc, line, head_ob,
                           lift * 1.6, anchor=(cx, ez))
-        # keys: the white opens and closes over its lower lid; the lid line follows the top; joy turns the eye to an arch
+        # keys: the white opens and closes over its lower lid; the lid line follows the top;
+        # joy turns the eye to an arch
         k_open = [max(0.03, o) * (1 + 0.12 * wd) for o, wd in zip(opened, wide)]
         key_curve(white, "scale", [0.001 if ar > 0.6 else k for k, ar in zip(k_open, arch)], index=2)
         key_curve(white, "scale", [1 + 0.1 * wd for wd in wide], index=0)
@@ -544,8 +571,12 @@ def _face(kit, c, lk, head: Head, head_ob, H: float, f: dict, frames: int, band:
         angry = ch(face, "Fcl_BRW_Angry", fr)
         up = mix(ch(face, "Fcl_BRW_Surprised", fr), [0.4 * x for x in ch(face, "Fcl_BRW_Joy", fr)])
         key_curve(brow, "rotation_euler", [sx * (0.38 * s - 0.32 * a) for s, a in zip(sad, angry)], index=1)
-        key_curve(brow, "location", [brow.location.z + H * (0.045 * u + 0.012 * s - 0.018 * a) for u, s, a in zip(up, sad, angry)],
-                  index=2)
+        key_curve(
+            brow,
+            "location",
+            [brow.location.z + H * (0.045 * u + 0.012 * s - 0.018 * a) for u, s, a in zip(up, sad, angry)],
+            index=2,
+        )
         # blush and tears
         blush = face_shape(f"{name}.blush{side}", head,
                            [(cx + sx * 0.01 * H + 0.05 * H * math.cos(a), ez - 0.16 * H + 0.022 * H * math.sin(a))
@@ -555,10 +586,21 @@ def _face(kit, c, lk, head: Head, head_ob, H: float, f: dict, frames: int, band:
         key_curve(blush, "scale", [max(0.001, min(1.0, base + 1.2 * b)) for b in ch(face, "anime.blush", fr)], index=0)
         key_curve(blush, "scale", [max(0.001, min(1.0, base + 1.2 * b)) for b in ch(face, "anime.blush", fr)], index=2)
         tx, tz = cx + sx * 0.18 * w, ez - h * 0.48
-        tear = face_shape(f"{name}.tear{side}", head,
-                          [(tx + 0.014 * H * math.sin(a) * (1 - 0.6 * max(0.0, math.cos(a))), tz - 0.03 * H * (0.5 - 0.5 * math.cos(a)))
-                           for a in (math.tau * k / 14 for k in range(14))],
-                          drawn(kit, f"{name}.tearc", [0.78, 0.92, 1.0]), head_ob, lift * 2.0, anchor=(tx, tz))
+        tear = face_shape(
+            f"{name}.tear{side}",
+            head,
+            [
+                (
+                    tx + 0.014 * H * math.sin(a) * (1 - 0.6 * max(0.0, math.cos(a))),
+                    tz - 0.03 * H * (0.5 - 0.5 * math.cos(a)),
+                )
+                for a in (math.tau * k / 14 for k in range(14))
+            ],
+            drawn(kit, f"{name}.tearc", [0.78, 0.92, 1.0]),
+            head_ob,
+            lift * 2.0,
+            anchor=(tx, tz),
+        )
         tears = ch(face, "anime.tear", fr)
         shown = [t if t > 0.2 else 0.0 for t in tears]      # a glint of feeling is in the eyes, not a drop
         key_curve(tear, "scale", [max(0.001, min(1.0, 1.4 * t)) for t in shown], index=0)
@@ -566,7 +608,9 @@ def _face(kit, c, lk, head: Head, head_ob, H: float, f: dict, frames: int, band:
         if band == "old":                                    # the lines a long life leaves at the eyes
             for k, (dz, ang) in enumerate(((0.012, 0.35), (-0.012, -0.35))):
                 ox, oz = cx + sx * (w / 2 + 0.02 * H), ez + dz * H
-                seg = [(ox + sx * 0.03 * H * math.cos(ang) * t, oz + 0.03 * H * math.sin(ang) * t) for t in (0.0, 0.5, 1.0)]
+                seg = [
+                    (ox + sx * 0.03 * H * math.cos(ang) * t, oz + 0.03 * H * math.sin(ang) * t) for t in (0.0, 0.5, 1.0)
+                ]
                 face_band(f"{name}.crow{side}{k}", head, seg, [(x, z - 0.006 * H) for x, z in seg],
                           drawn(kit, f"{name}.wrinkle", [x * 0.72 for x in lk["skin"]]), head_ob, lift)
     # gaze: the iris moves inside the eye
@@ -669,7 +713,10 @@ def _hair(kit, lk: dict, head: Head, head_ob, mat, H: float, band: str):
 
     def lifted(points, base: float, bulge: float):
         n = len(points)
-        return [p + (p - centre).normalized() * (base + bulge * math.sin(math.pi * k / (n - 1))) for k, p in enumerate(points)]
+        return [
+            p + (p - centre).normalized() * (base + bulge * math.sin(math.pi * k / (n - 1)))
+            for k, p in enumerate(points)
+        ]
 
     brow_z = (FACE[band]["eye_z"] + FACE[band]["eye_h"] / 2 + FACE[band]["brow"]) * H
     if style != "bun":
@@ -681,7 +728,9 @@ def _hair(kit, lk: dict, head: Head, head_ob, mat, H: float, band: str):
             tip_ang = t * 0.72 + 0.07 * (1 if i % 2 else -1) * (1 - abs(t))
             z0 = 0.78 * head.rz
             z1 = brow_z + (0.005 + 0.07 * abs(t) ** 1.6 + (0.0 if i % 2 else 0.025)) * H
-            pts = [head.around(_lerp(ang0, tip_ang, s), _lerp(z0, z1, s), scale=cap_s) for s in [k / 7 for k in range(8)]]
+            pts = [
+                head.around(_lerp(ang0, tip_ang, s), _lerp(z0, z1, s), scale=cap_s) for s in [k / 7 for k in range(8)]
+            ]
             lock(f"{name}.bang{i}", lifted(pts, 0.008 * H, 0.02 * H),
                  _taper(8, (0.21 if band == "child" else 0.17) * H, 0.3), 0.35, centre, mat, head_ob)
     else:
@@ -696,12 +745,23 @@ def _hair(kit, lk: dict, head: Head, head_ob, mat, H: float, band: str):
                 d = Vector((d0.x * (1 - 0.55 * s_), d0.y * math.cos(b) - d0.z * math.sin(b),
                             d0.y * math.sin(b) + d0.z * math.cos(b)))
                 pts.append(_on_cap(head, d.normalized(), cap_s))
-            lock(f"{name}.combed{i}", lifted(pts, 0.004 * H, 0.012 * H), [0.075 * H * (1 - 0.6 * s_) for s_ in [k / 9 for k in range(10)]],
-                 0.6, centre, mat, head_ob, ring=6)
+            lock(
+                f"{name}.combed{i}",
+                lifted(pts, 0.004 * H, 0.012 * H),
+                [0.075 * H * (1 - 0.6 * s_) for s_ in [k / 9 for k in range(10)]],
+                0.6,
+                centre,
+                mat,
+                head_ob,
+                ring=6,
+            )
     # side locks framing the face
     side_tip = {"bob": -0.95, "long": -1.7, "bun": -0.4, "short": -0.45}.get(style, -0.9) * head.rz
     for sx in (1, -1):
-        pts = [head.around(sx * _lerp(1.22, 1.3, s), _lerp(0.35 * head.rz, side_tip, s), scale=cap_s) for s in [k / 7 for k in range(8)]]
+        pts = [
+            head.around(sx * _lerp(1.22, 1.3, s), _lerp(0.35 * head.rz, side_tip, s), scale=cap_s)
+            for s in [k / 7 for k in range(8)]
+        ]
         if side_tip < -head.rz * 0.9:
             pts = [p if p.z > -head.rz * 0.85 else Vector((p.x, p.y, p.z)) for p in pts]
         lock(f"{name}.side{'L' if sx > 0 else 'R'}", lifted(pts, 0.006 * H, 0.012 * H),
@@ -724,7 +784,15 @@ def _hair(kit, lk: dict, head: Head, head_ob, mat, H: float, band: str):
                 flare = (0.02 if style == "bob" else 0.01) * H * s
                 p = p + Vector((p.x, p.y, 0)).normalized() * flare
                 pts.append(p)
-            lock(f"{name}.back{i}", lifted(pts, 0.006 * H, 0.015 * H), _taper(10, 0.3 * H, 0.15), 0.32, centre, mat, head_ob)
+            lock(
+                f"{name}.back{i}",
+                lifted(pts, 0.006 * H, 0.015 * H),
+                _taper(10, 0.3 * H, 0.15),
+                0.32,
+                centre,
+                mat,
+                head_ob,
+            )
     if style == "bun":
         bun = props.sphere(f"{name}.bun", 0.2 * H, [mat], scale=(1.0, 0.9, 0.85), segments=20)
         bun.location = (0, head.ry * 0.95, head.rz * 0.5)

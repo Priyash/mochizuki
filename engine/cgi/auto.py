@@ -20,12 +20,12 @@ import json
 import time
 from pathlib import Path
 
-from ..log import log as _log
 from ..audio import dialogue
+from ..log import log as _log
 from . import plan as planner
 from .acting import direction as dirn
-from .render import runner as rnd
 from .config import settings, work_dir
+from .render import runner as rnd
 
 
 def log(event: str, msg: str = "", level: str = "info", **kw) -> None:
@@ -65,7 +65,9 @@ def stage_voices(p, chapter: int, engine: str | None, shots: list[str]) -> dict:
                 continue
         out["voiced"].append(sid)
         out["overruns"] += [{"shot": sid, **o} for o in r.get("overruns", [])]
-        log("voices.done", f"{sid}: {r['lines']} lines", shot=sid, lines=r["lines"], overruns=len(r.get("overruns", [])))
+        log(
+            "voices.done", f"{sid}: {r['lines']} lines", shot=sid, lines=r["lines"], overruns=len(r.get("overruns", []))
+        )
     return out
 
 

@@ -7,11 +7,11 @@ Each prints what it is doing as structured lines and says plainly which part fai
 from __future__ import annotations
 
 import time
-from typing import Any
 from pathlib import Path
+from typing import Any
 
-from ..runtime.shared import log
 from ..runtime.health import describe
+from ..runtime.shared import log
 
 EDIT_PROMPT = ("Low-angle shot from floor level, camera looking up at the two of them; same place, same people, "
                "same clothes, now at dusk.")
@@ -117,10 +117,24 @@ def video_test(p, engines, still: Path, out: Path, seconds: float = 2.0) -> dict
         msg = f"no still at {still}: run `mac-worker --self-test` first, or pass --image"
         log(msg, event="selftest.failed", level="error", step="video")
         return {"video": {"ok": False, "error": msg}}
-    video = _step("video", f"a {seconds:g}-second take from {still.name} (Wan 2.2); the first run downloads about 19 GB",
-                  lambda: {**engines.run({"key": "selftest-take", "kind": "take", "prompt": VIDEO_PROMPT,
-                                          "image": still.name, "seconds": seconds}, still.parent, out),
-                           "file": str(out)})
+    video = _step(
+        "video",
+        f"a {seconds:g}-second take from {still.name} (Wan 2.2); the first run downloads about 19 GB",
+        lambda: {
+            **engines.run(
+                {
+                    "key": "selftest-take",
+                    "kind": "take",
+                    "prompt": VIDEO_PROMPT,
+                    "image": still.name,
+                    "seconds": seconds,
+                },
+                still.parent,
+                out,
+            ),
+            "file": str(out),
+        },
+    )
     if video["ok"]:
         log(f"video test passed: {out}. At this speed a 10-minute film is about "
             f"{600 / seconds * video['seconds'] / 3600:.0f} h of rendering (one take per shot).",
