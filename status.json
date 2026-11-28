@@ -3,23 +3,13 @@
  "actions": [
   {
    "action": "idle",
-   "reason": "waiting for a person",
-   "to_review": 0,
-   "states": {
-    "waiting_anchor": 26,
-    "todo": 1
-   },
-   "backend": "kaggle"
+   "backend": "kaggle",
+   "reason": "keyframes is not run on kaggle: config kaggle.stages only takes video, upscale"
   },
   {
    "action": "idle",
-   "reason": "waiting for a person",
-   "to_review": 0,
-   "states": {
-    "waiting_anchor": 26,
-    "todo": 1
-   },
-   "backend": "colab"
+   "backend": "colab",
+   "reason": "keyframes is not run on colab: config colab.stages only takes refs"
   }
  ],
  "reviews": {
@@ -39,8 +29,8 @@
   "items": 0
  },
  "notice": {
-  "kind": "refs",
-  "text": "@Priyash The reference stills are ready: https://github.com/Priyash/mochizuki/blob/state/review/ch1/refs.jpg (in order: style, tsumugi_ch1, sayo, bowl_ch1, farmhouse_ch1, hearth_ch1). Comment `/approve refs` to make them the film's look, or `/reject <name>` for any you don't want, and new candidates will be painted."
+  "kind": "idle",
+  "text": "Chapter 1: {'waiting_anchor': 26, 'todo': 1}"
  },
  "status": {
   "waiting_anchor": 26,
