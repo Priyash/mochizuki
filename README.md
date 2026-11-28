@@ -194,6 +194,10 @@ python -m engine cgi render 1-05 --size 1280x720 --guides
 python -m engine finish-test 1-05 --engine ai_finish            # then --engine ai_finish_720
 ```
 
+Several engines (`--engine ai_finish,ai_finish_720`) run in one GPU session. `--backend colab` runs the same
+test on Colab with your units, only when you have said yes: the inputs wait in the `batches` release for the
+scheduled Colab runner, and are taken down if no runner takes them within 75 minutes.
+
 Its summary gives the GPU seconds per second of film, which prices the whole film. A finish for the film
 itself goes through the ledger: `python -m engine batch --chapter 1 --stage ai_finish --shot 1-05`, then
 `submit` and `collect`; it lands in `films/mochizuki/media/finished/1-05/`.

@@ -1,8 +1,9 @@
-# One shot's AI finish on a Kaggle T4, outside the ledger (engine/providers/kaggle/finish_test.py):
+# One shot's AI finish on a GPU, outside the ledger (engine/providers/kaggle/finish_test.py):
 #   render  the shot's voice, then the shot and its guide passes (depth, lines) with Blender on this runner
-#   finish  the inputs go to the release finish-tests; a Kaggle notebook paints one finish per guide; each
-#           finish comes back beside its guide and the 3D render, with a middle frame beside its stills
-# Uses Kaggle GPU time: the 1.3B check (ai_finish) about an hour, the 14B at 720p (ai_finish_720) longer.
+#   finish  one finish per engine and guide, in one GPU session: on Kaggle (free; a notebook of its own),
+#           or on Colab (the owner's units: only with the owner's yes), where the inputs wait in the
+#           release batches for the scheduled Colab runner. Each finish comes back beside its guide and
+#           the 3D render, with a middle frame beside its stills, on the release finish-tests.
 # Never touches the ledger or the state branch.
 name: finish-test
 on:
@@ -12,8 +13,13 @@ on:
         description: "Shot"
         default: "1-05"
       engine:
-        description: "Finish engine: ai_finish (Wan VACE 1.3B, 832x480) or ai_finish_720 (14B, 1280x720)"
+        description: "Finish engines, comma-separated: ai_finish (Wan VACE 1.3B, 832x480), ai_finish_720 (14B, 1280x720)"
         default: "ai_finish"
+      backend:
+        description: "kaggle (free) or colab (the owner's units: only with the owner's yes)"
+        type: choice
+        options: [kaggle, colab]
+        default: kaggle
       controls:
         description: "Guides to finish from, one finish each"
         default: "depth,lines"
@@ -24,7 +30,7 @@ on:
         description: "The Kaggle notebook's time limit, minutes"
         default: "180"
 concurrency:
-  group: finish-test              # one Kaggle test at a time: Kaggle runs at most two GPU sessions
+  group: finish-test-${{ inputs.backend }}   # one test at a time on each: Kaggle runs at most two GPU sessions
   cancel-in-progress: false
 permissions:
   contents: write                 # the release finish-tests
@@ -98,7 +104,7 @@ jobs:
           ls -la "$CGI/$SHOT"
       - name: The ledger (read here only, to find the chosen stills if they are not approved yet)
         run: if [ -f "state/$(basename "$LEDGER")" ]; then cp "state/$(basename "$LEDGER")" "$LEDGER"; fi
-      - name: Finish on Kaggle
+      - name: Finish on ${{ inputs.backend }}
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
@@ -106,14 +112,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
-          kaggle kernels list --mine || true
+          if [ "${{ inputs.backend }}" = "kaggle" ]; then kaggle kernels list --mine || true; fi
           python -m engine finish-test "$SHOT" --engine "${{ inputs.engine }}" --controls "${{ inputs.controls }}" \
-            --minutes "${{ inputs.minutes }}" --work finish-work --chosen-refs | tee finish-test.txt
+            --backend "${{ inputs.backend }}" --minutes "${{ inputs.minutes }}" --work finish-work --chosen-refs \
+            | tee finish-test.txt
       - name: Summary
         if: always()
         run: |
           {
-            echo "### AI finish test: ${{ inputs.shot }}, ${{ inputs.engine }}"
+            echo "### AI finish test: ${{ inputs.shot }}, ${{ inputs.engine }} on ${{ inputs.backend }}"
             echo
             echo '```'
             sed -n '/^{/,$p' finish-test.txt 2>/dev/null | head -120

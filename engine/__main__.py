@@ -48,7 +48,7 @@ def load_env(root: Path) -> None:
 
 
 def finish_test(p: Project, args) -> int:
-    """`finish-test`: the shot's finish on Kaggle, the results on the release finish-tests."""
+    """`finish-test`: the shot's finish on Kaggle or Colab, the results on the release finish-tests."""
     from .providers.kaggle import finish_test as ft  # noqa: PLC0415
     from .store import ReleaseStore  # noqa: PLC0415
     repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -61,8 +61,10 @@ def finish_test(p: Project, args) -> int:
         print(f"stills chosen in the ledger, for this test only: {', '.join(done) or 'none'}"
               + (f"; could not fetch {', '.join(lost)}" if lost else ""), flush=True)
     kgc = providers.KaggleProvider()
-    r = ft.run(p, kgc, Release(repo, tag=ft.RELEASE), args.shot, args.engine,
-               [c.strip() for c in args.controls.split(",") if c.strip()], Path(args.work), args.minutes)
+    r = ft.run(p, kgc, Release(repo, tag=ft.RELEASE), args.shot,
+               [e.strip() for e in args.engine.split(",") if e.strip()],
+               [c.strip() for c in args.controls.split(",") if c.strip()], Path(args.work), args.minutes,
+               backend=args.backend, batches=Release(repo))
     print("\n".join(kgc.log[-6:]))
     print(json.dumps(r, indent=1, default=str))
     return 0 if r["jobs"] and all(j["ok"] for j in r["jobs"].values()) else 3
@@ -104,11 +106,14 @@ def main(argv=None) -> int:
     a.add_argument("--variants", default="fp16,fp32", help="precisions to try, in order (fp16, fp32, bf16, config)")
     a.add_argument("--minutes", type=int, default=60)
     a.add_argument("--out", default="probe-out")
-    a = sub.add_parser("finish-test", help="one shot's AI finish on a Kaggle T4, outside the ledger "
+    a = sub.add_parser("finish-test", help="one shot's AI finish on a Kaggle T4 (or Colab), outside the ledger "
                                           "(render it with --guides first)")
     a.add_argument("shot")
-    a.add_argument("--engine", default=steps.FINISH, help="ai_finish, or a variant such as ai_finish_720")
+    a.add_argument("--engine", default=steps.FINISH,
+                   help="finish engines, comma-separated: ai_finish, a variant such as ai_finish_720, or both")
     a.add_argument("--controls", default="depth,lines", help="the guides to finish from, one job each")
+    a.add_argument("--backend", default="kaggle", choices=["kaggle", "colab"],
+                   help="colab spends the owner's units: only with the owner's yes")
     a.add_argument("--minutes", type=int, default=120, help="the notebook's time limit")
     a.add_argument("--work", default="finish-test")
     a.add_argument("--chosen-refs", action="store_true",
