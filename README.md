@@ -31,6 +31,7 @@ python -m engine cgi auto --chapter 1               # unattended: voices, render
 
 - **Characters from code:** anime bodies, faces and hair for each age, so no modelling is needed.
 - **Dialogue, automated:** every line voiced in English and Japanese (Kokoro-82M), fitted into its shot, lip-synced and subtitled. One audio track per language.
+- **Dubbing:** each language has its own lips. Speaking shots are rendered once per language, each chapter gets a dubbed cut (`chapter_1.ja.mp4`), and every line's sync is checked against broadcast limits (ITU-R BT.1359).
 - **Unattended:** GitHub's runners (`.github/workflows/cgi.yml`) remake a chapter whenever its sheets or lines change.
 - The cut uses these renders when `cgi.use_in_cut` is on in `config.json`.
 

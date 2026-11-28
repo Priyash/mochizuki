@@ -90,7 +90,9 @@ class Placed:
     nonverbal: bool
     voice: str
     lines: dict = field(default_factory=dict)          # language -> {"wav", "start", "end", "text"}
-    mouth: dict = field(default_factory=dict)          # channel -> per-frame values for the whole shot
+    mouth: dict = field(default_factory=dict)          # the primary language's mouths (channel -> per frame)
+    mouths: dict = field(default_factory=dict)         # language -> channel -> per-frame values: each dub's own lips
+    sync: dict = field(default_factory=dict)           # language -> lipsync.sync_report of this line
 
 
 def _duration(wav: Path) -> float:
@@ -133,15 +135,19 @@ def voice_shot(p, shot_id: str, languages: list[str] | None = None, engine: str 
         for lang in languages:
             wav, start, end = timing[lang]["placed"][k]
             pl.lines[lang] = {"wav": str(wav), "start": round(start, 3), "end": round(end, 3), "text": ln.text(lang)}
-        lp = pl.lines[primary]
-        m = lipsync.for_line(Path(lp["wav"]), ln.text(primary), primary, fps, ln.ja_kana)
-        first = int(round(lp["start"] * fps))
-        for ch, vals in m.items():
-            row = [0.0] * frames
-            for i, v in enumerate(vals):
-                if 0 <= first + i < frames:
-                    row[first + i] = v
-            pl.mouth[ch] = row
+        for lang in languages:                          # every language its own lips, for dubbing
+            lp = pl.lines[lang]
+            m, pl.sync[lang], first = lipsync.line_mouth(Path(lp["wav"]), ln.text(lang), lang, fps, ln.ja_kana,
+                                                         on=int(cfg["character_step"]), start_s=lp["start"])
+            rows = {}
+            for ch, vals in m.items():
+                row = [0.0] * frames
+                for i, v in enumerate(vals):
+                    if 0 <= first + i < frames:
+                        row[first + i] = v
+                rows[ch] = row
+            pl.mouths[lang] = rows
+        pl.mouth = pl.mouths[primary]
         placed.append(pl)
     tracks = {}
     for lang in languages:
@@ -214,6 +220,14 @@ def mix(out: Path, seconds: float, parts: list[tuple[Path, float]], rate: int = 
                 break
             track[a + i] += x
     return lipsync.write_wav(out, [max(-1.0, min(1.0, x)) for x in track], rate)
+
+
+def dubbed_languages(manifest: dict | None) -> list[str]:
+    """The languages, other than the primary one, whose lips differ on screen in this shot: someone
+    speaks words on screen. A shot with none is rendered once for every language."""
+    if not manifest or not any(ln.get("on_screen", True) and not ln.get("nonverbal") for ln in manifest["lines"]):
+        return []
+    return [lang for lang in manifest.get("languages", []) if lang != manifest.get("primary")]
 
 
 def shot_manifest(p, shot_id: str) -> dict | None:

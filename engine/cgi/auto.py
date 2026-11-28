@@ -4,10 +4,12 @@
 
 Stages, each safe to repeat (only what changed is redone):
     voices   every line of the chapter voiced in every language, placed, lip-synced, mixed per shot
-    render   this shard's shots: built and rendered (previews, or --final 4K); a shot whose plan has
-             not changed since its last render is skipped
-    finish   the storyboard, the chapter cut with its dialogue tracks and .srt files, and a review
-             sheet (review.json) for Claude's reviewer run
+    render   this shard's shots: built and rendered (previews, or --final 4K), and each speaking shot
+             again per other language (<shot>.<language>.mp4, config cgi.dubs); a shot whose plan
+             has not changed since its last render is skipped
+    finish   the storyboard, the chapter cut with its dialogue tracks and .srt files, a dubbed cut per
+             other language (chapter_N.<language>.mp4: its own lips and voice), and a review sheet
+             (review.json) for Claude's reviewer run
 
 Shards let many machines share a chapter (GitHub's runners: .github/workflows/cgi.yml). Nothing here
 waits for a person: acting sheets in "draft" render like approved ones; a sheet set to "hold" is
@@ -87,45 +89,67 @@ def prune_frames(folder: Path, keep: int = 3) -> int:
     return gone
 
 
+def dub_languages(p, shot_id: str) -> list[str]:
+    """The languages a shot is rendered in besides the primary one (config cgi.dubs)."""
+    if settings(p).get("dubs", "all") != "all":
+        return []
+    return dialogue.dubbed_languages(dialogue.shot_manifest(p, shot_id))
+
+
+def _render_one(p, sid: str, final: bool, size, force: bool, language: str | None) -> dict | None:
+    """Render one shot in one language, unless its plan is unchanged since its last render (None)."""
+    cfg = settings(p)
+    tag = "final" if final else "preview"
+    pl = planner.build(p, sid, preview=not final, size=size, language=language)
+    h = plan_hash(pl)
+    stamp = work_dir(p, cfg, sid) / f"render-{tag}{pl['output'].get('clip_suffix', '')}.json"
+    prev = json.loads(stamp.read_text()) if stamp.exists() else {}
+    if not force and prev.get("hash") == h and Path(prev.get("clip", "")).exists():
+        return None
+    t0 = time.time()
+    r = rnd.render_shot(p, sid, preview=not final, size=size, language=language)
+    stamp.write_text(json.dumps({"hash": h, "clip": r["clip"], "seconds": round(time.time() - t0, 1),
+                                 "seconds_per_frame": r.get("seconds_per_frame"), "language": r.get("language"),
+                                 "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}))
+    return {"shot": sid, "clip": r["clip"], "seconds_per_frame": r.get("seconds_per_frame"),
+            "language": r.get("language")}
+
+
 def stage_render(p, chapter: int, shots: list[str], final: bool, size, force: bool, prune: bool = False) -> dict:
+    """Render the shots (and each speaking shot's dubs); a shot whose plan is unchanged is skipped."""
     cfg = settings(p)
     out: dict[str, list] = {"rendered": [], "skipped": [], "held": [], "failed": []}
-    tag = "final" if final else "preview"
     for sid in shots:
         if held(p, sid):
             out["held"].append(sid)
             continue
-        try:
-            pl = planner.build(p, sid, preview=not final, size=size)
-            h = plan_hash(pl)
-            stamp = work_dir(p, cfg, sid) / f"render-{tag}.json"
-            prev = json.loads(stamp.read_text()) if stamp.exists() else {}
-            if not force and prev.get("hash") == h and Path(prev.get("clip", "")).exists():
-                out["skipped"].append(sid)
-                continue
-            t0 = time.time()
-            r = rnd.render_shot(p, sid, preview=not final, size=size)
-            stamp.write_text(json.dumps({"hash": h, "clip": r["clip"], "seconds": round(time.time() - t0, 1),
-                                         "seconds_per_frame": r.get("seconds_per_frame"),
-                                         "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}))
-            out["rendered"].append({"shot": sid, "clip": r["clip"], "seconds_per_frame": r.get("seconds_per_frame")})
-            if prune:
-                prune_frames(work_dir(p, cfg, sid))
-        except Exception as e:  # noqa: BLE001 - one bad shot must not stop the chapter
-            log("render.failed", f"{sid}: {e}", level="error", shot=sid)
-            out["failed"].append({"shot": sid, "error": str(e)[:400]})
+        for language in [None, *dub_languages(p, sid)]:
+            name = sid if language is None else f"{sid}.{language}"
+            try:
+                done = _render_one(p, sid, final, size, force, language)
+                if done is None:
+                    out["skipped"].append(name)
+                else:
+                    out["rendered"].append(done)
+            except Exception as e:  # noqa: BLE001 - one bad shot must not stop the chapter
+                log("render.failed", f"{name}: {e}", level="error", shot=sid, language=language)
+                out["failed"].append({"shot": sid, "language": language, "error": str(e)[:400]})
+        if prune:
+            prune_frames(work_dir(p, cfg, sid))
     return out
 
 
 def review_sheet(p, chapter: int, final: bool) -> Path:
     """What Claude's reviewer run looks at: per shot, the acting sheet's intent, the frames to judge
-    (start, middle, end), the dialogue placed in it and any line that overruns the shot."""
+    (start, middle, end), the dialogue placed in it, any line that overruns the shot, and each spoken
+    line's lip sync in every language (lipsync.sync_report: ok means within broadcast tolerance)."""
     cfg = settings(p)
     items = []
     for s in p.chapter(chapter):
         d = dirn.direction_for(p, s.id)
         folder = work_dir(p, cfg, s.id)
-        frames = sorted(folder.glob("frames-*/*.png"), key=lambda f: f.stat().st_mtime)
+        frames = sorted((f for fd in rnd.frame_folders(folder) for f in fd.glob("*.png")),
+                        key=lambda f: f.stat().st_mtime)
         man = dialogue.shot_manifest(p, s.id) or {}
         items.append({
             "shot": s.id, "type": s.type, "description": s.shot, "status": d.status,
@@ -136,6 +160,9 @@ def review_sheet(p, chapter: int, final: bool) -> Path:
             "lines": [f"{ln['who']}: {ln['lines'].get(man.get('primary', 'en'), {}).get('text', '')}"
                       for ln in man.get("lines", [])],
             "overruns": man.get("overruns", []),
+            "lipsync": [{"who": ln["who"], "language": lang, **rep}
+                        for ln in man.get("lines", []) if ln.get("on_screen", True) and not ln.get("nonverbal")
+                        for lang, rep in ln.get("sync", {}).items()],
             "frames": [str(f.relative_to(p.root)) for f in (frames[:1] + frames[len(frames) // 2:len(frames) // 2 + 1]
                                                              + frames[-1:])] if frames else [],
         })
@@ -158,7 +185,14 @@ def stage_finish(p, chapter: int, final: bool) -> dict:
     cfg = dict(p.config.get("cgi", {}))
     p.config.setdefault("cgi", {})["use_in_cut"] = True         # this cut is the CG one
     try:
-        out["cut"] = asm.assemble(p, steps.open_ledger(p), chapter, four_k=final)
+        led = steps.open_ledger(p)
+        out["cut"] = asm.assemble(p, led, chapter, four_k=final)
+        dubs = sorted({lang for sid in shots for lang in dub_languages(p, sid)})
+        out["dubs"] = {lang: asm.assemble(p, led, chapter, four_k=final, language=lang) for lang in dubs}
+        for lang, cut in out["dubs"].items():
+            if cut.get("undubbed"):
+                log("finish.undubbed", f"{lang} cut: {', '.join(cut['undubbed'])} keep the primary lips (no {lang} "
+                    "render)", level="warn", language=lang, shots=cut["undubbed"])
     finally:
         p.config["cgi"] = cfg
     out["review"] = str(review_sheet(p, chapter, final))

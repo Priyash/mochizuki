@@ -152,12 +152,26 @@ is said, and whether the speaker is on screen. The lines the shot sheet only des
 2. **Placing lines.** Lines never overlap, and each starts at its cue or after the line before it, plus a breath.
    If the lines would run past the cut, they first start earlier, then the breaths shorten, then the speech is sped
    up by at most 15%. Anything still too long is listed in the review sheet, so the line can be rewritten.
-3. **Lip sync** (kuchipaku). The loudness of the voice opens and closes the mouth, and the vowels give its shape
-   (A, I, U, E, O). For Japanese the vowels come from the kana; for English, from the spelling. The mouth moves in
-   anime's few steps and is held on twos, so it reads as drawn mouth flaps. While a character speaks, their smile
-   or grief softens around the words. Akari has no mouth, so its light pulses as it speaks.
-4. **In the cut.** English is the main audio track and Japanese is a second track; YouTube can carry both. Each
-   language gets an `.srt` file next to the video. Laughs are not subtitled.
+3. **Lip sync** (kuchipaku), in every language, accurate enough to dub (`engine/audio/lipsync.py`).
+   * The text gives each syllable its vowel shape (A, I, U, E, O) and says where the lips shut for m, b, p and ん.
+     Japanese is read from the kana; English from the spelling.
+   * The voice gives the timing. It is measured in the vowels' band (500 Hz to 3 kHz), so the hum of a shut-lipped
+     m and the hiss of an s never open the mouth. Syllables sit on the loudness peaks (de Jong & Wempe 2009). Each
+     closure lasts from where the vowel before stops to where the next is released.
+   * The mouth moves in anime's few steps and is held on twos, so it reads as drawn mouth flaps. A closure never hides
+     a vowel, even in fast speech. Each frame shows the sound a frame ahead, and a line's mouth is timed to the
+     sample, not to the nearest frame.
+   * Each line is checked against the limits viewers notice (ITU-R BT.1359: sound more than 45 ms before the picture,
+     or the picture more than 125 ms before the sound). The check measures every phrase's start and end, every
+     closure, and any mouth open in silence. The result goes in the review sheet.
+   * While a character speaks, their smile or grief softens around the words. Akari has no mouth, so its light
+     pulses as it speaks.
+4. **Dubs.** Each language is placed and lip-synced on its own timing. A shot where someone speaks on screen is
+   rendered once per language (`1-11.mp4`, `1-11.ja.mp4`). A shot with no words on screen is rendered once for
+   every language. `cgi.dubs` in `config.json` is `"all"` (the default) or `"none"`.
+5. **In the cut.** `chapter_N.mp4` has English as the main audio track and Japanese as a second track; YouTube can
+   carry both. Each language gets an `.srt` file next to it. Laughs are not subtitled. `chapter_N.ja.mp4` is the
+   Japanese dub: the Japanese renders, under the Japanese voices alone.
 
 ```bash
 python -m engine cgi voices --chapter 1           # voice, place and lip-sync every line of chapter 1
@@ -172,16 +186,20 @@ downloads once from Hugging Face.
 
 `python -m engine cgi auto --chapter N` makes a chapter with no one at the keyboard:
 
-1. **Voices:** every line voiced, placed and lip-synced.
-2. **Render:** every shot built and rendered (previews, or `--final` for 4K). A shot whose plan has not changed since
-   its last render is skipped. `--shard 2/8` takes one share of the shots, so several machines can work on one chapter.
-3. **Finish:** the storyboard, the chapter cut with its dialogue tracks and subtitles, and `media/cgi/review-chN.json`.
-   For each shot, the review sheet holds the intent from the acting sheet, three frames to judge, the lines placed in
-   it, and any line that runs over.
+1. **Voices:** every line voiced, placed and lip-synced in every language.
+2. **Render:** every shot built and rendered (previews, or `--final` for 4K), and each speaking shot again for each
+   dub. A shot whose plan has not changed since its last render is skipped. `--shard 2/8` takes one share of the
+   shots, so several machines can work on one chapter.
+3. **Finish:** the storyboard, the chapter cut with its dialogue tracks and subtitles, a dubbed cut per language,
+   and `media/cgi/review-chN.json`. For each shot, the review sheet holds:
+   * the intent from the acting sheet;
+   * three frames to judge;
+   * the lines placed in it, and any line that runs over;
+   * each spoken line's lip sync check, in every language.
 
 `.github/workflows/cgi.yml` runs the three stages on GitHub's free runners, splitting the renders across a matrix of
 machines. It runs when acting sheets, sets, lights, dialogue or the CG code change on `main`, or when started by hand.
-The board, the cut, the subtitles and the review sheet are uploaded to the release `cgi-chN`. Claude reviews them,
+The board, the cut, the dubbed cuts, the subtitles and the review sheet are uploaded to the release `cgi-chN`. Claude reviews them,
 edits the sheets, sets and lines, and pushes, which starts the next round.
 
 Nothing waits for a person. A sheet set to `"status": "hold"` is skipped: that is the owner's veto. Anything that
@@ -249,7 +267,8 @@ can copy it into `style_bible/acting.json` and edit it.
 **Phase 2: bodies and words.**
 * Body capture from video: SAM 3D Body on a GPU writes BVH files, which are retargeted to the VRM humanoid. MediaPipe pose
   on the Mac is the fallback.
-* Lip sync is done (vowels and loudness). Audio2Face-3D is the upgrade for close-ups that need the full face to speak.
+* Lip sync is done: per language, checked against broadcast limits. Audio2Face-3D is the upgrade for close-ups that
+  need the full face to speak.
 * Sets for chapters 2–5, the lunar colony and Akari's swarm.
 * Spring-bone hair and sleeves.
 * Physics for the chapter 4 action, where Blender's rigid bodies and low gravity do what video models cannot keep consistent.

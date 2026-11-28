@@ -158,13 +158,15 @@ def gaze_curves(d, me: dict, chars: dict, props: dict, cam: list[float], frames:
 MOUTHS = ("Fcl_MTH_A", "Fcl_MTH_I", "Fcl_MTH_U", "Fcl_MTH_E", "Fcl_MTH_O")
 
 
-def talking(manifest: dict | None, who: str, frames: int) -> dict:
-    """This character's lip-sync curves in the shot (from cgi voices), summed over their on-screen lines."""
+def talking(manifest: dict | None, who: str, frames: int, language: str | None = None) -> dict:
+    """This character's lip-sync curves in the shot (from cgi voices), summed over their on-screen lines,
+    for `language` (default: the primary one, whose curves every manifest has)."""
     out: dict = {}
     for ln in (manifest or {}).get("lines", []):
         if ln["who"] != who or not ln.get("on_screen", True):
             continue
-        for ch, vals in ln["mouth"].items():
+        mouths = (ln.get("mouths") or {}).get(language) if language else None
+        for ch, vals in (mouths or ln["mouth"]).items():
             row = out.setdefault(ch, [0.0] * frames)
             for i in range(min(frames, len(vals))):
                 row[i] = max(row[i], vals[i])
@@ -486,7 +488,9 @@ def cheat_props(props: dict, cam: dict, d, chars: dict | None = None) -> list[st
 
 # ---------------------------------------------------------------- the plan
 def build(p, shot_id: str, preview: bool = False, frames_only: tuple[int, int] | None = None,
-          size: tuple[int, int] | None = None, guides: tuple[str, ...] = ()) -> dict:
+          size: tuple[int, int] | None = None, guides: tuple[str, ...] = (), language: str | None = None) -> dict:
+    """One shot's plan. `language`: whose lips and voice it renders (default: the dialogue's primary
+    language); another language is a dub, whose frames and clip carry its code (1-11.ja.mp4)."""
     unknown = set(guides) - set(GUIDES)
     if unknown:
         raise ValueError(f"no guide pass called {', '.join(sorted(unknown))}; there are {', '.join(GUIDES)}")
@@ -519,12 +523,19 @@ def build(p, shot_id: str, preview: bool = False, frames_only: tuple[int, int] |
                              "height": by_chapter(spec.get("height_m", {}), s.chapter, 1.5),
                              "procedural": spec.get("procedural", "")}
     spoken = dialogue.shot_manifest(p, shot_id)
+    primary = (spoken or {}).get("primary")
+    if language and spoken and language not in spoken.get("languages", []):
+        raise ValueError(f"{shot_id}: no {language} voices; it is voiced in {', '.join(spoken['languages'])}")
+    dub = bool(language and language != primary and language in dialogue.dubbed_languages(spoken))
     for c in chars.values():
         gaze = gaze_curves(d, c, seen_by, props, cam["keys"][0]["loc"], frames, fps)
-        c["face"] = face_track(p, cfg, d, c, frames, fps, gaze, shot_dir, talking(spoken, c["name"], frames))
+        c["face"] = face_track(p, cfg, d, c, frames, fps, gaze, shot_dir,
+                               talking(spoken, c["name"], frames, language if dub else None))
         if d.camera.framing in ("ECU", "CU", "MCU") and cam["subject"] == c["name"]:
             follow_head(cam, c)
     tag = "preview" if preview else "final"
+    dub_tag = f"-{language}" if dub else ""            # a dub's frames and guides: frames-preview-640x360-ja
+    dub_suffix = f".{language}" if dub else ""         # its clip, plan and scene: 1-11.ja.mp4
     first, last = frames_only or (1, frames)
     return {
         "version": 1, "shot": shot_id, "chapter": s.chapter, "scene": d.scene, "description": s.shot,
@@ -535,9 +546,11 @@ def build(p, shot_id: str, preview: bool = False, frames_only: tuple[int, int] |
         "rig": rig, "pieces": pieces, "props": list(props.values()), "characters": list(chars.values()),
         "camera": cam, "timing": d.timing, "notes": d.notes, "cheated_out": hidden,
         "audio": (spoken or {}).get("audio", {}),
-        "output": {"dir": str(shot_dir), "frames": str(shot_dir / f"frames-{tag}-{res[0]}x{res[1]}"),
-                   "blend": str(shot_dir / f"{shot_id}.blend"),
-                   "guides": {g: str(shot_dir / f"guide-{tag}-{res[0]}x{res[1]}-{g}") for g in guides}},
+        "language": language if dub else primary,
+        "output": {"dir": str(shot_dir), "frames": str(shot_dir / f"frames-{tag}-{res[0]}x{res[1]}{dub_tag}"),
+                   "clip_suffix": dub_suffix,
+                   "blend": str(shot_dir / f"{shot_id}{dub_suffix}.blend"),
+                   "guides": {g: str(shot_dir / f"guide-{tag}-{res[0]}x{res[1]}{dub_tag}-{g}") for g in guides}},
         "guides": list(guides),
     }
 
@@ -545,6 +558,7 @@ def build(p, shot_id: str, preview: bool = False, frames_only: tuple[int, int] |
 def write(plan: dict) -> Path:
     out = Path(plan["output"]["dir"])
     out.mkdir(parents=True, exist_ok=True)
-    f = out / ("plan-preview.json" if "preview" in plan["output"]["frames"] else "plan.json")
+    name = "plan-preview" if "preview" in plan["output"]["frames"] else "plan"
+    f = out / f"{name}{plan['output'].get('clip_suffix', '')}.json"       # a dub's plan beside the primary's
     f.write_text(json.dumps(plan, indent=1), encoding="utf-8")
     return f

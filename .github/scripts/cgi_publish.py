@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from engine.assemble import CUTS_DIR, cut_path  # noqa: E402
+from engine.audio import dialogue  # noqa: E402
 from engine.project import Project, find_film  # noqa: E402
 
 FILM = find_film()                 # $FILM, else the only film in films/
@@ -26,9 +27,18 @@ def review(chapter: int) -> dict:
     return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {"shots": []}
 
 
+def dub_languages(p: Project) -> list[str]:
+    """The film's languages other than its primary one: each may have a dubbed cut."""
+    script = dialogue.load(p)
+    langs = script.get("languages", [])
+    return [x for x in langs if x != script.get("primary", langs[0] if langs else None)]
+
+
 def files(chapter: int) -> list[Path]:
+    p = Project(FILM)
     cgi, cut = MEDIA / "cgi", MEDIA / CUTS_DIR
-    out = [cgi / f"board-ch{chapter}.png", cut_path(Project(FILM), chapter), cgi / f"review-ch{chapter}.json"]
+    out = [cgi / f"board-ch{chapter}.png", cut_path(p, chapter), cgi / f"review-ch{chapter}.json"]
+    out += [cut_path(p, chapter, language=x) for x in dub_languages(p)]       # the dubbed cuts
     out += sorted(cut.glob(f"chapter_{chapter}.*.srt"))
     frames = [FILM / f for s in review(chapter)["shots"] for f in s.get("frames", [])]
     if frames:
@@ -51,7 +61,7 @@ def summary(chapter: int) -> str:
     rows, missing = [], []
     for s in p.chapter(chapter):
         folder = MEDIA / "cgi" / s.id
-        stamp = next(iter(sorted(folder.glob("render-*.json"))), None)
+        stamp = next((f for f in sorted(folder.glob("render-*.json")) if f.name.count(".") == 1), None)  # not a dub's
         info = json.loads(stamp.read_text()) if stamp else {}
         man = folder / "dialogue.json"
         lines = len(json.loads(man.read_text(encoding="utf-8"))["lines"]) if man.exists() else 0
@@ -63,14 +73,24 @@ def summary(chapter: int) -> str:
             f"| {info.get('seconds_per_frame') or ''} | {lines or ''} |"
         )
     over = [o for s in review(chapter)["shots"] for o in s.get("overruns", [])]
+    off_sync = [(s["shot"], x) for s in review(chapter)["shots"] for x in s.get("lipsync", []) if not x.get("ok")]
     text = [f"## CG chapter {chapter}", "",
-            f"Release: `cgi-ch{chapter}` (board, cut with dialogue, subtitles, review sheet and frames).", ""]
+            f"Release: `cgi-ch{chapter}` (board, cut with dialogue, dubbed cuts, subtitles, review sheet and frames).",
+            ""]
     if missing:
         text += [f"**{len(missing)} shots have no render:** {', '.join(missing)}. See the render jobs' logs.", ""]
     if over:
         text += (
             ["**Lines that run past their shot:**", ""]
             + [f"- {o['who']} ({o['language']}): {o['text']}… by {o['by_seconds']} s" for o in over]
+            + [""]
+        )
+    if off_sync:
+        text += (
+            ["**Lines whose lips are out of sync:**", ""]
+            + [f"- {sid} {x['who']} ({x['language']}): picture first {x['picture_first_ms']} ms, "
+               f"closures {x['closures'][0]}/{x['closures'][1]}, open in silence {x['open_in_silence']}"
+               for sid, x in off_sync]
             + [""]
         )
     text += ["| Shot | Length | Clip | s/frame | Lines |", "| --- | --- | --- | --- | --- |", *rows]
