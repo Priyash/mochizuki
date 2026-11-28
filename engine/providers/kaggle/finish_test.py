@@ -231,12 +231,15 @@ def _on_kaggle(p: Project, kgc, t: dict, minutes: int, poll: int, sleep) -> tupl
     return _results(out), seen, None
 
 
-def _on_colab(t: dict, batches: Release, minutes: int, poll: int, sleep) -> tuple[dict, list[str], str | None]:
-    """Leave the inputs for the Colab runner, wait for its results, take the batch's files down."""
+def _on_colab(t: dict, batches: Release, minutes: int, poll: int, sleep, wait: float | None = None,
+              keep: bool = False) -> tuple[dict, list[str], str | None]:
+    """Leave the inputs for the Colab runner, wait for its results, take the batch's files down.
+    keep: the batch stays posted until a runner gets a GPU for it, however long that takes; this waits
+    `wait` minutes for the results, then leaves them to `finish-test --collect <test id>`."""
     n = batch_names(t["test_id"], COLAB)
     batches.ensure()
     batches.upload(t["colab_archive"])
-    print(f"{n['inputs']} waits in the batches release for the Colab runner (every 30 min)", flush=True)
+    print(f"{n['inputs']} waits in the batches release for the Colab runner", flush=True)
     t0, seen = time.time(), list[str]()
     st = "waiting"
     while True:
@@ -253,11 +256,20 @@ def _on_colab(t: dict, batches: Release, minutes: int, poll: int, sleep) -> tupl
             break
         if st == "gone" and len(seen) > 1:
             return {}, seen, "the batch's files were taken down before its results came back"
-        if st != "running" and waited > COLAB_PICKUP_MINUTES:
+        if keep and waited > (wait or minutes + 120):
+            return {}, seen, (f"no results after {waited:.0f} min ({st}): the batch stays posted for the next "
+                              f"runner with a GPU; then: finish-test --collect {t['test_id']}")
+        if not keep and st != "running" and waited > COLAB_PICKUP_MINUTES:
             batches.delete(n["inputs"])                  # never left behind for a later run to spend units on
             return {}, seen, f"no Colab runner took the batch in {COLAB_PICKUP_MINUTES} min; it was taken down"
-        if waited > minutes + 120:
+        if not keep and waited > minutes + 120:
             return {}, seen, "the Colab run took too long to report; its results stay in the batches release"
+    return _take_results(t, batches, a), seen, None
+
+
+def _take_results(t: dict, batches: Release, a: dict) -> dict:
+    """The Colab results into <test>/out; the batch's files out of the batches release."""
+    n = batch_names(t["test_id"], COLAB)
     out = t["folder"] / "out"
     out.mkdir(parents=True, exist_ok=True)
     if n["results"] in a:
@@ -271,12 +283,12 @@ def _on_colab(t: dict, batches: Release, minutes: int, poll: int, sleep) -> tupl
     for name in n.values():
         if name in a:
             batches.delete(name)
-    return _results(out), seen, None
+    return _results(out)
 
 
 def run(p: Project, kgc, release: Release, shot_id: str, engines: list[str], controls: list[str], work: Path,
         minutes: int = 120, poll: int = 60, sleep=time.sleep, engine_set: str = "gpu", backend: str = "kaggle",
-        batches: Release | None = None) -> dict:
+        batches: Release | None = None, wait: float | None = None, keep: bool = False) -> dict:
     """Build, run on Kaggle or Colab, fetch, compare, upload the results. Returns the summary."""
     if backend not in BACKENDS:
         raise ValueError(f"backend must be one of {', '.join(BACKENDS)}")
@@ -290,11 +302,44 @@ def run(p: Project, kgc, release: Release, shot_id: str, engines: list[str], con
         results, seen, why = _on_kaggle(p, kgc, t, minutes, poll, sleep)
     else:
         assert batches is not None, "Colab needs the batches release"
-        results, seen, why = _on_colab(t, batches, minutes, poll, sleep)
+        results, seen, why = _on_colab(t, batches, minutes, poll, sleep, wait, keep)
     if why:
         results = {**results, "error": why}
+    return _report(p, t, release, results, seen, (time.time() - t0) / 60, backend)
+
+
+def collect(p: Project, release: Release, batches: Release, test_id: str, work: Path) -> dict:
+    """A Colab test whose results came back after its finish-test stopped waiting (--keep): the test is
+    rebuilt from its inputs on the release finish-tests, its results taken from the batches release."""
+    folder = work / test_id
+    assets = release.assets()
+    name = f"{test_id}-inputs.tar.gz"
+    if name not in assets:
+        raise FileNotFoundError(f"no {name} on the release {RELEASE}")
+    folder.mkdir(parents=True, exist_ok=True)
+    release.download(assets[name], folder / name)
+    data = folder / "dataset"
+    with tarfile.open(folder / name) as tar:
+        try:
+            tar.extractall(data, filter="data")
+        except TypeError:                                # Python before 3.11.4
+            tar.extractall(data)
+    m = json.loads((data / "manifest.json").read_text(encoding="utf-8"))
+    t = {"test_id": test_id, "folder": folder, "data": data, "jobs": m["jobs"], "ref": notebook_ref(p),
+         "engines": list(dict.fromkeys(j["engine"] for j in m["jobs"])), "shot": m["jobs"][0]["shot_id"]}
+    a = batches.assets()
+    n = batch_names(test_id, COLAB)
+    if n["results"] not in a:
+        st = "running" if n["claim"] in a else "waiting" if n["inputs"] in a else "gone"
+        return {"test": test_id, "error": f"no results yet ({st})", "jobs": {}, "files": []}
+    return _report(p, t, release, _take_results(t, batches, a), ["collected"], 0.0, COLAB)
+
+
+def _report(p: Project, t: dict, release: Release, results: dict, seen: list[str], minutes: float,
+            backend: str) -> dict:
+    """Side-by-sides, middle frames, summary and log, all to the release finish-tests."""
     made = compare(p, t, t["folder"] / "out", results)
-    s = summary(p, t, results, seen, (time.time() - t0) / 60, backend)
+    s = summary(p, t, results, seen, minutes, backend)
     s_file = t["folder"] / f"{t['test_id']}-summary.json"
     s_file.write_text(json.dumps(s, indent=1))
     out = t["folder"] / "out"

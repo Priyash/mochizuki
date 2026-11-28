@@ -30,6 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 340
     steps:
+      - name: When this job must be done (the runner asks for a GPU only while a run would still fit)
+        run: echo "COLAB_JOB_DEADLINE=$(( $(date +%s) + 330 * 60 ))" >> "$GITHUB_ENV"   # timeout-minutes: 340
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:

@@ -4,6 +4,7 @@ stops the VM, and uploads the results to the release."""
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import socket
 import tarfile
@@ -91,32 +92,60 @@ def stop_gpu_vms(cli, keep: set | None = None, why: str = "left behind") -> int 
     return n
 
 
+GPU_RETRY_SECONDS = 120          # between rounds of GPU requests, when the runner keeps asking
+
+
+def gpu_wait_seconds(cfg: dict, now: float | None = None) -> float:
+    """How long to keep asking for a GPU: colab.gpu_wait_minutes, but never so long that the batch's run
+    would outlast this GitHub job (COLAB_JOB_DEADLINE, epoch seconds, set by colab-run.yml): a job cut off
+    mid-run could leave its VM billing. With no known end to the job, one round only."""
+    end = os.environ.get("COLAB_JOB_DEADLINE")
+    if not end:
+        return 0.0
+    want = float(cfg.get("gpu_wait_minutes") or 0) * 60
+    return max(0.0, min(want, float(end) - (time.time() if now is None else now) - _wait_cap(cfg) - 300))
+
+
 def _wait_cap(cfg: dict) -> float:
     return float(cfg["batch_hours"]) * 3600 + float(cfg["setup_minutes"]) * 60 + 1800
 
 
 def run_remote(cli: ColabCLI, cfg: dict, session: str, inputs_tgz: Path, batch_id: str, out_tgz: Path,
-               packages: list[str], engine_set: str = "gpu", beat=None) -> dict:
+               packages: list[str], engine_set: str = "gpu", beat=None, gpu_wait: float = 0.0,
+               sleep=time.sleep) -> dict:
     """One VM: open it (first GPU that is granted), run the job, fetch the results, always stop it.
+    With `gpu_wait` seconds, it keeps asking for the GPUs, round after round, until one is granted or the
+    time is up: nothing bills until a VM comes up, and Colab's GPUs come and go by the hour.
 
     The result says what really happened, including GPU VMs that came up after their request had
     given up ("late_vms": they are stopped, but they ran and may have billed) and whether the
     account's VMs could be checked at all ("vms_unchecked")."""
     gpu = None
-    tried = []
-    late, unchecked = 0, False
+    tried: list[str] = []
+    late, unchecked, rounds = 0, False, 0
     before = {a["endpoint"] for a in (cli.assignments() or [])}
-    for g in cfg["gpus"]:
-        hm = ["--high-mem"] if g in cfg.get("high_mem_gpus", []) else []
-        code, out = cli.run(["new", "-s", session, "--gpu", g, *hm], timeout=2400)
-        if code == 0:
-            gpu = g
+    ask_until = time.time() + max(0.0, float(gpu_wait or 0))
+    while gpu is None:
+        rounds, tried = rounds + 1, []
+        for g in cfg["gpus"]:
+            hm = ["--high-mem"] if g in cfg.get("high_mem_gpus", []) else []
+            code, out = cli.run(["new", "-s", session, "--gpu", g, *hm], timeout=2400)
+            if code == 0:
+                gpu = g
+                break
+            tried.append(_redact(f"{g}: {out.strip().splitlines()[-1] if out.strip() else code}")[:200])
+            n = stop_gpu_vms(cli, keep=before, why=f"that came up after the {g} request gave up")
+            late, unchecked = late + (n or 0), unchecked or n is None
+        if gpu is None and time.time() + GPU_RETRY_SECONDS < ask_until:
+            _log(f"no GPU in round {rounds} ({'; '.join(tried)}); asking again in "
+                 f"{GPU_RETRY_SECONDS // 60} min, until {time.strftime('%H:%M', time.gmtime(ask_until))} UTC",
+                 event="gpu.retry", level="warn", round=rounds)
+            sleep(GPU_RETRY_SECONDS)
+        elif gpu is None:
             break
-        tried.append(_redact(f"{g}: {out.strip().splitlines()[-1] if out.strip() else code}")[:200])
-        n = stop_gpu_vms(cli, keep=before, why=f"that came up after the {g} request gave up")
-        late, unchecked = late + (n or 0), unchecked or n is None
     if gpu is None:
-        error = "no GPU granted in time: " + "; ".join(tried)
+        error = (f"no GPU granted in time ({rounds} round(s) of requests): " if rounds > 1
+                 else "no GPU granted in time: ") + "; ".join(tried)
         if late:
             error += f" ({late} GPU VM(s) came up late and were stopped)"
         return {"ok": False, "gpu": None, "late_vms": late, "vms_unchecked": unchecked, "error": error}
@@ -252,6 +281,9 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
             manifest["deadline_seconds"] = afford
             (d / "in" / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
             cfg = {**cfg, "batch_hours": afford / 3600}
+    # the VM never needs longer than the batch's own deadline: a test asks for less than batch_hours
+    cfg = {**cfg, "batch_hours": min(float(cfg["batch_hours"]), float(manifest.get("deadline_seconds", 1e9)) / 3600)}
+    gpu_wait = gpu_wait_seconds(cfg)
     shutil.copyfile(WORKER, d / "in" / "worker.py")
     full = d / "full.tar.gz"
     with tarfile.open(full, "w:gz") as t:
@@ -281,7 +313,8 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
     threading.Thread(target=beat_loop, daemon=True).start()
     out_tgz = d / "out.tar.gz"
     try:
-        r = run_remote(cli, cfg, f"{SESSION_PREFIX}{batch_id[-11:]}", full, batch_id, out_tgz, packages, beat=beat)
+        r = run_remote(cli, cfg, f"{SESSION_PREFIX}{batch_id[-11:]}", full, batch_id, out_tgz, packages, beat=beat,
+                       gpu_wait=gpu_wait)
     finally:
         stop.set()
     if r.get("gpu") is None:                       # no GPU in time: the batch waits for the next run

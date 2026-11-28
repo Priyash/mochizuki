@@ -19,6 +19,7 @@ DEFAULTS: dict[str, Any] = {
     "stale_minutes": 30,
     "heartbeat_minutes": 5,
     "release_after_minutes": 20,
+    "gpu_wait_minutes": 0,       # keep asking for a GPU this long (0: one round); nothing bills meanwhile
 }
 SESSION_PREFIX = "mochi-"               # every Colab VM session this engine opens is named so
 RUNNER_WORKFLOW = "colab-run.yml"       # the GitHub workflow that runs a waiting batch on a VM

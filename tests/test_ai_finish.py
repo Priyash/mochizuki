@@ -523,3 +523,25 @@ def test_the_finish_hands_the_pipeline_its_prompt_on_the_pipelines_device(tmp_pa
     assert len(kw["video"]) == kw["num_frames"] == 49 and len(kw["reference_images"]) == 1
     assert (kw["width"], kw["height"], kw["num_inference_steps"]) == (832, 480, 30)
     assert info["frames"] == 49 and (tmp_path / "out.mp4").exists()
+
+
+@needs_ffmpeg
+def test_a_kept_colab_test_waits_for_a_gpu_and_is_collected_when_it_comes(tmp_path):
+    pytest.importorskip("PIL")
+    from test_mac import FakeRelease
+
+    from engine.providers.kaggle import finish_test as ft
+    from engine.providers.release import Release
+    proj = _rendered(tmp_path)
+    fr, fb = FakeRelease(tmp_path / "finish-tests"), FakeRelease(tmp_path / "batches")
+    rel, batches = Release("o/r", gh=fr.gh, tag=ft.RELEASE), Release("o/r", gh=fb.gh)
+    r = ft.run(proj, None, rel, SHOT, ["ai_finish"], ["depth"], tmp_path / "work", poll=0,
+               sleep=_ColabRunnerHere(fb, tmp_path / "vm", take=False), backend="colab", batches=batches,
+               wait=-1, keep=True)                                          # Colab has no GPU tonight
+    test = r["test"]
+    assert f"--collect {test}" in r["error"] and fb.names() == [f"colab-{test}.tar.gz"]   # still posted
+    assert ft.collect(proj, rel, batches, test, tmp_path / "later")["error"] == "no results yet (waiting)"
+    _ColabRunnerHere(fb, tmp_path / "vm")(0)                                # a runner gets a GPU at last
+    done = ft.collect(proj, rel, batches, test, tmp_path / "later")
+    assert done["jobs"]["ai_finish/depth"]["ok"] and done["statuses"] == ["collected"]
+    assert f"{test}-ai_finish-depth-middle.png" in fr.names() and fb.names() == []
