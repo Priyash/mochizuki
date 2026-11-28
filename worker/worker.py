@@ -79,7 +79,7 @@ LOG_FILE = None          # set by run(): <out>/worker.jsonl travels back with th
 
 
 def log(msg: str, event: str = "note", level: str = "info", **fields) -> None:
-    """Structured log line, same layout as pipeline/log.py: time, level, component, event, message,
+    """Structured log line, same layout as engine/log.py: time, level, component, event, message,
     key=value fields; also one JSON object per line in LOG_FILE."""
     now = time.time()
     kv = "  ".join(f"{k}={v}" for k, v in fields.items() if v is not None)

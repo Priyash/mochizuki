@@ -28,11 +28,11 @@ on:
   push:
     branches: [main]
     paths:
-      - "style_bible/acting.json"
-      - "style_bible/sets.json"
-      - "style_bible/lights.json"
-      - "style_bible/dialogue.json"
-      - "pipeline/cgi/**"
+      - "films/*/style_bible/acting.json"
+      - "films/*/style_bible/sets.json"
+      - "films/*/style_bible/lights.json"
+      - "films/*/style_bible/dialogue.json"
+      - "engine/cgi/**"
       - ".github/workflows/cgi.yml"
 concurrency:
   group: cgi-ch${{ inputs.chapter || '1' }}
@@ -40,6 +40,7 @@ concurrency:
 permissions:
   contents: write
 env:
+  FILM: ${{ vars.FILM }}      # the film to make (blank: the only one in films/)
   CHAPTER: ${{ inputs.chapter || '1' }}
   SIZE: ${{ inputs.size || '640x360' }}
   ENGINE: ${{ inputs.engine }}
@@ -57,13 +58,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Which film
+        run: echo "CGI=$(python -m engine where cgi)" >> "$GITHUB_ENV"
       - name: Tools
         run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg espeak-ng
       - name: Kokoro (CPU)
         if: env.ENGINE != 'stub'
         run: |
           pip install -q torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -q -r pipeline/cgi/tts/requirements.txt
+          pip install -q -r engine/cgi/tts/requirements.txt
       - name: The Japanese dictionary (cached)
         if: env.ENGINE != 'stub'
         uses: actions/cache@v4
@@ -80,19 +83,19 @@ jobs:
         with:
           path: |
             ~/.cache/huggingface
-            media/cgi/voices
-          key: cgi-voices-${{ hashFiles('style_bible/dialogue.json', 'pipeline/cgi/voice.py', 'pipeline/cgi/tts/*') }}
+            ${{ env.CGI }}/voices
+          key: cgi-voices-${{ hashFiles('films/*/style_bible/dialogue.json', 'engine/cgi/voice.py', 'engine/cgi/tts/*') }}
           restore-keys: cgi-voices-
       - name: Voice the chapter
         run: |
-          python -m pipeline cgi auto --chapter "$CHAPTER" --stage voices \
+          python -m engine cgi auto --chapter "$CHAPTER" --stage voices \
             ${ENGINE:+--engine "$ENGINE"} ${SHOTS:+--shots "$SHOTS"}
       - uses: actions/upload-artifact@v4
         with:
           name: voices
           path: |
-            media/cgi/*/dialogue.json
-            media/cgi/*/audio-*.wav
+            ${{ env.CGI }}/*/dialogue.json
+            ${{ env.CGI }}/*/audio-*.wav
           if-no-files-found: ignore
           retention-days: 7
 
@@ -111,21 +114,23 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: pipeline/cgi/blender/requirements.txt
+          cache-dependency-path: engine/cgi/blender/requirements.txt
+      - name: Which film
+        run: echo "CGI=$(python -m engine where cgi)" >> "$GITHUB_ENV"
       - name: Blender (bpy) and software OpenGL
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q ffmpeg libegl1 libegl-mesa0 libgl1 libgl1-mesa-dri libglx-mesa0 libgbm1 \
             libxkbcommon0 libsm6 libxi6 libxxf86vm1 libxfixes3 libxrender1
-          pip install -q -r pipeline/cgi/blender/requirements.txt
+          pip install -q -r engine/cgi/blender/requirements.txt
           python -c "import bpy; print('bpy', bpy.app.version_string)"
       - name: Earlier renders of this shard (unchanged shots are skipped)
         uses: actions/cache@v4
         with:
           path: |
-            media/cgi/[0-9]-*
-            !media/cgi/**/*.blend
-            !media/cgi/**/*.blend1
+            ${{ env.CGI }}/[0-9]-*
+            !${{ env.CGI }}/**/*.blend
+            !${{ env.CGI }}/**/*.blend1
           key: cgi-render-ch${{ env.CHAPTER }}-${{ env.SIZE }}-s${{ matrix.shard }}-${{ github.run_id }}
           restore-keys: cgi-render-ch${{ env.CHAPTER }}-${{ env.SIZE }}-s${{ matrix.shard }}-
       - name: This run's voices
@@ -133,27 +138,27 @@ jobs:
         continue-on-error: true
         with:
           name: voices
-          path: media/cgi
+          path: ${{ env.CGI }}
       - name: Render shard ${{ matrix.shard }} of ${{ env.SHARDS }}
         run: |
           export BLENDER="$(which python)"
-          python -m pipeline cgi auto --chapter "$CHAPTER" --stage render --shard "${{ matrix.shard }}/$SHARDS" \
+          python -m engine cgi auto --chapter "$CHAPTER" --stage render --shard "${{ matrix.shard }}/$SHARDS" \
             --size "$SIZE" --prune $FORCE ${SHOTS:+--shots "$SHOTS"}
       - name: Keep this shard's log
         if: always()
         run: |
-          mkdir -p media/cgi/logs
-          if [ -f media/cgi/logs/cgi.jsonl ]; then cp media/cgi/logs/cgi.jsonl "media/cgi/logs/shard-${{ matrix.shard }}.jsonl"; fi
+          mkdir -p "$CGI/logs"
+          if [ -f "$CGI/logs/cgi.jsonl" ]; then cp "$CGI/logs/cgi.jsonl" "$CGI/logs/shard-${{ matrix.shard }}.jsonl"; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: render-${{ matrix.shard }}
           path: |
-            media/cgi/*/*.mp4
-            media/cgi/*/render-*.json
-            media/cgi/*/plan-*.json
-            media/cgi/*/frames-*/*.png
-            media/cgi/logs/shard-*.jsonl
+            ${{ env.CGI }}/*/*.mp4
+            ${{ env.CGI }}/*/render-*.json
+            ${{ env.CGI }}/*/plan-*.json
+            ${{ env.CGI }}/*/frames-*/*.png
+            ${{ env.CGI }}/logs/shard-*.jsonl
           if-no-files-found: ignore
           retention-days: 7
 
@@ -167,6 +172,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Which film
+        run: echo "CGI=$(python -m engine where cgi)" >> "$GITHUB_ENV"
       - name: Tools
         run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg fonts-dejavu-core zip
       - name: The voices
@@ -174,15 +181,15 @@ jobs:
         continue-on-error: true
         with:
           name: voices
-          path: media/cgi
+          path: ${{ env.CGI }}
       - name: The renders
         uses: actions/download-artifact@v4
         with:
           pattern: render-*
-          path: media/cgi
+          path: ${{ env.CGI }}
           merge-multiple: true
       - name: Board, cut with dialogue and subtitles, review sheet
-        run: python -m pipeline cgi auto --chapter "$CHAPTER" --stage finish
+        run: python -m engine cgi auto --chapter "$CHAPTER" --stage finish
       - name: Publish to the release cgi-ch${{ env.CHAPTER }}
         env:
           GH_TOKEN: ${{ github.token }}

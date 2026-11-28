@@ -20,6 +20,8 @@ on:
 concurrency:
   group: colab-runner
   cancel-in-progress: false
+env:
+  FILM: ${{ vars.FILM }}      # the film to make (blank: the only one in films/)
 permissions:
   contents: write
   actions: write
@@ -65,19 +67,25 @@ jobs:
           MOCHI_PROBE: ${{ inputs.probe }}
         run: |
           if [ "${{ inputs.mode || 'run' }}" = "gpus" ]; then
-            python -m pipeline colab-gpus
+            python -m engine colab-gpus
           elif [ "${{ inputs.mode || 'run' }}" = "smoke" ]; then
-            python -m pipeline colab-smoke --work colab-smoke
+            python -m engine colab-smoke --work colab-smoke
           elif [ "${{ inputs.mode || 'run' }}" = "test" ]; then
-            python -m pipeline colab-test --out colab-test
+            python -m engine colab-test --out colab-test
           else
-            python -m pipeline colab-runner --work colab-work
+            python -m engine colab-runner --work colab-work
           fi
       - name: Start the producer to collect
         if: steps.gate.outputs.go == '1' && (inputs.mode || 'run') == 'run'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh api -X POST "repos/${{ github.repository }}/actions/workflows/produce.yml/dispatches" -f ref=main || true
+      - name: Stop any GPU VM left running
+        # Runs even when the run failed or was cancelled: a VM nobody watches still bills units.
+        if: always() && steps.gate.outputs.go == '1'
+        env:
+          COLAB_AUTH: adc
+        run: python -m engine colab-sweep
       - name: Forget the sign-in
         if: always()
         run: rm -f "$HOME/.config/gcloud/application_default_credentials.json"

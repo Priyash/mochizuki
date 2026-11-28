@@ -14,25 +14,28 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from pipeline.project import Project  # noqa: E402
+from engine.project import Project, find_film  # noqa: E402
+
+FILM = find_film()                 # $FILM, else the only film in films/
+MEDIA = FILM / "media"
 
 
 def review(chapter: int) -> dict:
-    f = ROOT / "media" / "cgi" / f"review-ch{chapter}.json"
+    f = MEDIA / "cgi" / f"review-ch{chapter}.json"
     return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {"shots": []}
 
 
 def files(chapter: int) -> list[Path]:
-    cgi, cut = ROOT / "media" / "cgi", ROOT / "media" / "animatic"
+    cgi, cut = MEDIA / "cgi", MEDIA / "animatic"
     out = [cgi / f"board-ch{chapter}.png", cut / f"chapter_{chapter}.mp4", cgi / f"review-ch{chapter}.json"]
     out += sorted(cut.glob(f"chapter_{chapter}.*.srt"))
-    frames = [ROOT / f for s in review(chapter)["shots"] for f in s.get("frames", [])]
+    frames = [FILM / f for s in review(chapter)["shots"] for f in s.get("frames", [])]
     if frames:
         z = ROOT / f"cgi-review-frames-ch{chapter}.zip"
         with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as zf:
             for f in frames:
                 if f.exists():
-                    zf.write(f, f.relative_to(ROOT))
+                    zf.write(f, f.relative_to(FILM))
         out.append(z)
     logs = sorted((cgi / "logs").glob("shard-*.jsonl"))
     if logs:
@@ -43,10 +46,10 @@ def files(chapter: int) -> list[Path]:
 
 
 def summary(chapter: int) -> str:
-    p = Project(ROOT)
+    p = Project(FILM)
     rows, missing = [], []
     for s in p.chapter(chapter):
-        folder = ROOT / "media" / "cgi" / s.id
+        folder = MEDIA / "cgi" / s.id
         stamp = next(iter(sorted(folder.glob("render-*.json"))), None)
         info = json.loads(stamp.read_text()) if stamp else {}
         man = folder / "dialogue.json"

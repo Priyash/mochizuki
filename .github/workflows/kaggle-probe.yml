@@ -8,6 +8,8 @@ on:
         description: "Precisions to try, in order"
         required: true
         default: "fp16,fp32"
+env:
+  FILM: ${{ vars.FILM }}      # the film to make (blank: the only one in films/)
 permissions:
   contents: read
 jobs:
@@ -27,7 +29,7 @@ jobs:
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
           set +e
-          python -m pipeline kaggle-probe --variants "${{ inputs.variants }}" --out probe-out
+          python -m engine kaggle-probe --variants "${{ inputs.variants }}" --out probe-out
           code=$?
           echo "===== worker log"
           find probe-out -name "*.log" -exec tail -c 20000 {} \;

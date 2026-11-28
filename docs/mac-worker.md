@@ -1,5 +1,7 @@
 # Rendering on your Mac
 
+> **Where files are:** the engine is `engine/`; each film is a folder in `films/` (this repository's is `films/mochizuki/`). Film paths below (`shots.csv`, `config.json`, `style_bible/`, `prompts/`, `assets/`, `media/`, `ledger.sqlite`) are inside the film's folder. `python -m engine where` prints it.
+
 Your Apple Silicon Mac renders the film offline and for free: reference stills, keyframes,
 video takes, and it trains the LoRAs that lock the film's look and its characters. Everything runs
 with MLX, Apple's own machine-learning framework, natively on the M-series GPU.
@@ -41,11 +43,11 @@ pip install git+https://github.com/Blaizzy/mlx-video.git   # video (Wan 2.2)
 ```bash
 source .venv/bin/activate && git pull
 
-caffeinate -i python -m pipeline mac-worker --self-test                     # a still and a keyframe
-caffeinate -i python -m pipeline mac-worker --self-test --engines zimage_base   # the same, 3D-leaning engine
-caffeinate -i python -m pipeline mac-worker --self-test --edit-only         # only the keyframe, from the last still
-caffeinate -i python -m pipeline mac-worker --video-test                    # a 2-second take from the last still
-caffeinate -i python -m pipeline mac-worker --video-test --seconds 4 --image ~/some.png
+caffeinate -i python -m engine mac-worker --self-test                     # a still and a keyframe
+caffeinate -i python -m engine mac-worker --self-test --engines zimage_base   # the same, 3D-leaning engine
+caffeinate -i python -m engine mac-worker --self-test --edit-only         # only the keyframe, from the last still
+caffeinate -i python -m engine mac-worker --video-test                    # a 2-second take from the last still
+caffeinate -i python -m engine mac-worker --video-test --seconds 4 --image ~/some.png
 ```
 
 Pictures and clips go to `~/mochizuki-mac/` (`selftest-style.png`, `selftest-style-edit.png`,
@@ -60,12 +62,12 @@ the 3D cel-shaded style, then one per main character.
    subjects and framings, the same look. Optionally a caption beside each: `img07.png` + `img07.txt`.
 2. Check the setup without training:
    ```bash
-   python -m pipeline mac-worker --train-lora style3d --images ~/mochizuki-look --trigger mchz3d \
+   python -m engine mac-worker --train-lora style3d --images ~/mochizuki-look --trigger mchz3d \
      --caption "3D CG anime film still, cel-shaded 3D models" --dry-run
    ```
 3. Train (several hours on a 32 GB Mac; run it overnight):
    ```bash
-   caffeinate -i python -m pipeline mac-worker --train-lora style3d --images ~/mochizuki-look --trigger mchz3d \
+   caffeinate -i python -m engine mac-worker --train-lora style3d --images ~/mochizuki-look --trigger mchz3d \
      --caption "3D CG anime film still, cel-shaded 3D models"
    ```
 
@@ -81,7 +83,7 @@ every still on this Mac uses it, with its trigger word in front of the prompt. C
 When `mac.enabled` is on in `config.json`, the producer on GitHub sends batches to the Mac:
 
 ```bash
-caffeinate -i python -m pipeline mac-worker            # until Ctrl-C;  --once: what waits, then stop
+caffeinate -i python -m engine mac-worker            # until Ctrl-C;  --once: what waits, then stop
 ```
 
 It checks for work every minute, claims a batch, renders it (stills, keyframes or takes, each with
@@ -122,7 +124,7 @@ send that file when something fails. `MOCHI_RAW=1` shows the tools' own output i
   `--seconds 2`; for training lower `mac.train.max_resolution` to 768.
 - **An unknown-option error:** the tools change their options between versions; send the log line.
 
-## How the code is laid out (`pipeline/mac/`)
+## How the code is laid out (`engine/mac/`)
 
 | Module | Its one job |
 |---|---|
@@ -138,4 +140,4 @@ send that file when something fails. `MOCHI_RAW=1` shows the tools' own output i
 | `backend.py` | the producer's side of the Mac backend |
 | `cli.py` | the `mac-worker` command |
 
-The producer and the Mac talk only through the `batches` release (`pipeline/release.py`).
+The producer and the Mac talk only through the `batches` release (`engine/release.py`).

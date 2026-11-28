@@ -1,0 +1,328 @@
+{
+  "_note": "Sets for the 3D pipeline, by scene (scenes.json names). Every shot of a scene is built from the same set, so place, props and marks never drift between shots. Metres, Z up; the front of the set is -Y (front_yaw 0). A mark is where a character stands or kneels and the way they face (yaw 0 faces -Y, 90 faces +X). props are where things sit when a shot does not move them. Pieces and props are drawn by engine/cgi/blender/props.py; anything it does not know is skipped with a warning.",
+  "sets": {
+    "1A": {
+      "_what": "The farmhouse porch on Tsukimi night: wooden boards, the stone mortar, a paper lantern under the eaves, the sea and the moon beyond.",
+      "front_yaw": 0,
+      "pieces": [
+        {
+          "kind": "floor",
+          "material": "wood",
+          "size": [
+            5.0,
+            3.2
+          ],
+          "at": [
+            0,
+            0.4,
+            0
+          ]
+        },
+        {
+          "kind": "sea",
+          "at": [
+            0,
+            30,
+            -6
+          ],
+          "size": 400
+        },
+        {
+          "kind": "moon",
+          "at": [
+            20,
+            55,
+            9
+          ],
+          "radius": 2.2
+        },
+        {
+          "kind": "eaves",
+          "at": [
+            0,
+            0.35,
+            2.3
+          ],
+          "size": [
+            5.0,
+            2.6
+          ],
+          "posts": true
+        }
+      ],
+      "props": {
+        "mortar": {
+          "at": [
+            0,
+            0,
+            0
+          ]
+        },
+        "mallet": {
+          "at": [
+            0.0,
+            0.03,
+            0.4
+          ],
+          "rot": [
+            -35,
+            0,
+            0
+          ]
+        },
+        "rice": {
+          "at": [
+            0,
+            0,
+            0.36
+          ]
+        },
+        "lantern": {
+          "at": [
+            0.7,
+            -0.6,
+            1.6
+          ]
+        },
+        "pampas": {
+          "at": [
+            -1.25,
+            0.75,
+            0
+          ]
+        },
+        "dumplings": {
+          "at": [
+            -0.95,
+            0.55,
+            0
+          ]
+        },
+        "bowl": {
+          "at": [
+            -0.35,
+            -0.42,
+            0.0
+          ]
+        },
+        "cushion": {
+          "at": [
+            -0.55,
+            -0.05,
+            0
+          ]
+        }
+      },
+      "marks": {
+        "sayo": {
+          "at": [
+            0.62,
+            0.05,
+            0
+          ],
+          "yaw": -90,
+          "posture": "standing"
+        },
+        "tsumugi": {
+          "at": [
+            -0.52,
+            -0.05,
+            0
+          ],
+          "yaw": 90,
+          "posture": "kneeling"
+        }
+      },
+      "vista": [
+        0,
+        30,
+        0.6
+      ]
+    },
+    "1B": {
+      "_what": "The same farmhouse weeks later: snow on the paddies at blue winter dusk, a single lantern.",
+      "front_yaw": 0,
+      "pieces": [
+        {
+          "kind": "floor",
+          "material": "snow",
+          "size": [
+            80,
+            80
+          ],
+          "at": [
+            0,
+            20,
+            0
+          ]
+        },
+        {
+          "kind": "moon",
+          "at": [
+            -30,
+            70,
+            10
+          ],
+          "radius": 2.0
+        }
+      ],
+      "props": {
+        "lantern": {
+          "at": [
+            0.25,
+            -0.35,
+            0.75
+          ],
+          "carried_by": "sayo"
+        }
+      },
+      "marks": {
+        "sayo": {
+          "at": [
+            0,
+            0,
+            0
+          ],
+          "yaw": 0,
+          "posture": "walking"
+        }
+      },
+      "vista": [
+        0,
+        30,
+        2
+      ]
+    },
+    "1C": {
+      "_what": "Inside the same farmhouse that winter night: the sunken hearth, paper screens, a tray set before an empty cushion.",
+      "front_yaw": 0,
+      "pieces": [
+        {
+          "kind": "floor",
+          "material": "tatami",
+          "size": [
+            3.6,
+            3.6
+          ],
+          "at": [
+            0,
+            0.6,
+            0
+          ]
+        },
+        {
+          "kind": "hearth",
+          "at": [
+            0,
+            0,
+            0
+          ],
+          "size": 0.9
+        },
+        {
+          "kind": "shoji",
+          "at": [
+            0,
+            2.4,
+            0
+          ],
+          "size": [
+            3.6,
+            2.0
+          ]
+        },
+        {
+          "kind": "shoji",
+          "at": [
+            1.8,
+            0.6,
+            0
+          ],
+          "size": [
+            3.6,
+            2.0
+          ],
+          "rot": [
+            0,
+            0,
+            90
+          ]
+        }
+      ],
+      "props": {
+        "cushion": {
+          "at": [
+            0,
+            1.0,
+            0
+          ]
+        },
+        "tray": {
+          "at": [
+            0,
+            0.68,
+            0
+          ]
+        },
+        "bowl": {
+          "at": [
+            0.08,
+            0.66,
+            0.05
+          ]
+        }
+      },
+      "marks": {
+        "sayo": {
+          "at": [
+            -0.55,
+            0.85,
+            0
+          ],
+          "yaw": 75,
+          "posture": "kneeling"
+        },
+        "tsumugi": {
+          "at": [
+            -1.05,
+            0.25,
+            0
+          ],
+          "yaw": 55,
+          "posture": "kneeling"
+        }
+      },
+      "vista": [
+        0,
+        2.4,
+        1.0
+      ]
+    },
+    "_default": {
+      "_what": "Any scene without its own set yet: a plain floor and a sky, so layout and timing can still be judged.",
+      "front_yaw": 0,
+      "pieces": [
+        {
+          "kind": "floor",
+          "material": "ground",
+          "size": [
+            30,
+            30
+          ],
+          "at": [
+            0,
+            5,
+            0
+          ]
+        }
+      ],
+      "props": {},
+      "marks": {},
+      "vista": [
+        0,
+        20,
+        3
+      ]
+    }
+  }
+}

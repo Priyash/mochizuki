@@ -14,11 +14,14 @@ from pathlib import Path
 
 import pytest
 
-from pipeline import assemble as asm
-from pipeline import kaggle as kg
-from pipeline import plan as planner
-from pipeline import providers, steps
-from pipeline.project import Project, wan_frames, wan_segments
+from engine import assemble as asm
+from engine import kaggle as kg
+from engine import plan as planner
+from engine import providers, steps
+from engine.project import (CONFIG_FILE, REF_PROMPTS_FILE, REFS_DIR, SCENES_FILE, SHOTS_FILE, STYLE_BIBLE_DIR, Project,
+                            wan_frames, wan_segments)
+
+from conftest import FILM
 
 REPO = Path(__file__).resolve().parents[1]
 HAS_FFMPEG = shutil.which("ffmpeg") is not None
@@ -43,21 +46,21 @@ def load_worker():
 
 
 def copy_project(tmp_path, csv_edit=None, cfg_edit=None, scenes=False) -> Project:
-    shutil.copy(REPO / "config.json", tmp_path / "config.json")
-    shutil.copytree(REPO / "style_bible", tmp_path / "style_bible")
+    shutil.copy(FILM / CONFIG_FILE, tmp_path / CONFIG_FILE)
+    shutil.copytree(FILM / STYLE_BIBLE_DIR, tmp_path / STYLE_BIBLE_DIR)
     if not scenes:                      # most tests check one thing at a time; scene tests opt in
-        (tmp_path / "style_bible" / "scenes.json").unlink()
-    for r in json.loads((REPO / "style_bible" / "ref_prompts.json").read_text())["refs"]:
-        write_png(tmp_path / "style_bible" / "refs" / f"{r['name']}.png")   # stand-in reference stills
-    text = (REPO / "shots.csv").read_text(encoding="utf-8")
+        (tmp_path / STYLE_BIBLE_DIR / SCENES_FILE).unlink()
+    for r in json.loads((FILM / STYLE_BIBLE_DIR / REF_PROMPTS_FILE).read_text())["refs"]:
+        write_png(tmp_path / STYLE_BIBLE_DIR / REFS_DIR / f"{r['name']}.png")   # stand-in reference stills
+    text = (FILM / SHOTS_FILE).read_text(encoding="utf-8")
     if csv_edit:
         text = csv_edit(text)
-    (tmp_path / "shots.csv").write_text(text, encoding="utf-8")
-    cfg = json.loads((tmp_path / "config.json").read_text())
+    (tmp_path / SHOTS_FILE).write_text(text, encoding="utf-8")
+    cfg = json.loads((tmp_path / CONFIG_FILE).read_text())
     cfg["kaggle"]["username"] = "tester"
     if cfg_edit:
         cfg_edit(cfg)
-    (tmp_path / "config.json").write_text(json.dumps(cfg))
+    (tmp_path / CONFIG_FILE).write_text(json.dumps(cfg))
     return Project(tmp_path)
 
 
@@ -230,7 +233,7 @@ def test_repeated_failures_stop_and_ask_a_person(proj):
 
 
 def test_lip_flap_is_a_fallback_for_dialogue(tmp_path):
-    base = Project(REPO)
+    base = Project(FILM)
     target = next(s for s in base.chapter(1) if s.sound.startswith("Sayo:"))
     assert target.model == "Wan 2.2 14B"                    # dialogue is animated by default
     proj = copy_project(tmp_path, csv_edit=lambda t: replace_row(
@@ -431,7 +434,7 @@ class FakeGH:
 
 
 def test_release_store_puts_each_file_in_its_chapter_release(proj):
-    from pipeline.store import tag_for
+    from engine.store import tag_for
     m = proj.media
     assert tag_for(proj, m / "keyframes" / "1-03" / "k.png") == "media-ch1"
     assert tag_for(proj, m / "takes" / "4-26" / "t.mp4") == "media-ch4"
@@ -441,7 +444,7 @@ def test_release_store_puts_each_file_in_its_chapter_release(proj):
 
 
 def test_a_reviewer_cannot_approve_and_only_the_owner_can(proj, tmp_path):
-    from pipeline import ci, review
+    from engine import ci, review
     led, ex = sync(proj)
     steps.keyframes(proj, led, ex, 1)
     s = proj.chapter(1)[0]
@@ -461,8 +464,8 @@ def test_a_reviewer_cannot_approve_and_only_the_owner_can(proj, tmp_path):
 
 @needs_ffmpeg
 def test_github_producer_loop_with_claude_reviews_and_owner_gates(tmp_path, monkeypatch):
-    from pipeline import ci
-    from pipeline.store import ReleaseStore
+    from engine import ci
+    from engine.store import ReleaseStore
     (tmp_path / "proj").mkdir()
     proj = copy_project(tmp_path / "proj", csv_edit=short_chapter)
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/mochizuki")
@@ -530,8 +533,8 @@ def test_no_reference_stills_means_no_keyframe_batch(tmp_path):
 
 @needs_ffmpeg
 def test_reference_stills_are_painted_picked_by_claude_and_approved_by_the_owner(tmp_path, monkeypatch):
-    from pipeline import ci
-    from pipeline.store import ReleaseStore
+    from engine import ci
+    from engine.store import ReleaseStore
     proj = copy_project(tmp_path)
     for f in ("tsumugi_ch1", "sayo"):                       # two refs still to make
         (tmp_path / "style_bible" / "refs" / f"{f}.png").unlink()
@@ -606,7 +609,7 @@ def test_an_aged_still_is_painted_from_the_approved_one(tmp_path):
 
 
 def test_every_shot_is_in_exactly_one_scene_with_its_anchor():
-    p = Project(REPO)
+    p = Project(FILM)
     seen = [x for sc in p.scenes().values() for x in sc["shots"]]
     assert sorted(seen) == sorted(s.id for s in p.shots)
     for sid, sc in p.scenes().items():
@@ -665,6 +668,8 @@ def test_work_stuck_in_kaggles_queue_moves_to_the_other_backend(proj):
     queued = kg.LocalKaggle(proj.media)
     queued.push = lambda folder, acc, t: None                 # Kaggle accepts it but never starts it
     queued.status = lambda ref, handle=None: "queued"
+    cancelled = []
+    queued.cancel = lambda ref, handle=None: cancelled.append(ref)
     out = kg.tick_all(proj, led, [queued], 1, engine_set="stub")
     batch = led.active_batch("kaggle")["id"]
     led.set_batch(batch, submitted_at=batch and (__import__("time").time() - 4 * 3600))
@@ -673,6 +678,9 @@ def test_work_stuck_in_kaggles_queue_moves_to_the_other_backend(proj):
     acts = [(a["backend"], a["action"]) for a in out]
     assert ("kaggle", "handed_over") in acts and ("extra", "built_and_submitted") in acts
     assert led.batch(batch)["status"] == "failed"
+    assert cancelled == ["tester/mochizuki-worker"]           # the queued run can't start later, unwatched
+    assert "the queued run was cancelled" in led.batch(batch)["note"]
+    assert kg.kaggle_stuck(led)
     assert not led.active_batch("kaggle")                      # Kaggle waits; the other backend took the work
     extra_jobs = {j["shot_id"] for a in out if a.get("batch") and a["backend"] == "extra"
                   for j in led.batch_jobs(a["batch"])}
@@ -692,6 +700,107 @@ def test_a_backend_that_cannot_start_a_batch_frees_its_jobs(proj):
     assert out[0]["action"] == "error" and not led.active_batch("extra")
     out = kg.tick_all(proj, led, [kg.LocalKaggle(proj.media)], 1, engine_set="stub")
     assert out[0]["action"] == "built_and_submitted"              # Kaggle takes the freed work
+
+
+def test_a_handover_that_cannot_cancel_the_queued_run_says_so(proj):
+    led, ex = sync(proj)
+    board(proj, led, ex)
+    queued = kg.LocalKaggle(proj.media)
+    queued.push = lambda folder, acc, t: None
+    queued.status = lambda ref, handle=None: "queued"
+    def refuse(ref, handle=None):
+        raise kg.KaggleError("kaggle kernels delete failed: 403")
+    queued.cancel = refuse
+    kg.tick_all(proj, led, [queued], 1, engine_set="stub")
+    batch = led.active_batch("kaggle")["id"]
+    led.set_batch(batch, submitted_at=time.time() - 4 * 3600)
+    out = kg.tick_all(proj, led, [queued, kg.LocalKaggle(proj.media, name="extra")], 1, engine_set="stub")
+    over = next(a for a in out if a["action"] == "handed_over")
+    assert over["cancelled"] is False and "could not cancel" in over["reason"]
+    assert "could not be cancelled and may still start" in led.batch(batch)["note"]
+    assert kg.kaggle_stuck(led)                                    # still recognised as a stuck Kaggle batch
+
+
+def test_a_batch_that_cannot_be_packed_frees_its_jobs(proj, monkeypatch):
+    led, ex = sync(proj)
+    board(proj, led, ex)
+    def broken_pack(*a, **k):
+        raise kg.KaggleError("input media/keyframes/1-01.png is missing")
+    monkeypatch.setattr(kg, "_pack", broken_pack)
+    out = kg.tick_all(proj, led, [kg.LocalKaggle(proj.media)], 1, engine_set="stub")
+    assert out[0]["action"] == "error" and not led.active_batch("kaggle")
+    assert led.pending() == []                                     # nothing left reserved for a batch that never was
+    hero = next(s for s in proj.chapter(1) if s.type == "Hero")
+    assert led.failures(hero.id, "take") == 0
+    monkeypatch.undo()
+    out = kg.tick_all(proj, led, [kg.LocalKaggle(proj.media)], 1, engine_set="stub")
+    assert out[0]["action"] == "built_and_submitted"               # the freed work is packed again
+
+
+def _flaky_output(local, fails: int, error: str = "kaggle kernels output failed: 500 Internal Server Error"):
+    real, left = local.output, {"n": fails}
+    def output(ref, dest, handle=None):
+        if left["n"]:
+            left["n"] -= 1
+            raise kg.KaggleError(error)
+        return real(ref, dest, handle)
+    local.output = output
+
+
+def test_a_failed_download_keeps_the_batch_open_and_tries_again(proj):
+    led, ex = sync(proj)
+    board(proj, led, ex)
+    local = kg.LocalKaggle(proj.media)
+    _flaky_output(local, fails=2)
+    bid = kg.tick(proj, led, local, 1, engine_set="stub")["batch"]
+    for n in (1, 2):
+        r = kg.tick(proj, led, local, 1, engine_set="stub")
+        assert r["action"] == "waiting" and r["status"] == "collecting", r
+        assert led.batch(bid)["status"] == "submitted" and led.batch(bid)["collect_tries"] == n
+    r = kg.tick(proj, led, local, 1, engine_set="stub")
+    assert r["action"] == "collected" and r["made"] > 0 and r["failed"] == 0, r   # nothing lost
+
+
+def test_downloads_that_keep_failing_close_the_batch_without_blaming_a_shot(proj):
+    led, ex = sync(proj)
+    board(proj, led, ex)
+    local = kg.LocalKaggle(proj.media)
+    _flaky_output(local, fails=99)
+    bid = kg.tick(proj, led, local, 1, engine_set="stub")["batch"]
+    acts = [kg.tick(proj, led, local, 1, engine_set="stub") for _ in range(kg.COLLECT_TRIES)]
+    assert [a["action"] for a in acts] == ["waiting"] * (kg.COLLECT_TRIES - 1) + ["collected"]
+    assert acts[-1]["made"] == 0 and acts[-1]["not_reached"] > 0
+    assert "download failed 3 times" in led.batch(bid)["note"]
+    hero = next(s for s in proj.chapter(1) if s.type == "Hero")
+    assert led.failures(hero.id, "take") == 0
+
+
+def test_a_deleted_notebook_is_not_downloaded_again(proj):
+    led, ex = sync(proj)
+    board(proj, led, ex)
+    local = kg.LocalKaggle(proj.media)
+    _flaky_output(local, fails=99, error="kaggle kernels output failed: 404 Not Found")
+    kg.tick(proj, led, local, 1, engine_set="stub")
+    r = kg.tick(proj, led, local, 1, engine_set="stub")
+    assert r["action"] == "collected" and r["not_reached"] > 0     # gone for good: its jobs are freed at once
+
+
+def test_an_output_missing_from_the_download_is_not_the_shots_fault(proj):
+    led, ex = sync(proj)
+    board(proj, led, ex)
+    local = kg.LocalKaggle(proj.media)
+    real = local.output
+    def lossy(ref, dest, handle=None):
+        real(ref, dest, handle)
+        results = next(dest.rglob("results.json"))
+        made = [j for j in json.loads(results.read_text())["jobs"].values() if j.get("ok")]
+        (results.parent / made[0]["file"]).unlink()               # one file did not come down
+    local.output = lossy
+    kg.tick(proj, led, local, 1, engine_set="stub")
+    r = kg.tick(proj, led, local, 1, engine_set="stub")
+    assert r["action"] == "collected" and r["made"] > 0 and r["not_reached"] == 1 and r["failed"] == 0, r
+    lost = [j for j in led.db.execute("SELECT * FROM jobs WHERE note=?", (kg.MISSING,))]
+    assert len(lost) == 1 and led.failures(lost[0]["shot_id"], lost[0]["kind"]) == 0
 
 
 def test_engine_load_failures_do_not_use_up_a_shot_and_stop_after_two_batches(tmp_path, monkeypatch):
@@ -714,7 +823,7 @@ def test_engine_load_failures_do_not_use_up_a_shot_and_stop_after_two_batches(tm
 
 def test_ci_step_runs_from_the_command_line(tmp_path):
     proj = copy_project(tmp_path)
-    r = subprocess.run([sys.executable, "-m", "pipeline", "--root", str(proj.root), "ci-step", "--kaggle", "local",
+    r = subprocess.run([sys.executable, "-m", "engine", "--film", str(proj.root), "ci-step", "--kaggle", "local",
                         "--no-store", "--state", str(tmp_path / "state"), "--engine-set", "stub"],
                        capture_output=True, text=True, cwd=REPO)
     assert r.returncode == 0, r.stderr[-2000:]

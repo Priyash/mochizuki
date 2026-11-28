@@ -1,189 +1,182 @@
 # Mochizuki
 
-A ten-minute anime short, produced by a pipeline that runs on free GPUs and finishes in 4K.
+*A ten-minute anime short, made by a pipeline that runs on free GPUs and finishes in 4K.*
 
-The story runs in five chapters, from a rice-pounding night on the Noto coast to a lunar colony. The look is **full 3D CG anime**: cel-shaded characters and sets, clean ink outlines and painterly light. The pipeline turns the shot sheet (`shots.csv`, 138 shots, 600 s) into generation jobs. It runs them in batches on Kaggle's free GPUs, then cuts the chapter at 3840×2160.
+Five chapters, from a rice-pounding night on the Noto coast to a lunar colony. The look is **full 3D CG anime**: cel-shaded characters and sets, clean ink outlines, painterly light.
 
-It costs no money. It does cost time: the free GPU quota is about 30 hours a week.
+| | |
+| --- | --- |
+| **Film** | 600 s, 138 shots in 5 chapters (`shots.csv`) |
+| **Picture** | 3840×2160 |
+| **Money** | Free GPUs (Kaggle, GitHub, your Mac). Colab units only for reference stills, inside the cap you set |
+| **Time** | Kaggle's free quota is about 30 GPU hours a week |
+| **You** | Own every creative decision. The pipeline stops at each gate and waits for you |
 
-## The 3D CG pipeline (new)
+---
 
-The moving picture is now made the way 3D CG anime is made. Each character, prop and set is built once. Each shot gets
-an acting sheet (camera, beats, restraint, gaze, timing), and the emotional shots are acted on an iPhone. Blender's
-real-time renderer then draws every frame natively in 4K on the Mac. Shots are coherent because they share one set of
-models, and fast because nothing is generated frame by frame. The generative models below stay for design: character
-sheets, colour keys and storyboards. See **[docs/cgi-pipeline.md](docs/cgi-pipeline.md)**, and start with:
+## How a shot is made
+
+There are two paths. The 3D path is the main one; the generative path is kept for design work and as an option.
+
+### 1. The 3D CG path (main)
+
+Characters, props and sets are built **once**. Each shot gets an **acting sheet** (camera, beats, gaze, timing), and Blender's real-time renderer draws every frame natively in 4K. Shots stay coherent because they share one set of models. Full guide: **[docs/cgi-pipeline.md](docs/cgi-pipeline.md)**.
 
 ```bash
-python -m pipeline cgi check
-python -m pipeline cgi render 1-02 --preview          # the mallet falls into the mortar
-python -m pipeline cgi render --chapter 1 --board     # chapter 1 as a storyboard from the real sets
-python -m pipeline cgi auto --chapter 1               # unattended: voices, renders, board, cut with dialogue
+python -m engine cgi check
+python -m engine cgi render 1-02 --preview          # the mallet falls into the mortar
+python -m engine cgi render --chapter 1 --board     # chapter 1 as a storyboard from the real sets
+python -m engine cgi auto --chapter 1               # unattended: voices, renders, board, cut
 ```
 
-The characters are made from code (anime bodies, faces and hair for each age, `pipeline/cgi/figure.py` and
-`pipeline/cgi/blender/anime.py`), so no modelling is needed. The dialogue is automated too: every line is voiced in English and Japanese (Kokoro-82M), fitted into its shot, lip-synced
-and subtitled, and the cut carries one audio track per language. GitHub's runners make each chapter
-(`.github/workflows/cgi.yml`) whenever the sheets or lines change.
+- **Characters from code:** anime bodies, faces and hair for each age, so no modelling is needed.
+- **Dialogue, automated:** every line voiced in English and Japanese (Kokoro-82M), fitted into its shot, lip-synced and subtitled. One audio track per language.
+- **Unattended:** GitHub's runners (`.github/workflows/cgi.yml`) remake a chapter whenever its sheets or lines change.
+- The cut uses these renders when `cgi.use_in_cut` is on in `config.json`.
 
-## How a shot is made (the generative pipeline)
+### 2. The generative path
 
 | Shot type | Count | Model | Native size | Takes |
 | --- | --- | --- | --- | --- |
 | Hero (faces, action, dialogue) | 56 | Wan 2.2 I2V A14B, GGUF on a T4 | 1280×720, 16 fps | up to 4 |
 | Simple (inserts, landscapes in motion) | 27 | Wan 2.2 TI2V 5B | 1280×704, 24 fps | up to 3 |
-| Still (held frames; pushes and particles added in the edit) | 55 | none | keyframe | 0 |
+| Still (held frames, moved in the edit) | 55 | none | keyframe | 0 |
 
-1. **Keyframes:** Qwen-Image-Edit-2511 draws 3 candidates per shot from your reference stills. A shot gets a second set of 3 only if all three fail.
-   - **Scenes keep it coherent.** `style_bible/scenes.json` groups the 138 shots into 20 scenes. Each scene's anchor keyframe is drawn and chosen first; every other shot in the scene is then drawn from it, so set, light, costume and time of day carry through. A scene that returns to an earlier place (the hearth, the porch, the ruined farmhouse) draws its anchor from that earlier scene, and a match cut ("lights become sparks") is drawn from the shot before it.
-   - **Characters age, not redesign.** Tsumugi at 27 and 87, Sayo very old, the bowl's later seams and Akari's forms are painted as edits of the approved earlier still, and each shot uses the version for its chapter.
-2. **Board (human gate):** you pick one keyframe per shot and approve the chapter.
-3. **Takes:** the video model animates the chosen keyframe, one take at a time. A retake runs only after the previous take has failed review. Shots longer than one model clip (about 5 s on the 14B model) are made as chained clips, each starting on the last frame of the one before.
-4. **Animatic (human gate):** a 640×360 cut of the chapter, which you approve.
-5. **4K:** takes are upscaled with Real-ESRGAN `realesr-animevideov3`, which keeps frames steady so the picture doesn't flicker. Keyframes are upscaled with Real-CUGAN 3x. Both are cropped to exactly 3840×2160.
-6. **Edit:** DaVinci Resolve (free) for the cut, grade, sound and music. Dialogue is recorded after the picture (afureko), and actors match the mouths.
+1. **Keyframes:** Qwen-Image-Edit-2511 draws 3 candidates per shot from the reference stills. Scenes (`style_bible/scenes.json`) keep it coherent: each scene's anchor is chosen first, and the other shots are drawn from it. Characters age as edits of the approved earlier still, never as a redesign.
+2. **Board** *(your gate)*: one keyframe per shot; you approve the chapter.
+3. **Takes:** Wan animates the chosen keyframe. A retake runs only after a take fails review. Long shots are chained clips, each starting on the last frame of the one before.
+4. **Animatic** *(your gate)*: a 640×360 cut you approve.
+5. **4K:** Real-ESRGAN `realesr-animevideov3` for takes (steady, no flicker), Real-CUGAN 3x for keyframes, both cropped to 3840×2160. This is upscaled from 720p, so fine texture is softer than a native render.
+6. **Edit:** DaVinci Resolve (free) for the grade, sound and music.
 
-Every model used is licensed for publishing your film: Wan 2.2 and Qwen-Image-Edit under Apache 2.0, Real-ESRGAN under BSD-3, Real-CUGAN under MIT.
+Every model is licensed for publishing the film: Wan 2.2 and Qwen-Image-Edit (Apache 2.0), Real-ESRGAN (BSD-3), Real-CUGAN (MIT).
 
-### About the 4K
+---
 
-The 4K is upscaled from 720p, not rendered at 4K. No free model makes native 4K video today. A clean 720p source upscaled by an anime-trained model looks sharp on a 4K screen. Fine texture will be softer than in a native 4K render. If that matters for a festival print, route your best Hero shots to a paid model instead (see "Paid fallback").
+## Where each stage runs
 
-## What has and has not been tested
+| Stage | Where | Notes |
+| --- | --- | --- |
+| 3D shots: renders, dialogue, the chapter cut | GitHub runners or your Mac | Native 4K, no GPU queue |
+| Reference stills | Google Colab, A100 or L4, pay-as-you-go ([docs/colab.md](docs/colab.md)) | Qwen-Image needs bf16; Kaggle's T4s give blank images |
+| Keyframes | Off since 28 Nov | The 3D pipeline draws the storyboard from the real sets. Add `keyframes` back to `colab.stages` to use them |
+| Stills and keyframes, free but slower | Your Mac ([docs/mac-worker.md](docs/mac-worker.md)) | Off until you set `mac.enabled` |
+| Video takes, 4K upscale | Kaggle T4s, free | About 30 GPU hours a week |
 
-| Part | State |
-| --- | --- |
-| Ledger, gates, take and failure caps, no double-making, resume | Tested |
-| Kaggle batch packing, weekly GPU cap, session budget, stale-dataset guard | Tested |
-| Kaggle CLI output parsing | Tested against recorded output, not a live account |
-| Whole loop to a 4K cut, using a local stand-in for Kaggle and stub engines | Tested. Gives 3840×2160 at full chapter length |
-| GitHub producer loop: Claude's reviews, owner-only gates, media in releases | Tested with stand-ins for Kaggle and `gh`; the workflows themselves run on first push |
-| **GPU engines (Qwen, Wan 14B and 5B, the upscalers) on a real T4** | **Not run yet.** The first Kaggle run is the test |
-| GPU-time estimates in `config.json` | My estimates, until real runs replace them |
-| The `fal` paid fallback | Written but never run; endpoint ids are placeholders |
+Each backend takes only the stages listed in its section of `config.json` (`kaggle.stages`, `colab.stages`, `mac.stages`).
 
-`python -m pytest -q` runs 40 tests in about 3 min. They need ffmpeg and nothing else.
+---
 
 ## Setup
 
-You need Python 3.10+, ffmpeg and a free Kaggle account.
+You need Python 3.10+, ffmpeg and a free Kaggle account. Paths in this section are inside the film's folder, `films/mochizuki/`; commands pick it up by themselves (choose another with `--film` or `FILM`).
 
-1. On kaggle.com, verify your phone number in your account settings. GPUs and internet in notebooks need it.
-2. In account settings, under API, create a new token. Then either put the token in `KAGGLE_API_TOKEN` in `.env`, or save the downloaded `kaggle.json` to `~/.kaggle/kaggle.json`.
-3. Put your Kaggle username in `config.json` → `kaggle.username`, or set `KAGGLE_USERNAME` in `.env`.
-4. Install the CLI: `pip install -r requirements.txt`.
-5. Check it: `kaggle quota -v` should show your GPU hours.
-6. Put reference stills in `style_bible/refs/` and approve the look (see `style_bible/README.md`).
+1. On kaggle.com, verify your phone number (GPUs and notebook internet need it).
+2. Under **Settings → API**, create a token. Put it in `KAGGLE_API_TOKEN` in `.env`, or save `kaggle.json` to `~/.kaggle/`.
+3. Set your Kaggle username in `config.json → kaggle.username`, or `KAGGLE_USERNAME` in `.env`.
+4. `pip install -r requirements.txt`, then check `kaggle quota -v` shows your GPU hours.
+5. Put reference stills in `style_bible/refs/` and approve the look (see [style_bible/README.md](style_bible/README.md)).
 
 ```bash
 cp .env.example .env      # fill it in; .env is never committed
-python -m pipeline plan   # dry run: GPU hours per shot, money (always $0 on the free plan)
+python -m engine plan   # dry run: GPU hours per shot, and money
 ```
 
-## First real run: three test shots
+---
 
-Before you commit a week of quota, test one keyframe and one take of each kind on a real T4:
+## Running it
+
+### On your machine
+
+`auto` takes one step each time: it collects a finished batch, or packs and submits the next. It stops when a person is needed, and it never approves a gate or raises a cap.
 
 ```bash
-python -m pipeline batch --chapter 1 --stage keyframes --shot 1-03
-python -m pipeline submit
-python -m pipeline collect          # rerun until it reports done (a batch takes 20-60 min)
-python -m pipeline queue --chapter 1
+python -m engine auto --chapter 1 --loop        # runs until the chapter needs you
 ```
 
-Repeat for `1-04` (Hero, 6 s, two chained clips) and `1-02` (Simple, 5B). Look at the files in `media/`. If a GPU engine fails, the reason is in `media/batches/<id>/download/out/results.json`. After a real run, compare the `gpu_seconds` it records with the estimates in `config.json`, and correct them so that `plan` and the batch sizing are accurate.
-
-## Running it automatically
-
-`auto` takes one step each time it is called. It collects a finished batch, or packs and submits the next one. It stops when a person is needed. It never approves a gate and never raises a cap.
-
-```bash
-python -m pipeline auto --chapter 1 --loop        # runs until the chapter needs you
-```
-
-Or from cron, every 30 minutes:
-
-```cron
-*/30 * * * * cd /path/to/mochizuki && python -m pipeline auto --chapter 1 >> auto.log 2>&1
-```
+Or from cron: `*/30 * * * * cd /path/to/mochizuki && python -m engine auto --chapter 1 >> auto.log 2>&1`
 
 Where a person (or a review agent following `AGENTS.md`) steps in:
 
 ```bash
-python -m pipeline queue --chapter 1                 # what needs a verdict
-python -m pipeline verdict <key> pass --note "on model"
-python -m pipeline select <key>                      # one keyframe per shot
-python -m pipeline approve --chapter 1 board --by human
-python -m pipeline assemble --chapter 1              # media/animatic/chapter_1.mp4
-python -m pipeline approve --chapter 1 animatic --by human
-python -m pipeline assemble --chapter 1 --4k         # media/animatic/chapter_1_4k.mp4
-python -m pipeline status --chapter 1                # states, 4K progress, GPU hours this week
+python -m engine queue --chapter 1                 # what needs a verdict
+python -m engine verdict <key> pass --note "on model"
+python -m engine select <key>                      # one keyframe per shot
+python -m engine approve --chapter 1 board --by human
+python -m engine assemble --chapter 1              # media/animatic/chapter_1.mp4
+python -m engine approve --chapter 1 animatic --by human
+python -m engine assemble --chapter 1 --4k         # media/animatic/chapter_1_4k.mp4
+python -m engine status --chapter 1                # states, 4K progress, GPU hours this week
 ```
 
-Kaggle rules the pipeline works inside:
+Kaggle's limits: sessions last 12 h at most, so batches are sized to 10 h including setup. The quota resets on Saturday at 00:00 UTC, and `weekly_gpu_hours` (default 28) stops a stuck run from using all of it. One batch runs at a time.
 
-- Sessions are 12 h at most. Batches are sized to 10 h, including about 25 min for setup.
-- The free GPU quota is about 30 h a week and resets on Saturday at 00:00 UTC. `weekly_gpu_hours` (default 28) keeps a stuck run from using it all.
-- One batch runs at a time.
-
-Try the loop for free on your own machine, using stub engines in place of the GPU:
+Try the whole loop for free, with stub engines in place of the GPU:
 
 ```bash
-KAGGLE_USERNAME=local python -m pipeline auto --chapter 1 --loop --kaggle local --engine-set stub
+KAGGLE_USERNAME=local python -m engine auto --chapter 1 --loop --kaggle local --engine-set stub
 ```
 
-## Letting Claude drive it (GitHub Actions)
+### On GitHub, with Claude reviewing
 
-Here, nothing runs on your machine. The work is split three ways:
+Nothing runs on your machine.
 
-- **The producer** is the `produce` workflow. It runs every two hours, or straight after a review or a command. Each run:
-  - applies Claude's verdicts;
-  - collects a finished Kaggle batch or starts the next one;
-  - uploads new media to this repo's releases (`media-chN`, `4k-chN`, `cuts`);
-  - exports the next review to the `state` branch;
-  - posts what is needed to the **Mochizuki production** issue.
-- **The reviewer** is a Claude scheduled task. It follows the "Reviewer run" in `AGENTS.md`: it looks at the review images, picks keyframes, passes or fails takes, pushes its verdicts and starts the producer.
-- **You** approve the two gates by commenting on the issue. Only comments by the repository owner are obeyed:
+- **The producer** (`produce` workflow, every two hours or when kicked) applies Claude's verdicts, collects or starts a batch, uploads media to releases, and posts what is needed to the **Mochizuki production** issue.
+- **The reviewer** is a Claude scheduled task following the "Reviewer run" in `AGENTS.md`.
+- **You** approve the gates by commenting on the issue. Only the repository owner's comments count:
 
 | Comment | What it does |
 | --- | --- |
-| `/approve refs` | Approves the reference stills Claude picked; they are committed to `style_bible/refs/` and keyframes start |
-| `/reject <name>` | Rejects one picked reference still (for example `/reject sayo`); another is picked or painted |
+| `/approve refs` | Makes the picked reference stills the film's look |
+| `/reject <name>` | Rejects one picked still (e.g. `/reject sayo`); a new one is painted |
 | `/approve board N` | Approves chapter N's keyframes; takes start |
 | `/approve animatic N` | Approves the cut; the 4K pass starts |
 | `/chapter N` | Moves the producer to chapter N |
 | `/status` | Replies with where the chapter stands |
 
-Setup, once:
+Setup, once: add the repository secrets `KAGGLE_USERNAME` and `KAGGLE_API_TOKEN` (or `KAGGLE_KEY` for an old-style key), and `COLAB_ADC_JSON` for Colab ([docs/colab.md](docs/colab.md)). Then **Actions → produce → Run workflow** to start at once. Missing reference stills listed in `style_bible/ref_prompts.json` are painted for you (4 candidates each), Claude picks one, and you approve.
 
-1. Settings → Secrets and variables → Actions → New repository secret. Add `KAGGLE_USERNAME` and `KAGGLE_API_TOKEN`. If you have an old-style `kaggle.json` key, add it as `KAGGLE_KEY` instead of `KAGGLE_API_TOKEN`.
-2. Reference stills: put your own in `style_bible/refs/` on `main`, or let Kaggle paint them. For every still listed in `style_bible/ref_prompts.json` that is missing, the producer paints 4 candidates with Qwen-Image-2512 (Apache 2.0), Claude picks the best, and you approve them on the issue.
-3. Actions → produce → Run workflow, to start at once rather than wait up to two hours.
+It fits inside GitHub Free: a few hundred Actions minutes a month, and release storage isn't charged. Claude judges still frames and can't see motion, so **watch every Hero take yourself** before you approve an animatic.
 
-What it uses:
+---
 
-- GitHub Actions minutes: each run takes 1 to 3 minutes, and runs about every two hours. That is a few hundred minutes a month, inside GitHub Free's allowance for private repositories.
-- Release storage: the media of the whole film is several GB, and GitHub doesn't charge for release files.
+## First real run: three test shots
 
-Its limits:
+Before spending a week of quota, run one take of each kind on a real T4, once each shot has a chosen keyframe: `1-03` (Hero, 14B), `1-04` (Hero, 6 s, two chained clips) and `1-02` (Simple, 5B).
 
-- Claude reviews still frames and can't watch motion, so watch every Hero take yourself before you approve the animatic.
-- The first real Kaggle run is still the test of the GPU models.
+```bash
+python -m engine batch --chapter 1 --stage video --shot 1-03
+python -m engine submit
+python -m engine collect          # rerun until it reports done
+python -m engine queue --chapter 1
+```
 
-## Where each stage runs
+If an engine fails, the reason is in `media/batches/<id>/download/out/results.json`. Then compare the `gpu_seconds` it recorded with the estimates in `config.json` and correct them, so `plan` and batch sizing are accurate.
 
-| Stage | Where | Why |
-|---|---|---|
-| Reference stills, keyframes | **Google Colab** pay-as-you-go (A100/L4), see [docs/colab.md](docs/colab.md) | Qwen-Image needs bf16; Kaggle's T4s only have fp16 and give blank images |
-| Reference stills, keyframes (free, slower) | **your Mac** (`python -m pipeline mac-worker`, [docs/mac-worker.md](docs/mac-worker.md)); off until you switch `mac.enabled` on | |
-| Video, 4K upscale | **Kaggle** T4s (free, 30 GPU h/week) | |
-| **3D shots: acting sheets, face capture, Blender renders in native 4K** | **your Mac** (`python -m pipeline cgi ...`, [docs/cgi-pipeline.md](docs/cgi-pipeline.md)) | Coherent by construction, no takes, no GPU queue |
+---
 
-Each backend takes only the stages in its `config.json` section (`kaggle.stages`, `colab.stages`, `mac.stages`).
+## What is tested
+
+| Part | State |
+| --- | --- |
+| Ledger, gates, take and failure caps, resume | Tested |
+| Kaggle batch packing, weekly cap, session budget, stale-dataset guard | Tested |
+| Whole loop to a 4K cut, with a stand-in for Kaggle and stub engines | Tested |
+| GitHub producer loop and the owner's commands | Tested with stand-ins, and running live |
+| Colab round trip | Run live: 24 reference stills on an A100 (27 Nov) |
+| 3D pipeline: sheets, plans, dialogue, renders | Tested, and rendered in Blender 5.3 |
+| **Wan 14B, Wan 5B and the upscalers on a real T4** | **Not run yet.** The first Kaggle run is the test |
+| GPU-time estimates in `config.json` | Estimates, until real runs replace them |
+| AI finish on hero shots (phase 3) | Not built |
+| The `fal` paid fallback | Written, never run; endpoint ids are placeholders |
+
+`python -m pytest -q` runs 146 tests in about 2 minutes, with no GPU or network. They need ffmpeg, plus Pillow for the blank-frame check.
+
+---
 
 ## How long it takes
 
-Estimated GPU time on the free plan, before real runs correct it:
+Estimated Kaggle GPU time, before real runs correct it:
 
 | Chapter | GPU hours (first takes pass → every take used) |
 | --- | --- |
@@ -192,26 +185,39 @@ Estimated GPU time on the free plan, before real runs correct it:
 | 3 | 20 – 64 |
 | 4 | 31 – 102 |
 | 5 | 19 – 62 |
-| Film | **106 – 340 h**, about 4 to 12 weeks of free quota |
+| **Film** | **106 – 340 h**, about 4 to 12 weeks of free quota |
 
-My guess for the likely case, about two takes per moving shot, is about 180 h: 6 to 7 weeks. To finish faster, run two Kaggle accounts from different people in parallel (each must be a real person; Kaggle forbids multiple accounts for one person). Or rent a GPU for the Hero shots only.
+The likely case (about two takes per moving shot) is around 180 h, or 6 to 7 weeks. To go faster, add a second Kaggle account owned by a different real person (Kaggle forbids several accounts per person), or rent a GPU for the Hero shots.
+
+---
 
 ## Paid fallback
 
-If the first test shows a Hero shot that Wan 2.2 can't do well enough, change that shot's model to `Kling 4` in `shots.csv` and set a money cap in `config.json → budget`. Kaggle batches skip shots routed to fal. `python -m pipeline video --chapter N --provider fal` runs them. Before any paid run, check the endpoint ids in `config.json → providers.fal`: they are placeholders.
+If the first test shows a Hero shot Wan 2.2 can't do well enough, set that shot's model to `Kling 4` in `shots.csv` and a money cap in `config.json → budget`. Kaggle batches skip shots routed to fal; `python -m engine video --chapter N --provider fal` runs them. Check the endpoint ids in `config.json → providers.fal` first: they are placeholders.
+
+---
 
 ## Layout
 
+The engine holds no film. Each film is a folder in `films/`, so the same engine makes the next film too
+(see [films/README.md](films/README.md)).
+
 ```
-config.json          models, engines, Kaggle limits, caps
-shots.csv            the shot sheet: 138 shots, 600 s
-style_bible/         style.txt and reference stills (gate 1)
-prompts/             optional per-shot prompt files
-pipeline/            the producer: ledger, steps, Kaggle batches, assemble
-worker/worker.py     runs on Kaggle: reference stills, keyframes, Wan takes, 4K upscale
-.github/workflows/   tests, the producer (produce.yml) and the owner's commands (gates.yml)
-tests/               40 tests, no GPU or network needed
-AGENTS.md            rules for an AI agent running the loop
+engine/                  the engine (python -m engine): producer, ledger, batches, backends, cut
+engine/cgi/              the 3D CG pipeline
+engine/mac/              the Mac worker (offline)
+worker/worker.py         runs on Kaggle and Colab: stills, keyframes, Wan takes, 4K upscale
+films/mochizuki/         this film
+  shots.csv              the shot sheet: 138 shots, 600 s
+  config.json            models, engines, backends, caps, the cast
+  style_bible/           the look: style, reference stills, acting sheets, sets, lights, dialogue
+  prompts/               optional per-shot prompt files
+  assets/characters/     your own character models (never committed)
+  media/                 everything the engine makes, and the ledger (never committed)
+docs/                    guides: the 3D pipeline, Colab, the Mac worker
+.github/workflows/       tests, the producer, the owner's commands, Colab runs, 3D renders
+tests/                   no GPU or network needed
+AGENTS.md                rules for an AI agent running the loop
 ```
 
-Generated media, the ledger and `.env` are not committed.
+Generated media, the ledger and `.env` are never committed.
