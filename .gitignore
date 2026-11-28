@@ -1,16 +1,21 @@
 .env
 kaggle.json
-media/*
-!media/.gitkeep
-ledger.sqlite
 auto.log
 __pycache__/
 .pytest_cache/
 .venv/
 
+# What each film makes: media and its ledger stay out of git (the producer keeps them in releases
+# and on the state branch)
+films/*/media/*
+!films/*/media/.gitkeep
+ledger.sqlite
+
 # LoRA training runs (made by mac-worker --train-lora; they live under ~/mochizuki-mac)
 training/
 
-# Character models are your own work: kept out of this public repository (see assets/characters/README.md)
-assets/**/*.vrm
-assets/**/*.blend
+# Character models are your own work: kept out of this public repository, wherever they are
+# (see films/<film>/assets/characters/README.md)
+*.vrm
+*.blend
+*.blend1

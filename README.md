@@ -23,10 +23,10 @@ There are two paths. The 3D path is the main one; the generative path is kept fo
 Characters, props and sets are built **once**. Each shot gets an **acting sheet** (camera, beats, gaze, timing), and Blender's real-time renderer draws every frame natively in 4K. Shots stay coherent because they share one set of models. Full guide: **[docs/cgi-pipeline.md](docs/cgi-pipeline.md)**.
 
 ```bash
-python -m pipeline cgi check
-python -m pipeline cgi render 1-02 --preview          # the mallet falls into the mortar
-python -m pipeline cgi render --chapter 1 --board     # chapter 1 as a storyboard from the real sets
-python -m pipeline cgi auto --chapter 1               # unattended: voices, renders, board, cut
+python -m engine cgi check
+python -m engine cgi render 1-02 --preview          # the mallet falls into the mortar
+python -m engine cgi render --chapter 1 --board     # chapter 1 as a storyboard from the real sets
+python -m engine cgi auto --chapter 1               # unattended: voices, renders, board, cut
 ```
 
 - **Characters from code:** anime bodies, faces and hair for each age, so no modelling is needed.
@@ -69,7 +69,7 @@ Each backend takes only the stages listed in its section of `config.json` (`kagg
 
 ## Setup
 
-You need Python 3.10+, ffmpeg and a free Kaggle account.
+You need Python 3.10+, ffmpeg and a free Kaggle account. Paths in this section are inside the film's folder, `films/mochizuki/`; commands pick it up by themselves (choose another with `--film` or `FILM`).
 
 1. On kaggle.com, verify your phone number (GPUs and notebook internet need it).
 2. Under **Settings → API**, create a token. Put it in `KAGGLE_API_TOKEN` in `.env`, or save `kaggle.json` to `~/.kaggle/`.
@@ -79,7 +79,7 @@ You need Python 3.10+, ffmpeg and a free Kaggle account.
 
 ```bash
 cp .env.example .env      # fill it in; .env is never committed
-python -m pipeline plan   # dry run: GPU hours per shot, and money
+python -m engine plan   # dry run: GPU hours per shot, and money
 ```
 
 ---
@@ -91,22 +91,22 @@ python -m pipeline plan   # dry run: GPU hours per shot, and money
 `auto` takes one step each time: it collects a finished batch, or packs and submits the next. It stops when a person is needed, and it never approves a gate or raises a cap.
 
 ```bash
-python -m pipeline auto --chapter 1 --loop        # runs until the chapter needs you
+python -m engine auto --chapter 1 --loop        # runs until the chapter needs you
 ```
 
-Or from cron: `*/30 * * * * cd /path/to/mochizuki && python -m pipeline auto --chapter 1 >> auto.log 2>&1`
+Or from cron: `*/30 * * * * cd /path/to/mochizuki && python -m engine auto --chapter 1 >> auto.log 2>&1`
 
 Where a person (or a review agent following `AGENTS.md`) steps in:
 
 ```bash
-python -m pipeline queue --chapter 1                 # what needs a verdict
-python -m pipeline verdict <key> pass --note "on model"
-python -m pipeline select <key>                      # one keyframe per shot
-python -m pipeline approve --chapter 1 board --by human
-python -m pipeline assemble --chapter 1              # media/animatic/chapter_1.mp4
-python -m pipeline approve --chapter 1 animatic --by human
-python -m pipeline assemble --chapter 1 --4k         # media/animatic/chapter_1_4k.mp4
-python -m pipeline status --chapter 1                # states, 4K progress, GPU hours this week
+python -m engine queue --chapter 1                 # what needs a verdict
+python -m engine verdict <key> pass --note "on model"
+python -m engine select <key>                      # one keyframe per shot
+python -m engine approve --chapter 1 board --by human
+python -m engine assemble --chapter 1              # media/animatic/chapter_1.mp4
+python -m engine approve --chapter 1 animatic --by human
+python -m engine assemble --chapter 1 --4k         # media/animatic/chapter_1_4k.mp4
+python -m engine status --chapter 1                # states, 4K progress, GPU hours this week
 ```
 
 Kaggle's limits: sessions last 12 h at most, so batches are sized to 10 h including setup. The quota resets on Saturday at 00:00 UTC, and `weekly_gpu_hours` (default 28) stops a stuck run from using all of it. One batch runs at a time.
@@ -114,7 +114,7 @@ Kaggle's limits: sessions last 12 h at most, so batches are sized to 10 h includ
 Try the whole loop for free, with stub engines in place of the GPU:
 
 ```bash
-KAGGLE_USERNAME=local python -m pipeline auto --chapter 1 --loop --kaggle local --engine-set stub
+KAGGLE_USERNAME=local python -m engine auto --chapter 1 --loop --kaggle local --engine-set stub
 ```
 
 ### On GitHub, with Claude reviewing
@@ -145,10 +145,10 @@ It fits inside GitHub Free: a few hundred Actions minutes a month, and release s
 Before spending a week of quota, run one take of each kind on a real T4, once each shot has a chosen keyframe: `1-03` (Hero, 14B), `1-04` (Hero, 6 s, two chained clips) and `1-02` (Simple, 5B).
 
 ```bash
-python -m pipeline batch --chapter 1 --stage video --shot 1-03
-python -m pipeline submit
-python -m pipeline collect          # rerun until it reports done
-python -m pipeline queue --chapter 1
+python -m engine batch --chapter 1 --stage video --shot 1-03
+python -m engine submit
+python -m engine collect          # rerun until it reports done
+python -m engine queue --chapter 1
 ```
 
 If an engine fails, the reason is in `media/batches/<id>/download/out/results.json`. Then compare the `gpu_seconds` it recorded with the estimates in `config.json` and correct them, so `plan` and batch sizing are accurate.
@@ -193,26 +193,31 @@ The likely case (about two takes per moving shot) is around 180 h, or 6 to 7 wee
 
 ## Paid fallback
 
-If the first test shows a Hero shot Wan 2.2 can't do well enough, set that shot's model to `Kling 4` in `shots.csv` and a money cap in `config.json → budget`. Kaggle batches skip shots routed to fal; `python -m pipeline video --chapter N --provider fal` runs them. Check the endpoint ids in `config.json → providers.fal` first: they are placeholders.
+If the first test shows a Hero shot Wan 2.2 can't do well enough, set that shot's model to `Kling 4` in `shots.csv` and a money cap in `config.json → budget`. Kaggle batches skip shots routed to fal; `python -m engine video --chapter N --provider fal` runs them. Check the endpoint ids in `config.json → providers.fal` first: they are placeholders.
 
 ---
 
 ## Layout
 
+The engine holds no film. Each film is a folder in `films/`, so the same engine makes the next film too
+(see [films/README.md](films/README.md)).
+
 ```
-shots.csv            the shot sheet: 138 shots, 600 s
-config.json          models, engines, backends, caps
-style_bible/         the look: style, reference stills, acting sheets, sets, lights, dialogue
-prompts/             optional per-shot prompt files
-pipeline/            the producer: ledger, steps, batches, backends, assemble
-pipeline/cgi/        the 3D CG pipeline
-pipeline/mac/        the Mac worker
-worker/worker.py     runs on Kaggle and Colab: stills, keyframes, Wan takes, 4K upscale
-assets/characters/   your own character models (never committed)
-docs/                guides: the 3D pipeline, Colab, the Mac worker
-.github/workflows/   tests, the producer, the owner's commands, Colab runs, 3D renders
-tests/               no GPU or network needed
-AGENTS.md            rules for an AI agent running the loop
+engine/                  the engine (python -m engine): producer, ledger, batches, backends, cut
+engine/cgi/              the 3D CG pipeline
+engine/mac/              the Mac worker (offline)
+worker/worker.py         runs on Kaggle and Colab: stills, keyframes, Wan takes, 4K upscale
+films/mochizuki/         this film
+  shots.csv              the shot sheet: 138 shots, 600 s
+  config.json            models, engines, backends, caps, the cast
+  style_bible/           the look: style, reference stills, acting sheets, sets, lights, dialogue
+  prompts/               optional per-shot prompt files
+  assets/characters/     your own character models (never committed)
+  media/                 everything the engine makes, and the ledger (never committed)
+docs/                    guides: the 3D pipeline, Colab, the Mac worker
+.github/workflows/       tests, the producer, the owner's commands, Colab runs, 3D renders
+tests/                   no GPU or network needed
+AGENTS.md                rules for an AI agent running the loop
 ```
 
 Generated media, the ledger and `.env` are never committed.

@@ -11,20 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from pipeline.cgi import auto, dialogue, lipsync, voice
-from pipeline.cgi import plan as planner
-from pipeline.project import Project
+from engine.cgi import auto, dialogue, lipsync, voice
+from engine.cgi import plan as planner
+from engine.project import Project
 
-REPO = Path(__file__).resolve().parents[1]
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
-
-
-@pytest.fixture()
-def proj(tmp_path) -> Project:
-    shutil.copy(REPO / "config.json", tmp_path / "config.json")
-    shutil.copy(REPO / "shots.csv", tmp_path / "shots.csv")
-    shutil.copytree(REPO / "style_bible", tmp_path / "style_bible")
-    return Project(tmp_path)
 
 
 def tone(path: Path, seconds: float, rate: int = voice.RATE) -> Path:
@@ -207,8 +198,8 @@ def test_feeling_shows_around_the_words():
 
 @needs_ffmpeg
 def test_the_cut_carries_a_track_and_subtitles_per_language(proj):
-    from pipeline import assemble as asm
-    from pipeline import steps
+    from engine import assemble as asm
+    from engine import steps
     dialogue.voice_shot(proj, "1-11", engine="stub")
     clip_dir = proj.root / "media" / "cgi" / "1-02"
     clip_dir.mkdir(parents=True)

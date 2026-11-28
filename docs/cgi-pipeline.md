@@ -1,10 +1,12 @@
 # The 3D CG pipeline: build it once, perform it, render it
 
+> **Where files are:** the engine is `engine/`; each film is a folder in `films/` (this repository's is `films/mochizuki/`). Film paths below (`shots.csv`, `config.json`, `style_bible/`, `prompts/`, `assets/`, `media/`, `ledger.sqlite`) are inside the film's folder. `python -m engine where` prints it.
+
 This is the new direction for making Mochizuki: a real 3D CG anime pipeline that runs on your Mac.
 It replaces "generate every shot with a video model" as the way the film's moving picture is made.
 The generative models stay, but in the jobs they are good at.
 
-It is written in `pipeline/cgi/` (plain Python, tested) and `pipeline/cgi/blender/` (runs inside Blender).
+It is written in `engine/cgi/` (plain Python, tested) and `engine/cgi/blender/` (runs inside Blender).
 
 ## Why change direction
 
@@ -158,9 +160,9 @@ is said, and whether the speaker is on screen. The lines the shot sheet only des
    language gets an `.srt` file next to the video. Laughs are not subtitled.
 
 ```bash
-python -m pipeline cgi voices --chapter 1           # voice, place and lip-sync every line of chapter 1
-python -m pipeline cgi voices 1-11 --engine stub    # a dry run with a test tone instead of a model
-python -m pipeline cgi subtitles --chapter 1        # media/cgi/subs/chapter_1.en.srt and .ja.srt
+python -m engine cgi voices --chapter 1           # voice, place and lip-sync every line of chapter 1
+python -m engine cgi voices 1-11 --engine stub    # a dry run with a test tone instead of a model
+python -m engine cgi subtitles --chapter 1        # media/cgi/subs/chapter_1.en.srt and .ja.srt
 ```
 
 Kokoro needs `pip install "kokoro>=0.9.4" "misaki[ja]" soundfile` and espeak-ng, on Python 3.10 to 3.12. The model
@@ -168,7 +170,7 @@ downloads once from Hugging Face.
 
 ## Automated end to end
 
-`python -m pipeline cgi auto --chapter N` makes a chapter with no one at the keyboard:
+`python -m engine cgi auto --chapter N` makes a chapter with no one at the keyboard:
 
 1. **Voices:** every line voiced, placed and lip-synced.
 2. **Render:** every shot built and rendered (previews, or `--final` for 4K). A shot whose plan has not changed since
@@ -192,12 +194,12 @@ costs money (Colab units, a paid model, a cloud GPU) still needs the owner.
 2. Pull the repository, then check:
    ```bash
    cd ~/Documents/Projects/mochizuki && git pull && source .venv/bin/activate
-   python -m pipeline cgi check
+   python -m engine cgi check
    ```
 3. Render the opening shot, the mallet falling into the mortar, as a preview, then the whole of chapter 1 as a storyboard:
    ```bash
-   python -m pipeline cgi render 1-02 --preview
-   python -m pipeline cgi render --chapter 1 --board
+   python -m engine cgi render 1-02 --preview
+   python -m engine cgi render --chapter 1 --board
    ```
    Clips, frames, plans and `.blend` files go in `media/cgi/<shot>/`, and the board in `media/cgi/board-ch1.png`.
    Logs go in `media/cgi/logs/cgi.jsonl`.
@@ -206,8 +208,8 @@ costs money (Colab units, a paid model, a cloud GPU) still needs the owner.
 5. Act a hero shot. Install **Live Link Face** on the iPhone (free), choose the ARKit mode, record yourself playing 1-05
    (the laugh), and AirDrop the CSV:
    ```bash
-   python -m pipeline cgi capture 1-05 --who tsumugi ~/Downloads/take.csv --start 0.4
-   python -m pipeline cgi render 1-05 --preview
+   python -m engine cgi capture 1-05 --who tsumugi ~/Downloads/take.csv --start 0.4
+   python -m engine cgi render 1-05 --preview
    ```
    A plain video works too (MediaPipe; `pip install mediapipe` first): `cgi capture 1-05 --who tsumugi take.mov`.
 6. Final 4K: drop `--preview`. Add `--prores` for the edit in Resolve.

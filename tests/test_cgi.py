@@ -15,23 +15,14 @@ from pathlib import Path
 
 import pytest
 
-from pipeline.cgi import capture as cap
-from pipeline.cgi import direction as dirn
-from pipeline.cgi import layout, retarget, timing
-from pipeline.cgi import plan as planner
-from pipeline.cgi import render as rnd
-from pipeline.project import Project, Shot
+from engine.cgi import capture as cap
+from engine.cgi import direction as dirn
+from engine.cgi import layout, retarget, timing
+from engine.cgi import plan as planner
+from engine.cgi import render as rnd
+from engine.project import Project, Shot
 
-REPO = Path(__file__).resolve().parents[1]
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
-
-
-@pytest.fixture()
-def proj(tmp_path) -> Project:
-    shutil.copy(REPO / "config.json", tmp_path / "config.json")
-    shutil.copy(REPO / "shots.csv", tmp_path / "shots.csv")
-    shutil.copytree(REPO / "style_bible", tmp_path / "style_bible")
-    return Project(tmp_path)
 
 
 def shot(text: str, chapter: int = 1, seconds: int = 4, kind: str = "Hero", sound: str = "") -> Shot:
@@ -407,8 +398,8 @@ def test_real_blender_builds_and_renders_a_frame(proj, monkeypatch):
 
 @needs_ffmpeg
 def test_the_cut_uses_cg_renders_when_switched_on(proj):
-    from pipeline import assemble as asm
-    from pipeline import steps
+    from engine import assemble as asm
+    from engine import steps
     clip_dir = proj.root / "media" / "cgi" / "1-02"
     clip_dir.mkdir(parents=True)
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x90:rate=24",

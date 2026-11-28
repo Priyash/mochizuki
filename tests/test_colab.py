@@ -10,10 +10,10 @@ import tarfile
 import time
 from pathlib import Path
 
-from pipeline import colab_backend as cb
-from pipeline import kaggle as kg
-from pipeline import mac_backend as mb
-from pipeline import steps
+from engine import colab_backend as cb
+from engine import kaggle as kg
+from engine import mac_backend as mb
+from engine import steps
 
 from test_mac import FakeRelease
 from test_pipeline import copy_project
@@ -231,7 +231,7 @@ def test_blank_stills_stop_the_batch_after_two(tmp_path, monkeypatch):
     assert calls == ["r0", "r1"]                         # no GPU time for the other 4
     assert r["groups"]["refs"]["stopped_broken"] == 4
     assert all(not v["ok"] for v in r["jobs"].values())
-    from pipeline.ledger import not_a_failure
+    from engine.ledger import not_a_failure
     assert not_a_failure(r["jobs"]["r0"]["error"])       # and they do not count against the shots
 
 

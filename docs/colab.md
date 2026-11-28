@@ -1,5 +1,7 @@
 # Stills and keyframes on Google Colab (pay-as-you-go)
 
+> **Where files are:** the engine is `engine/`; each film is a folder in `films/` (this repository's is `films/mochizuki/`). Film paths below (`shots.csv`, `config.json`, `style_bible/`, `prompts/`, `assets/`, `media/`, `ledger.sqlite`) are inside the film's folder. `python -m engine where` prints it.
+
 Qwen-Image needs a GPU with bf16 (Ampere or newer); Kaggle's T4s give blank images. Colab rents
 A100s and L4s by **compute units**: 100 units cost $9.99 and last 90 days. An A100 uses about
 5.4 units an hour, an L4 about 1.7. The pipeline drives Colab from GitHub Actions with Google's

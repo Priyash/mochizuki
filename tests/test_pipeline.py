@@ -14,11 +14,14 @@ from pathlib import Path
 
 import pytest
 
-from pipeline import assemble as asm
-from pipeline import kaggle as kg
-from pipeline import plan as planner
-from pipeline import providers, steps
-from pipeline.project import Project, wan_frames, wan_segments
+from engine import assemble as asm
+from engine import kaggle as kg
+from engine import plan as planner
+from engine import providers, steps
+from engine.project import (CONFIG_FILE, REF_PROMPTS_FILE, REFS_DIR, SCENES_FILE, SHOTS_FILE, STYLE_BIBLE_DIR, Project,
+                            wan_frames, wan_segments)
+
+from conftest import FILM
 
 REPO = Path(__file__).resolve().parents[1]
 HAS_FFMPEG = shutil.which("ffmpeg") is not None
@@ -43,21 +46,21 @@ def load_worker():
 
 
 def copy_project(tmp_path, csv_edit=None, cfg_edit=None, scenes=False) -> Project:
-    shutil.copy(REPO / "config.json", tmp_path / "config.json")
-    shutil.copytree(REPO / "style_bible", tmp_path / "style_bible")
+    shutil.copy(FILM / CONFIG_FILE, tmp_path / CONFIG_FILE)
+    shutil.copytree(FILM / STYLE_BIBLE_DIR, tmp_path / STYLE_BIBLE_DIR)
     if not scenes:                      # most tests check one thing at a time; scene tests opt in
-        (tmp_path / "style_bible" / "scenes.json").unlink()
-    for r in json.loads((REPO / "style_bible" / "ref_prompts.json").read_text())["refs"]:
-        write_png(tmp_path / "style_bible" / "refs" / f"{r['name']}.png")   # stand-in reference stills
-    text = (REPO / "shots.csv").read_text(encoding="utf-8")
+        (tmp_path / STYLE_BIBLE_DIR / SCENES_FILE).unlink()
+    for r in json.loads((FILM / STYLE_BIBLE_DIR / REF_PROMPTS_FILE).read_text())["refs"]:
+        write_png(tmp_path / STYLE_BIBLE_DIR / REFS_DIR / f"{r['name']}.png")   # stand-in reference stills
+    text = (FILM / SHOTS_FILE).read_text(encoding="utf-8")
     if csv_edit:
         text = csv_edit(text)
-    (tmp_path / "shots.csv").write_text(text, encoding="utf-8")
-    cfg = json.loads((tmp_path / "config.json").read_text())
+    (tmp_path / SHOTS_FILE).write_text(text, encoding="utf-8")
+    cfg = json.loads((tmp_path / CONFIG_FILE).read_text())
     cfg["kaggle"]["username"] = "tester"
     if cfg_edit:
         cfg_edit(cfg)
-    (tmp_path / "config.json").write_text(json.dumps(cfg))
+    (tmp_path / CONFIG_FILE).write_text(json.dumps(cfg))
     return Project(tmp_path)
 
 
@@ -230,7 +233,7 @@ def test_repeated_failures_stop_and_ask_a_person(proj):
 
 
 def test_lip_flap_is_a_fallback_for_dialogue(tmp_path):
-    base = Project(REPO)
+    base = Project(FILM)
     target = next(s for s in base.chapter(1) if s.sound.startswith("Sayo:"))
     assert target.model == "Wan 2.2 14B"                    # dialogue is animated by default
     proj = copy_project(tmp_path, csv_edit=lambda t: replace_row(
@@ -431,7 +434,7 @@ class FakeGH:
 
 
 def test_release_store_puts_each_file_in_its_chapter_release(proj):
-    from pipeline.store import tag_for
+    from engine.store import tag_for
     m = proj.media
     assert tag_for(proj, m / "keyframes" / "1-03" / "k.png") == "media-ch1"
     assert tag_for(proj, m / "takes" / "4-26" / "t.mp4") == "media-ch4"
@@ -441,7 +444,7 @@ def test_release_store_puts_each_file_in_its_chapter_release(proj):
 
 
 def test_a_reviewer_cannot_approve_and_only_the_owner_can(proj, tmp_path):
-    from pipeline import ci, review
+    from engine import ci, review
     led, ex = sync(proj)
     steps.keyframes(proj, led, ex, 1)
     s = proj.chapter(1)[0]
@@ -461,8 +464,8 @@ def test_a_reviewer_cannot_approve_and_only_the_owner_can(proj, tmp_path):
 
 @needs_ffmpeg
 def test_github_producer_loop_with_claude_reviews_and_owner_gates(tmp_path, monkeypatch):
-    from pipeline import ci
-    from pipeline.store import ReleaseStore
+    from engine import ci
+    from engine.store import ReleaseStore
     (tmp_path / "proj").mkdir()
     proj = copy_project(tmp_path / "proj", csv_edit=short_chapter)
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/mochizuki")
@@ -530,8 +533,8 @@ def test_no_reference_stills_means_no_keyframe_batch(tmp_path):
 
 @needs_ffmpeg
 def test_reference_stills_are_painted_picked_by_claude_and_approved_by_the_owner(tmp_path, monkeypatch):
-    from pipeline import ci
-    from pipeline.store import ReleaseStore
+    from engine import ci
+    from engine.store import ReleaseStore
     proj = copy_project(tmp_path)
     for f in ("tsumugi_ch1", "sayo"):                       # two refs still to make
         (tmp_path / "style_bible" / "refs" / f"{f}.png").unlink()
@@ -606,7 +609,7 @@ def test_an_aged_still_is_painted_from_the_approved_one(tmp_path):
 
 
 def test_every_shot_is_in_exactly_one_scene_with_its_anchor():
-    p = Project(REPO)
+    p = Project(FILM)
     seen = [x for sc in p.scenes().values() for x in sc["shots"]]
     assert sorted(seen) == sorted(s.id for s in p.shots)
     for sid, sc in p.scenes().items():
@@ -820,7 +823,7 @@ def test_engine_load_failures_do_not_use_up_a_shot_and_stop_after_two_batches(tm
 
 def test_ci_step_runs_from_the_command_line(tmp_path):
     proj = copy_project(tmp_path)
-    r = subprocess.run([sys.executable, "-m", "pipeline", "--root", str(proj.root), "ci-step", "--kaggle", "local",
+    r = subprocess.run([sys.executable, "-m", "engine", "--film", str(proj.root), "ci-step", "--kaggle", "local",
                         "--no-store", "--state", str(tmp_path / "state"), "--engine-set", "stub"],
                        capture_output=True, text=True, cwd=REPO)
     assert r.returncode == 0, r.stderr[-2000:]

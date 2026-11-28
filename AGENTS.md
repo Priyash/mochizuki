@@ -1,10 +1,12 @@
 # Rules for the agent running this pipeline
 
+> **Where files are:** the engine is `engine/`; each film is a folder in `films/` (this repository's is `films/mochizuki/`). Film paths below (`shots.csv`, `config.json`, `style_bible/`, `prompts/`, `assets/`, `media/`, `ledger.sqlite`) are inside the film's folder. `python -m engine where` prints it.
+
 You are the producer for a ten-minute anime short in a full 3D CG anime style, finished in 4K. A person owns every creative decision. Your job is to move shots forward on the free GPU allowances (Kaggle), and to stop when a person is needed.
 
 ## Hard rules
 
-1. Run `python -m pipeline plan --chapter N` before starting a chapter, and say how many GPU hours it needs.
+1. Run `python -m engine plan --chapter N` before starting a chapter, and say how many GPU hours it needs.
 2. Never run `approve`. Gates belong to the person.
 3. Reference stills and keyframes are rendered on Google Colab with the owner's prepaid compute units (`colab` backend, docs/colab.md), or on the owner's Mac when `mac.enabled` is on (docs/mac-worker.md). Never raise `colab.total_cap_units`, never buy units, and never run `colab-runner`, `colab-test` or `mac-worker` yourself.
 4. Kaggle runs video and the 4K upscale only (`kaggle.stages`): its T4s give blank Qwen-Image stills.
@@ -18,7 +20,7 @@ You are the producer for a ten-minute anime short in a full 3D CG anime style, f
 
 ## The loop for one chapter
 
-`python -m pipeline auto --chapter N` does one step: it collects a finished Kaggle batch, or packs and submits the next one. Run it with `--loop`, or from cron. It goes idle when a person or a reviewer is needed.
+`python -m engine auto --chapter N` does one step: it collects a finished Kaggle batch, or packs and submits the next one. Run it with `--loop`, or from cron. It goes idle when a person or a reviewer is needed.
 
 When it is idle:
 

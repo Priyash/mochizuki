@@ -13,6 +13,8 @@ on:
 concurrency:
   group: mochizuki-state
   cancel-in-progress: false
+env:
+  FILM: ${{ vars.FILM }}      # the film to make (blank: the only one in films/)
 permissions:
   contents: write
   issues: write
@@ -38,8 +40,12 @@ jobs:
             ln -sf "$(python -c 'import imageio_ffmpeg as m; print(m.get_ffmpeg_exe())')" "$HOME/bin/ffmpeg"
             echo "$HOME/bin" >> "$GITHUB_PATH"
           fi
+      - name: Which film
+        run: |
+          echo "FILM=$(python -m engine where)" >> "$GITHUB_ENV"
+          echo "LEDGER=$(python -m engine where ledger)" >> "$GITHUB_ENV"
       - name: Restore the ledger
-        run: if [ -f state/ledger.sqlite ]; then cp state/ledger.sqlite ledger.sqlite; fi
+        run: if [ -f "state/$(basename "$LEDGER")" ]; then cp "state/$(basename "$LEDGER")" "$LEDGER"; fi
       - name: Producer step
         env:
           GH_TOKEN: ${{ github.token }}
@@ -47,7 +53,7 @@ jobs:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
           CHAPTER: ${{ inputs.chapter }}
-        run: python -m pipeline ci-step --state state ${CHAPTER:+--chapter "$CHAPTER"}
+        run: python -m engine ci-step --state state ${CHAPTER:+--chapter "$CHAPTER"}
       - name: Post the notice
         if: always()
         env:

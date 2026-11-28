@@ -7,9 +7,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pipeline import kaggle as kg
-from pipeline import mac_backend as mb
-from pipeline import steps
+from engine import kaggle as kg
+from engine import mac_backend as mb
+from engine import steps
 
 from test_pipeline import copy_project
 

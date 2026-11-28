@@ -1,9 +1,0 @@
-# Kokoro-82M on a CPU, for the automated dialogue (pipeline/cgi/voice.py). Python 3.10 to 3.12.
-# Install PyTorch from its CPU index first, so pip does not fetch the CUDA build:
-#   pip install torch --index-url https://download.pytorch.org/whl/cpu
-#   pip install -r pipeline/cgi/tts/requirements.txt
-#   python -m unidic download          (the Japanese dictionary, once)
-# English also needs espeak-ng (apt install espeak-ng, or brew install espeak-ng).
-kokoro>=0.9.4
-misaki[ja]>=0.9.4
-soundfile

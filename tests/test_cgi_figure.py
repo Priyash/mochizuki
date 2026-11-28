@@ -8,19 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from pipeline.cgi import figure
-from pipeline.cgi import plan as planner
-from pipeline.project import Project
+from engine.cgi import figure
+from engine.cgi import plan as planner
+from engine.project import Project
 
-REPO = Path(__file__).resolve().parents[1]
-
-
-@pytest.fixture()
-def proj(tmp_path) -> Project:
-    shutil.copy(REPO / "config.json", tmp_path / "config.json")
-    shutil.copy(REPO / "shots.csv", tmp_path / "shots.csv")
-    shutil.copytree(REPO / "style_bible", tmp_path / "style_bible")
-    return Project(tmp_path)
 
 
 def test_anime_proportions_by_age():
