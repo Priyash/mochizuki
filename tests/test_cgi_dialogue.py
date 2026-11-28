@@ -13,7 +13,6 @@ import pytest
 
 from engine.cgi import auto, dialogue, lipsync, voice
 from engine.cgi import plan as planner
-from engine.project import Project
 
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
 

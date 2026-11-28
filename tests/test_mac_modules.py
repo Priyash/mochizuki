@@ -5,7 +5,6 @@ import json
 import subprocess
 import sys
 import textwrap
-import zipfile
 from pathlib import Path
 
 import pytest

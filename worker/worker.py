@@ -46,7 +46,6 @@ def wan_segments(seconds: float, fps: int, max_frames: int) -> list[int]:
     so it shares one frame with it. Total new frames >= the shot's length.
     """
     need = max(1, math.ceil(seconds * fps))
-    cap = ((max_frames - 1) // 4) * 4 + 1
     first = wan_frames(seconds, fps, max_frames)
     segs, have = [first], first
     while have < need:
@@ -671,6 +670,7 @@ def run(manifest: Path, inputs: Path, out: Path, engine_set: str, expect_batch: 
         log(f"engine {name} ready in {time.time() - g0:.0f} s")
         slow = 0
         broken = 0                                         # machine failures in a row (blank, NaN, CUDA)
+        last_err = ""
         factor = float(m.get("slow_factor", 3))
         for n, job in enumerate(jobs):
             est = float(job.get("est_seconds", 0))
