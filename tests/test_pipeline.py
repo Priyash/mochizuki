@@ -575,9 +575,34 @@ def test_reference_stills_are_painted_picked_by_claude_and_approved_by_the_owner
     assert steps.ref_state(proj, led, {"name": "sayo"}) == "review"        # three candidates left to choose from
     led.select(next(j["key"] for j in led.jobs("ref-sayo", "ref") if j["verdict"] is None))
     assert ci.command(proj, led, state, "/approve refs", "claude[bot]", "owner").startswith("Only")
+    shutil.rmtree(proj.media / "refs")              # the gate runs on a fresh GitHub machine: no media here
+    store, proj.store = proj.store, None
+    reply = ci.command(proj, led, state, "/approve refs", "owner", "owner")
+    assert reply.startswith("Nothing approved") and "`/approve refs` again" in reply   # a reply, not a crash
+    assert proj.refs_missing()
+    proj.store = store                                                     # the chosen stills are release files
     reply = ci.command(proj, led, state, "/approve refs", "owner", "owner")
     assert reply.startswith("Approved") and (tmp_path / "style_bible" / "refs" / "sayo.png").exists()
     assert not proj.refs_missing() and sched.next_stage(proj, led, 1) == "keyframes"
+
+
+def test_the_gate_command_on_github_reads_the_release_store(tmp_path, monkeypatch):
+    from engine import __main__ as cli
+    from engine import ci
+    from engine.store import ReleaseStore
+    proj = copy_project(tmp_path)
+    seen = {}
+
+    def command(p, led, state, body, author, owner):
+        seen["store"] = p.store
+        return "ok"
+    monkeypatch.setattr(ci, "command", command)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/film")
+    assert cli.main(["--film", str(proj.root), "gate", "--state", str(tmp_path / "state")]) == 0
+    assert isinstance(seen["store"], ReleaseStore) and seen["store"].repo == "owner/film"
+    monkeypatch.delenv("GITHUB_REPOSITORY")                                # on the owner's machine: local media
+    assert cli.main(["--film", str(proj.root), "gate", "--state", str(tmp_path / "state")]) == 0
+    assert seen["store"] is None
 
 
 def test_a_batch_packed_on_another_machine_is_repacked(proj):

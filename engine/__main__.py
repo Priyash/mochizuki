@@ -47,6 +47,29 @@ def load_env(root: Path) -> None:
                     os.environ.setdefault(k.strip(), v.strip())
 
 
+def finish_test(p: Project, args) -> int:
+    """`finish-test`: the shot's finish on Kaggle or Colab, the results on the release finish-tests."""
+    from .providers.kaggle import finish_test as ft  # noqa: PLC0415
+    from .store import ReleaseStore  # noqa: PLC0415
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    if not repo:
+        print("error: set GITHUB_REPOSITORY (owner/name): the test's files go to its release", file=sys.stderr)
+        return 2
+    if args.chosen_refs and p.refs_missing():
+        p.store = ReleaseStore(repo)
+        done, _, lost = ci.copy_chosen_refs(p, steps.open_ledger(p))
+        print(f"stills chosen in the ledger, for this test only: {', '.join(done) or 'none'}"
+              + (f"; could not fetch {', '.join(lost)}" if lost else ""), flush=True)
+    kgc = providers.KaggleProvider()
+    r = ft.run(p, kgc, Release(repo, tag=ft.RELEASE), args.shot,
+               [e.strip() for e in args.engine.split(",") if e.strip()],
+               [c.strip() for c in args.controls.split(",") if c.strip()], Path(args.work), args.minutes,
+               backend=args.backend, batches=Release(repo))
+    print("\n".join(kgc.log[-6:]))
+    print(json.dumps(r, indent=1, default=str))
+    return 0 if r["jobs"] and all(j["ok"] for j in r["jobs"].values()) else 3
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="engine")
     ap.add_argument("--film", help="the film's folder (default: $FILM, else the only film in films/)")
@@ -83,6 +106,19 @@ def main(argv=None) -> int:
     a.add_argument("--variants", default="fp16,fp32", help="precisions to try, in order (fp16, fp32, bf16, config)")
     a.add_argument("--minutes", type=int, default=60)
     a.add_argument("--out", default="probe-out")
+    a = sub.add_parser("finish-test", help="one shot's AI finish on a Kaggle T4 (or Colab), outside the ledger "
+                                          "(render it with --guides first)")
+    a.add_argument("shot")
+    a.add_argument("--engine", default=steps.FINISH,
+                   help="finish engines, comma-separated: ai_finish, a variant such as ai_finish_720, or both")
+    a.add_argument("--controls", default="depth,lines", help="the guides to finish from, one job each")
+    a.add_argument("--backend", default="kaggle", choices=["kaggle", "colab"],
+                   help="colab spends the owner's units: only with the owner's yes")
+    a.add_argument("--minutes", type=int, default=120, help="the notebook's time limit")
+    a.add_argument("--work", default="finish-test")
+    a.add_argument("--chosen-refs", action="store_true",
+                   help="if style_bible/refs lacks the stills, take the candidates chosen in the ledger "
+                        "(a test checkout only: nothing is committed or approved)")
     a = sub.add_parser("plan", help="dry run: GPU time and money, nothing is called")
     chap(a, False)
 
@@ -218,6 +254,8 @@ def main(argv=None) -> int:
         print("\n".join(kgc.log[-6:]))
         print(json.dumps(r, indent=1, default=str))
         return 0 if any(j.get("ok") for j in r["jobs"].values()) else 3
+    if args.cmd == "finish-test":
+        return finish_test(p, args)
     led = steps.open_ledger(p)
     if args.cmd == "chain":
         print(stages.report(p, led, [args.chapter] if args.chapter else sorted({s.chapter for s in p.shots})))
@@ -244,6 +282,9 @@ def main(argv=None) -> int:
     if args.cmd == "gate":
         state = Path(args.state)
         state.mkdir(parents=True, exist_ok=True)
+        if os.environ.get("GITHUB_REPOSITORY"):          # on GitHub: approved stills come from the releases
+            from .store import ReleaseStore  # noqa: PLC0415
+            p.store = ReleaseStore()
         print(ci.command(p, led, state, os.environ.get("COMMENT_BODY", ""),
                          os.environ.get("COMMENT_AUTHOR", ""), os.environ.get("GITHUB_REPOSITORY_OWNER", "")))
         return 0

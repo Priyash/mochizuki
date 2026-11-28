@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from .errors import EngineError
-from .generators import CATALOG, FINISH_KEYS, GPU, GUIDES
+from .generators import CATALOG, FINISH_KEYS, GPU, GUIDES, engine_settings
 
 SHOT_COLUMNS = ("id", "chapter", "shot", "seconds", "type", "model", "takes")   # "sound" is optional
 VIDEO_ENGINE_KEYS = ("model", "width", "height", "fps", "max_frames")
@@ -44,6 +44,48 @@ def _int(v: Any) -> int | None:
         return None
 
 
+def _box(v: Any) -> bool:
+    """A crop box: x, y, width, height as fractions of the picture, inside it."""
+    if not isinstance(v, list) or len(v) != 4 or not all(_number(n) for n in v):
+        return False
+    x, y, w, h = v
+    return 0 <= x < 1 and 0 <= y < 1 and 0 < w <= 1 - x + 1e-9 and 0 < h <= 1 - y + 1e-9
+
+
+def _finish_problems(engines: dict) -> list[str]:
+    """engines.ai_finish and its variants (ai_finish_720: only what it changes), each as the worker
+    will see it (engine_settings)."""
+    out: list[str] = []
+    if "ai_finish" not in engines:
+        if any(n.startswith("ai_finish_") for n in engines):
+            out.append("config.json engines: a variant of ai_finish needs engines.ai_finish, its base")
+        return out
+    for name in sorted(n for n in engines if n == "ai_finish" or n.startswith("ai_finish_")):
+        if not isinstance(engines[name], dict):
+            out.append(f"config.json engines.{name}: must be an object")
+            continue
+        fin, where = engine_settings(engines, name), f"config.json engines.{name}"
+        lacking = [k for k in FINISH_KEYS if k not in fin]
+        if lacking:
+            out.append(f"{where}: needs {', '.join(lacking)}")
+        if fin.get("control", GUIDES[0]) not in GUIDES:
+            out.append(f"{where}.control: must be one of {', '.join(GUIDES)}")
+        if "style" in fin and not isinstance(fin["style"], str):
+            out.append(f"{where}.style: must be text")
+        for key in ("crops", "who"):
+            if key in fin and not isinstance(fin[key], dict):
+                out.append(f"{where}.{key}: must map reference still names to values")
+        for ref, box in (fin.get("crops") or {}).items() if isinstance(fin.get("crops"), dict) else ():
+            if not _box(box):
+                out.append(f"{where}.crops.{ref}: must be [x, y, width, height], fractions inside the picture")
+        g = fin.get("transformer_gguf")
+        if g is not None and not (isinstance(g, dict) and isinstance(g.get("repo"), str)):
+            out.append(f"{where}.transformer_gguf: needs repo (a Hugging Face repo with the GGUF files)")
+        if fin.get("offload", "model") not in ("model", "group"):
+            out.append(f"{where}.offload: must be model (the default) or group")
+    return out
+
+
 def config_problems(cfg: Any) -> list[str]:
     if not isinstance(cfg, dict):
         return ["config.json: must be a JSON object"]
@@ -72,13 +114,7 @@ def config_problems(cfg: Any) -> list[str]:
         if unknown:
             out.append(f"config.json {section}.stages: {', '.join(unknown)} is not a GPU stage "
                        f"({', '.join(sorted(GPU_STAGES))})")
-    fin = _section(cfg, "engines").get("ai_finish")
-    if fin is not None:
-        lacking = [k for k in FINISH_KEYS if not isinstance(fin, dict) or k not in fin]
-        if lacking:
-            out.append(f"config.json engines.ai_finish: needs {', '.join(lacking)}")
-        if isinstance(fin, dict) and fin.get("control", GUIDES[0]) not in GUIDES:
-            out.append(f"config.json engines.ai_finish.control: must be one of {', '.join(GUIDES)}")
+    out += _finish_problems(_section(cfg, "engines"))
     chars = _section(cfg, "cgi").get("characters", {})
     for name, c in (chars.items() if isinstance(chars, dict) else []):
         if not isinstance(c, dict):

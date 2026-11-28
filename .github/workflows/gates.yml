@@ -23,10 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 420           # it may wait for a producer run or a finish test that started first
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: state
           path: state
@@ -50,6 +50,7 @@ jobs:
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          GH_TOKEN: ${{ github.token }}            # /approve refs downloads the chosen stills from the releases
         run: python -m engine gate --state state > reply.txt && cat reply.txt
       - name: Save state
         run: .github/scripts/save_state.sh "owner command on issue ${{ github.event.issue.number }}"

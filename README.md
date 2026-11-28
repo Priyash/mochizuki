@@ -176,25 +176,31 @@ depth (or its lines) so the camera, staging, timing and lip sync stay exactly as
 configured in the film's `config.json` under `engines.ai_finish`. It never runs on its own until you set
 `auto` there, and finished shots go into the cut only when you set `use_in_cut`.
 
-The first test, one shot (1-05, the laugh). On GitHub: approve the reference stills (`/approve refs`), then
-**Actions → finish-test → Run workflow**. It renders the shot with its guide on a runner, repaints it on
-Kaggle, and reports how long it took and what that means for the film (the run's summary), with the render,
-its guide and the finished shot as downloads. Or by hand, on your Mac:
+The finish paints its own look (`style` in `engines.ai_finish`, in place of `style_bible/style.txt`, which
+describes the toon render), from the shot's subjects among the approved stills: never the style scene, and
+each character sheet cut to its front view (`crops`), with a line saying who it shows (`who`). The guides are
+sharp, on black: depth as disparity (the nearest surface white), lines white on black.
+
+Two settings: `ai_finish` is the quick check (Wan2.1-VACE-1.3B at 832×480, 30 steps); `ai_finish_720` is the
+film's (the 14B with the lightx2v 4-step distillation, as a GGUF, at 1280×720). On a 16 GB T4 the 14B waits in
+the machine's memory and goes to the GPU a block at a time (`offload: group`).
+
+The first test, one shot (1-05, the laugh), outside the ledger: Actions > **finish-test** > Run workflow, or
 
 ```bash
-# 0. approve the reference stills first (comment /approve refs): the finish takes its look from them
-# 1. on your Mac: render the shot at the finish's size, with its guide passes (Blender 5)
-python -m engine cgi render 1-05 --size 832x480 --guides
-# 2. one batch, one shot, on Kaggle; collect until it reports done
-python -m engine batch --chapter 1 --stage ai_finish --shot 1-05
-python -m engine submit
-python -m engine collect
+# renders the shot and its guides, sends one finish per guide to a Kaggle T4, and puts each finish beside
+# its guide and the 3D render on the release finish-tests (with a middle frame beside the stills)
+python -m engine cgi render 1-05 --size 1280x720 --guides
+python -m engine finish-test 1-05 --engine ai_finish            # then --engine ai_finish_720
 ```
 
-The finished shot lands in `films/mochizuki/media/finished/1-05/`, and the run's `results.json` holds the
-`gpu_seconds` it took: that number prices the whole film. The setting it ships with is the cheap one
-(Wan2.1-VACE-1.3B at 832×480). For 720p, switch `engines.ai_finish` to the 14B model, as its `_note`
-says; that is far heavier, and best run on a Colab A100.
+Several engines (`--engine ai_finish,ai_finish_720`) run in one GPU session. `--backend colab` runs the same
+test on Colab with your units, only when you have said yes: the inputs wait in the `batches` release for the
+scheduled Colab runner, and are taken down if no runner takes them within 75 minutes.
+
+Its summary gives the GPU seconds per second of film, which prices the whole film. A finish for the film
+itself goes through the ledger: `python -m engine batch --chapter 1 --stage ai_finish --shot 1-05`, then
+`submit` and `collect`; it lands in `films/mochizuki/media/finished/1-05/`.
 
 ---
 
@@ -210,7 +216,7 @@ says; that is far heavier, and best run on a Colab A100.
 | 3D pipeline: sheets, plans, dialogue, renders | Tested, and rendered in Blender 5.3 |
 | **Wan 14B, Wan 5B and the upscalers on a real T4** | **Not run yet.** The first Kaggle run is the test |
 | GPU-time estimates in `config.json` | Estimates, until real runs replace them |
-| AI finish on hero shots | Built and tested with stand-ins; **not run on a GPU yet** (the 1-05 test is next) |
+| AI finish on hero shots | Built and tested with stand-ins; **not run on a GPU yet** (the 1-05 test, `finish-test`, is next) |
 | The `fal` paid fallback | Written, never run; endpoint ids are placeholders |
 
 `pip install -e ".[dev]"` installs the checks CI runs on every pull request (Python 3.11 and 3.12):
@@ -218,7 +224,7 @@ says; that is far heavier, and best run on a Colab A100.
 ```bash
 ruff check .          # lint
 mypy                  # types (the Blender scripts, which run inside Blender, are left out)
-python -m pytest -q   # 188 tests in about 2 minutes, no GPU or network; they need ffmpeg
+python -m pytest -q   # 186 tests in about 2 minutes, no GPU or network; they need ffmpeg
 ```
 
 ---
