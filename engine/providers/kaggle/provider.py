@@ -88,8 +88,8 @@ class KaggleProvider(Provider):
 
     name = NAME
     hands_over_when_queued = True    # a batch that sits in Kaggle's queue may go to another provider
-    deadline_margin_s = 900          # Kaggle's session ends hard: the worker stops 15 min early
-    capabilities = frozenset()       # T4s: fp16 only, so no Qwen stills or keyframes (they come out blank)
+    deadline_margin_s = 900.0        # Kaggle's session ends hard: the worker stops 15 min early
+    capabilities: frozenset[str] = frozenset()   # T4s: fp16 only, so no Qwen stills or keyframes (they come out blank)
     LICENSES = ("unknown", "other", "copyright-authors")      # all keep every right with the owner
 
     def __init__(self, p=None, runner=None):
@@ -203,8 +203,9 @@ class KaggleProvider(Provider):
         raise KaggleError(f"dataset {ref} not ready after {timeout:.0f} s; last status "
                           f"{getattr(self, 'last_status', '?')}")
 
-    def push(self, folder: Path, accelerator: str, timeout_s: int) -> None:
+    def push(self, folder: Path, accelerator: str, timeout_s: int) -> str | None:
         self.call("kernels", "push", "-p", str(folder), "--accelerator", accelerator, "-t", str(timeout_s))
+        return None                                # Kaggle finds the run by its notebook's name
 
     def status(self, ref: str, handle: str | None = None) -> str:
         code, out = self._run(["kernels", "status", ref])

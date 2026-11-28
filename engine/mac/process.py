@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+from typing import Any
 import threading
 import time
 from pathlib import Path
@@ -34,7 +35,7 @@ def run_streaming(cmd: list[str], timeout: float, label: str = "", every: float 
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=cwd)
     killer = threading.Timer(timeout, p.kill)
     killer.start()
-    st = {"step": 0, "total": 0, "first_step_at": None, "last_change": t0, "last_log": t0}
+    st: dict[str, Any] = {"step": 0, "total": 0, "first_step_at": None, "last_change": t0, "last_log": t0}
     stop = threading.Event()
     tag = f"{label} " if label else ""
 
@@ -100,6 +101,7 @@ def run_streaming(cmd: list[str], timeout: float, label: str = "", every: float 
 
     threading.Thread(target=status, daemon=True).start()
     tail, buf = b"", ""
+    assert p.stdout is not None
     try:
         while True:
             chunk = p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(4096)

@@ -21,7 +21,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     from kokoro import KPipeline  # noqa: PLC0415 - heavy: only here
     pipe = KPipeline(lang_code=a.lang, repo_id="hexgrad/Kokoro-82M")
-    samples = []
+    samples: list = []
     for _graphemes, _phonemes, audio in pipe(a.text, voice=a.voice, speed=a.speed):
         if audio is None:
             continue

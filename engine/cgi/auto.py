@@ -48,7 +48,7 @@ def held(p, shot_id: str) -> bool:
 
 
 def stage_voices(p, chapter: int, engine: str | None, shots: list[str]) -> dict:
-    out = {"voiced": [], "overruns": [], "failed": []}
+    out: dict[str, list] = {"voiced": [], "overruns": [], "failed": []}
     langs = dialogue.load(p).get("languages", ["en"])
     for sid in shots:
         if not dialogue.lines_for(p, sid):
@@ -87,7 +87,7 @@ def prune_frames(folder: Path, keep: int = 3) -> int:
 
 def stage_render(p, chapter: int, shots: list[str], final: bool, size, force: bool, prune: bool = False) -> dict:
     cfg = settings(p)
-    out = {"rendered": [], "skipped": [], "held": [], "failed": []}
+    out: dict[str, list] = {"rendered": [], "skipped": [], "held": [], "failed": []}
     tag = "final" if final else "preview"
     for sid in shots:
         if held(p, sid):

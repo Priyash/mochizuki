@@ -167,7 +167,8 @@ def fit(lines: list[Line], wavs: list[Path], seconds: float, scratch: Path) -> d
     limit = seconds - TAIL
 
     def place(gap: float, speed: float = 1.0) -> list[tuple[float, float]]:
-        t, out = 0.0, []
+        t = 0.0
+        out: list[tuple[float, float]] = []
         for ln, d in zip(lines, durs):
             start = max(ln.at, t + (gap if out else 0.0))
             out.append((start, start + d / speed))

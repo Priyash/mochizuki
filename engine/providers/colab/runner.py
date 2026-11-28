@@ -282,6 +282,7 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
     if rj is None:
         why = r.get("error") or "the worker wrote no results"
         rj, base = {"batch_id": batch_id, "jobs": {}, "error": f"colab: {why}"[:1500]}, d / "out"
+    assert base is not None                       # set with the results, or just above
     rj.update(usage)
     (base / "results.json").write_text(json.dumps(rj))
     with tarfile.open(res_tgz, "w:gz") as t:

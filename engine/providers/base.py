@@ -58,11 +58,15 @@ class Provider(ABC):
     take_over: bool = False                  # takes any stage while Kaggle's queue is stuck
     hands_over_when_queued: bool = False     # a batch stuck in its queue may go to another provider
     deadline_margin_s: float = 300           # the worker stops this long before the run's hard end
-    capabilities: frozenset[str] = frozenset()   # what its GPUs have (engine.generators: BF16)
     accelerator: str = ""
 
     def __init__(self) -> None:
         self.log: list[str] = []             # what the provider said, for the run's status.json
+
+    @property
+    def capabilities(self) -> frozenset[str]:
+        """What its GPUs have (engine.generators: BF16). Subclasses set it, or compute it."""
+        return frozenset()
 
     # ---- sizing a batch
     @abstractmethod
@@ -88,7 +92,7 @@ class Provider(ABC):
         """How long a batch may sit in this provider's queue before it is handed to another (None: forever)."""
         return None
 
-    def package(self, p, work: Path, batch_id: str, engine_set: str) -> None:
+    def package(self, p, work: Path, batch_id: str, engine_set: str) -> None:  # noqa: B027 - an optional hook
         """Write files this provider needs beside the packed inputs (work/dataset, work/kernel)."""
 
     def account_check(self) -> dict | None:
@@ -104,8 +108,8 @@ class Provider(ABC):
     def publish_dataset(self, folder: Path, ref: str, message: str) -> None:
         """Upload the packed inputs in `folder` under `ref`; `message` is the batch id."""
 
-    def wait_dataset_ready(self, ref: str, **_) -> None:
-        """Block until uploaded inputs can be used. Most providers need no wait."""
+    def wait_dataset_ready(self, ref: str, timeout: float = 900, poll: float = 15) -> None:  # noqa: B027 - an optional hook
+        """Block until uploaded inputs can be used (at most `timeout` s). Most providers need no wait."""
 
     @abstractmethod
     def push(self, folder: Path, accelerator: str, timeout_s: int) -> str | None:

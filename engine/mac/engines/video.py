@@ -77,8 +77,8 @@ class MlxVideoEngine:
             f"{self.e['width']}x{self.e['height']} at {fps} fps", event="video.start", key=job["key"],
             clips=len(segs), frames=sum(segs) - len(segs) + 1)
         t0 = time.time()
-        with tempfile.TemporaryDirectory(prefix="mochi-video-") as tmp:
-            tmp = Path(tmp)
+        with tempfile.TemporaryDirectory(prefix="mochi-video-") as tmp_name:
+            tmp = Path(tmp_name)
             start = self._fit(image, tmp / "start-0.png")
             clips = []
             for n, frames in enumerate(segs):

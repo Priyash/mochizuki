@@ -171,7 +171,7 @@ def order() -> list[Stage]:
     def visit(name: str) -> None:
         if name in seen:
             return
-        for d in sorted(deps[name], key=rank.get):
+        for d in sorted(deps[name], key=lambda n: rank[n]):
             visit(d)
         seen.add(name)
         out.append(BY_NAME[name])
@@ -189,7 +189,7 @@ def gpu_stages() -> list[Stage]:
 def next_gpu_stage(p, led, chapter: int) -> str | None:
     """What the chapter needs next from the GPU, or None if it is waiting on a person."""
     for s in gpu_stages():
-        if s.wants(p, led, chapter):
+        if s.wants and s.wants(p, led, chapter):
             return s.name
         if s.halts and s.halts(p, led, chapter):
             return None

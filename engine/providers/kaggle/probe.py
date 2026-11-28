@@ -41,7 +41,7 @@ def build(p: Project, work: Path, variants: list[str], ref: str = "style", minut
     r = next(x for x in p.ref_plan() if x["name"] == ref)
     prompt = "\n".join(x for x in (style_text, r["prompt"]) if x)
     engines = copy.deepcopy(p.config["engines"])
-    jobs = []
+    jobs: list[dict] = []
     for v in variants:
         name = "refs" if v == "config" else f"refs_{v}"
         if name != "refs":
@@ -72,7 +72,8 @@ def build(p: Project, work: Path, variants: list[str], ref: str = "style", minut
 def run(p: Project, kgc, work: Path, variants: list[str], minutes: int = 60, poll: int = 60, sleep=time.sleep) -> dict:
     folder, ref = build(p, work, variants, minutes=minutes)
     kgc.push(folder, p.config[NAME].get("accelerator", DEFAULT_ACCELERATOR), minutes * 60)
-    t0, st, seen = time.time(), "queued", []
+    t0, st = time.time(), "queued"
+    seen: list[str] = []
     while time.time() - t0 < (minutes + 45) * 60:              # queue time on top of the run itself
         sleep(poll)
         st = kgc.status(ref)

@@ -8,6 +8,7 @@ import re
 import shutil
 import tarfile
 import time
+from typing import Any
 from pathlib import Path
 
 from ..base import WORKER
@@ -121,6 +122,7 @@ def smoke(cli: ColabCLI, work: Path) -> dict:
     rep["balance_units"] = bal
     if not step("sign-in and balance", bal is not None, f"balance {bal} units" if bal is not None else out):
         return rep
+    assert bal is not None                       # step() returned early otherwise
     rep["gpu_needs_units"] = bal < 3
     vms = cli.assignments()
     step("list the account's VMs", vms is not None, f"{len(vms)} running: " + ", ".join(
@@ -136,11 +138,11 @@ def smoke(cli: ColabCLI, work: Path) -> dict:
         (work / "smoke_job.py").write_text(SMOKE_JOB)
         code, out = cli.run(["upload", "-s", session, str(work / "smoke_in.txt"), "/content/smoke_in.txt"], 600)
         step("upload", code == 0, out)
-        lines = []
+        lines: list[str] = []
         code, tail = cli.stream(["exec", "-s", session, "-f", str(work / "smoke_job.py"), "--timeout", "0",
                                  "--env", "MOCHI_SMOKE=42"], time.time() + 900, lines.append)
         step("run code (exec, streaming)", "MOCHI-DONE" in tail, f"exit {code}")
-        info = next((json.loads(x.split("[smoke] ", 1)[1]) for x in lines if x.startswith("[smoke] {")), {})
+        info: dict = next((json.loads(x.split("[smoke] ", 1)[1]) for x in lines if x.startswith("[smoke] {")), {})
         rep["vm"] = info
         step("env passed in", info.get("env_ok"), "")
         step("uploaded file seen on the VM", info.get("input") == "hello from GitHub", info.get("input"))
@@ -167,7 +169,7 @@ def gpu_probe(cli: ColabCLI, gpus=None, wait_s: int = 900) -> dict:
     # MOCHI_PROBE="A100:hm,G4:hm,L4" asks for each GPU in turn; ":hm" adds --high-mem
     spec = gpus or os.environ.get("MOCHI_PROBE") or "T4,L4,G4,A100,H100"
     gpus = spec.split(",") if isinstance(spec, str) else list(spec)
-    rep = {"balance_before": cli.balance(), "gpus": {}}
+    rep: dict[str, Any] = {"balance_before": cli.balance(), "gpus": {}}
     stop_gpu_vms(cli)
     for item in gpus:
         g, _, opt = item.strip().partition(":")

@@ -7,6 +7,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from . import assemble as asm
 from . import ci
@@ -203,7 +204,7 @@ def main(argv=None) -> int:
                         for asset in release_names(b["id"], name).values():
                             rel.delete(asset)
                     print(f"{name} batch {b['id']} dropped; its jobs are free again", flush=True)
-        out = ci.step(p, led, args.chapter or ci.chapter_of(state), state, backends, engine_set=args.engine_set)
+        out: Any = ci.step(p, led, args.chapter or ci.chapter_of(state), state, backends, engine_set=args.engine_set)
         print(json.dumps(out["notice"], ensure_ascii=False))
         return 0
     if args.cmd == "gate":

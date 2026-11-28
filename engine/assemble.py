@@ -89,9 +89,9 @@ def assemble(p: Project, led: Ledger, chapter: int, four_k: bool = False) -> dic
         if up:
             src = up
             used["4k"] += 1
-        if kind in ("take", "cgi"):
+        if kind in ("take", "cgi") and src is not None:
             _ff(["-i", src, "-t", str(s.seconds), *_norm(w, h, crf, hold=s.seconds), str(seg)])
-        elif kind == "keyframe":
+        elif kind == "keyframe" and src is not None:
             _ff(["-loop", "1", "-i", src, "-t", str(s.seconds), *_norm(w, h, crf), str(seg)])
         else:
             _ff(["-f", "lavfi", "-i", f"color=c={CARD.get(s.type, 'gray')}:s={w}x{h}:r={FPS}",

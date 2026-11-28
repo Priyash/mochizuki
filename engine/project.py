@@ -21,6 +21,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .generators import wan_frames, wan_segments  # noqa: F401 - re-exported: engine.project.wan_frames
 
@@ -105,7 +106,7 @@ class Project:
         unknown = {s.model for s in self.shots} - set(self.config["models"])
         if unknown:
             raise ValueError(f"{SHOTS_FILE} names models missing from {CONFIG_FILE}: {sorted(unknown)}")
-        self.store = None          # where media lives when it is not on this machine (store.py)
+        self.store: Any = None     # where media lives when it is not on this machine (store.py)
 
     # ---- files. The ledger keeps paths relative to the project, so it can move between machines.
     def rel(self, path) -> str:
@@ -266,6 +267,7 @@ class Project:
                 style.append(ref)
                 continue
             m = re.match(r"^(.*?)(?:_ch(\d+))?$", stem)
+            assert m is not None                      # the pattern matches any name
             subjects.setdefault(m.group(1), []).append((int(m.group(2) or 0), ref, plan.get(stem, {})))
         chosen = []
         for subject, files in subjects.items():

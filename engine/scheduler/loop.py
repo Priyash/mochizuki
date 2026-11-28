@@ -134,7 +134,7 @@ def engine_broken(led: Ledger, backend: str, stage: str, runs: int = BROKEN_AFTE
             return None
         first = first or tried[0]["note"]
     return (f"the {stage} engine made nothing in the last {runs} {backend} batches (machine errors); "
-            f"stopped until the next code change: {first[:300]}")
+            f"stopped until the next code change: {(first or '')[:300]}")
 
 
 def someone_else_can_take(p: Project, led: Ledger, providers: list[Provider], me: Provider, stage: str) -> bool:

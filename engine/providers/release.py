@@ -118,8 +118,6 @@ class ReleaseProvider(Provider):
         self.rel.upload(tgz)
         self.log.append(f"{tgz.name} ({tgz.stat().st_size // 1024} KB) waits for the {self.name} worker")
 
-    def wait_dataset_ready(self, ref: str, **_) -> None:
-        return None
 
     def push(self, folder: Path, accelerator: str, timeout_s: int) -> str:
         return Path(folder).parent.name                  # the handle is the batch id

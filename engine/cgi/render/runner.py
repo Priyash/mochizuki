@@ -44,10 +44,12 @@ def command(exe: str, plan_file: Path, no_render: bool = False) -> list[str]:
 
 def run_blender(cmd: list[str], shot: str, timeout: float) -> list[dict]:
     """Stream Blender's output: its CGI lines become log events; the rest is kept for errors."""
-    events, tail = [], []
+    events: list[dict] = []
+    tail: list[str] = []
     t0 = time.time()
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     last_note = 0.0
+    assert proc.stdout is not None
     try:
         for line in proc.stdout:
             line = line.rstrip()

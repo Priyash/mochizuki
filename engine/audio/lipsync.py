@@ -82,9 +82,8 @@ def read_wav(path: Path) -> tuple[list[float], int]:
         raw = w.readframes(n)
     if width != 2:
         raise ValueError(f"{path}: 16-bit PCM WAV expected, got {width * 8}-bit")
-    vals = struct.unpack(f"<{n * ch}h", raw)
-    if ch > 1:
-        vals = [sum(vals[i:i + ch]) / ch for i in range(0, len(vals), ch)]
+    ints = struct.unpack(f"<{n * ch}h", raw)
+    vals = [sum(ints[i:i + ch]) / ch for i in range(0, len(ints), ch)] if ch > 1 else list(ints)
     return [v / 32768.0 for v in vals], rate
 
 

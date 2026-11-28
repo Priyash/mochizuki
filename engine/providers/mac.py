@@ -16,7 +16,7 @@ from .release import ReleaseProvider
 class MacProvider(ReleaseProvider):
     name = NAME
     kind = OFFLINE
-    capabilities = frozenset({BF16})   # Apple Silicon
+    capabilities: frozenset[str] = frozenset({BF16})   # Apple Silicon
 
     def __init__(self, p, repo: str, gh=None, fetch=None, **kw):
         super().__init__(p, repo, gh, fetch, cfg=settings(p), **kw)
