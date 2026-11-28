@@ -11,7 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from engine.cgi import auto, dialogue, lipsync, voice
+from engine.audio import dialogue, lipsync, mix, subtitles, voice
+from engine.cgi import auto
 from engine.cgi import plan as planner
 
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
@@ -149,7 +150,7 @@ def test_subtitles_and_the_chapter_track_follow_the_cut(proj):
     for sid in ("1-04", "1-11"):
         dialogue.voice_shot(proj, sid, engine="stub")
     off = dialogue.offsets(proj, 1)
-    srt = dialogue.subtitles(proj, 1, "en").read_text(encoding="utf-8")
+    srt = subtitles.write_srt(proj, 1, "en").read_text(encoding="utf-8")
     cues = [c.split("\n") for c in srt.strip().split("\n\n")]
     assert len(cues) == 2                                             # the two lines; the laugh is not subtitled
     first = dialogue.shot_manifest(proj, "1-11")["lines"][0]["lines"]["en"]
@@ -157,9 +158,9 @@ def test_subtitles_and_the_chapter_track_follow_the_cut(proj):
     assert int(h) * 3600 + int(m) * 60 + float(rest.replace(",", ".")) == pytest.approx(off["1-11"] + first["start"], abs=0.002)
     ends = [c[1].split(" --> ") for c in cues]
     assert ends[0][1] <= ends[1][0]                                   # one subtitle at a time
-    ja = dialogue.subtitles(proj, 1, "ja").read_text(encoding="utf-8")
+    ja = subtitles.write_srt(proj, 1, "ja").read_text(encoding="utf-8")
     assert "前より" in ja and ja.count(" --> ") == 2
-    track = dialogue.chapter_audio(proj, 1, "en")
+    track = mix.chapter_dialogue(proj, 1, "en")
     samples, rate = lipsync.read_wav(track)
     assert len(samples) == round(sum(s.seconds for s in proj.chapter(1)) * rate)
     t = off["1-11"] + first["start"] + 0.2

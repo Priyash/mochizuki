@@ -176,7 +176,7 @@ def run(p, args) -> int:
     if cmd == "capture":
         return capture_cmd(p, args)
     if cmd == "voices":
-        from . import dialogue  # noqa: PLC0415
+        from ..audio import dialogue  # noqa: PLC0415
         shots = [args.shot] if args.shot else [s.id for s in p.chapter(args.chapter)] if args.chapter else []
         if not shots:
             print("give a shot id, or --chapter N")
@@ -186,8 +186,8 @@ def run(p, args) -> int:
         print(json.dumps([d for d in done if d.get("lines")], indent=1))
         return 0
     if cmd == "subtitles":
-        from . import dialogue  # noqa: PLC0415
-        print(json.dumps({x: str(dialogue.subtitles(p, args.chapter, x))
+        from ..audio import dialogue, subtitles  # noqa: PLC0415
+        print(json.dumps({x: str(subtitles.write_srt(p, args.chapter, x))
                           for x in dialogue.load(p).get("languages", ["en"])}, indent=1))
         return 0
     if cmd == "auto":

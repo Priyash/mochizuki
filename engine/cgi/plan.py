@@ -16,7 +16,7 @@ from pathlib import Path
 
 from ..project import SETS_FILE
 
-from . import dialogue
+from ..audio import dialogue
 from . import direction as dirn
 from . import figure, layout, palette, retarget, timing
 from .capture import Track, resample, smooth

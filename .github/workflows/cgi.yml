@@ -33,6 +33,7 @@ on:
       - "films/*/style_bible/lights.json"
       - "films/*/style_bible/dialogue.json"
       - "engine/cgi/**"
+      - "engine/audio/**"
       - ".github/workflows/cgi.yml"
 concurrency:
   group: cgi-ch${{ inputs.chapter || '1' }}
@@ -66,7 +67,7 @@ jobs:
         if: env.ENGINE != 'stub'
         run: |
           pip install -q torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -q -r engine/cgi/tts/requirements.txt
+          pip install -q -r engine/audio/tts/requirements.txt
       - name: The Japanese dictionary (cached)
         if: env.ENGINE != 'stub'
         uses: actions/cache@v4
@@ -84,7 +85,7 @@ jobs:
           path: |
             ~/.cache/huggingface
             ${{ env.CGI }}/voices
-          key: cgi-voices-${{ hashFiles('films/*/style_bible/dialogue.json', 'engine/cgi/voice.py', 'engine/cgi/tts/*') }}
+          key: cgi-voices-${{ hashFiles('films/*/style_bible/dialogue.json', 'engine/audio/voice.py', 'engine/audio/tts/*') }}
           restore-keys: cgi-voices-
       - name: Voice the chapter
         run: |

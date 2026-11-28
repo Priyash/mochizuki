@@ -3,8 +3,8 @@
     voice_shot(p, "1-11")        voices every line of the shot in every language, places them in time
                                  (never overlapping, after their `at`), makes the mouth curves for the
                                  primary language, and mixes one shot-length track per language
-    subtitles(p, chapter)        .srt files for the chapter, timed on the cut
-    chapter_audio(p, chapter, language)   the chapter's dialogue track, shot after shot
+    offsets(p, chapter)          where each shot starts in the chapter's cut
+The chapter's .srt files are subtitles.py; its dialogue track is mix.py.
 
 What it writes per shot, in media/cgi/<shot>/:
     dialogue.json        every line: who, start and end per language, on screen or not, mouth curves
@@ -19,8 +19,8 @@ from pathlib import Path
 
 from ..project import DIALOGUE_FILE
 
+from ..cgi.config import by_chapter, settings, work_dir
 from . import lipsync, voice
-from .config import by_chapter, settings, work_dir
 
 GAP = 0.25            # seconds between two lines in the same shot
 TAIL = 0.05           # a line should end this long before the cut
@@ -228,51 +228,3 @@ def offsets(p, chapter: int) -> dict:
         out[s.id] = t
         t += s.seconds
     return out
-
-
-def _ts(t: float, sep: str = ",") -> str:
-    ms = int(round(t * 1000))
-    h, ms = divmod(ms, 3600_000)
-    m, ms = divmod(ms, 60_000)
-    sec, ms = divmod(ms, 1000)
-    return f"{h:02d}:{m:02d}:{sec:02d}{sep}{ms:03d}"
-
-
-def subtitles(p, chapter: int, language: str = "en") -> Path:
-    """An .srt for the chapter in `language`, from the placed lines (laughs are not subtitled)."""
-    cfg = settings(p)
-    off = offsets(p, chapter)
-    cues = []
-    for sid, t0 in off.items():
-        man = shot_manifest(p, sid)
-        if not man:
-            continue
-        for ln in man["lines"]:
-            if ln["nonverbal"] or language not in ln["lines"]:
-                continue
-            x = ln["lines"][language]
-            cues.append((t0 + x["start"], t0 + x["end"] + 0.4, x["text"]))
-    cues.sort()
-    out = (p.root / cfg["work"] / "subs" / f"chapter_{chapter}.{language}.srt")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text("".join(f"{i}\n{_ts(a)} --> {_ts(min(b, cues[i][0] - 0.05) if i < len(cues) else b)}\n{text}\n\n"
-                           for i, (a, b, text) in enumerate(cues, start=1)), encoding="utf-8")
-    return out
-
-
-def chapter_audio(p, chapter: int, language: str = "en") -> Path | None:
-    """The chapter's dialogue track: each shot's track, or its silence, end to end. None if no shot speaks."""
-    cfg = settings(p)
-    parts, any_voice = [], False
-    for s in p.chapter(chapter):
-        f = work_dir(p, cfg, s.id) / f"audio-{language}.wav"
-        if f.exists():
-            any_voice = True
-            samples, rate = lipsync.read_wav(f)
-            need = int(round(s.seconds * rate))
-            parts.extend(samples[:need] + [0.0] * max(0, need - len(samples)))
-        else:
-            parts.extend([0.0] * int(round(s.seconds * voice.RATE)))
-    if not any_voice:
-        return None
-    return lipsync.write_wav(p.root / cfg["work"] / "audio" / f"chapter_{chapter}.{language}.wav", parts, voice.RATE)

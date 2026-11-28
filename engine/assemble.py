@@ -102,12 +102,12 @@ def assemble(p: Project, led: Ledger, chapter: int, four_k: bool = False) -> dic
 def dialogue_tracks(p: Project, chapter: int, video: Path) -> dict:
     """The automated dialogue under the cut: the primary language as the main audio, the others as extra
     tracks (YouTube can carry several), plus an .srt per language next to the file."""
-    from .cgi import dialogue  # noqa: PLC0415 - only for the 3D pipeline
+    from .audio import dialogue, mix, subtitles  # noqa: PLC0415 - only when the film has dialogue
     script = dialogue.load(p)
     langs = script.get("languages", ["en"])
     primary = script.get("primary", langs[0])
     order = [primary] + [x for x in langs if x != primary]
-    tracks = [(x, dialogue.chapter_audio(p, chapter, x)) for x in order]
+    tracks = [(x, mix.chapter_dialogue(p, chapter, x)) for x in order]
     tracks = [(x, t) for x, t in tracks if t]
     if not tracks:
         return {}
@@ -119,7 +119,7 @@ def dialogue_tracks(p: Project, chapter: int, video: Path) -> dict:
     tmp = video.with_suffix(".tmp.mp4")
     _ff([*args, *maps, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", *meta, "-shortest", str(tmp)])
     tmp.replace(video)
-    subs = {x: str(dialogue.subtitles(p, chapter, x)) for x in order}
+    subs = {x: str(subtitles.write_srt(p, chapter, x)) for x in order}
     for x, f in subs.items():
         Path(f).replace(video.with_suffix(f".{x}.srt"))
         subs[x] = str(video.with_suffix(f".{x}.srt"))
