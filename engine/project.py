@@ -50,6 +50,8 @@ ACTING_FILE = "acting.json"
 SETS_FILE = "sets.json"
 LIGHTS_FILE = "lights.json"
 DIALOGUE_FILE = "dialogue.json"
+ARC_FILE = "arc.json"                   # the intended emotional arc, per chapter (engine/cgi/acting/arc.py)
+CULTURE_FILE = "culture.json"           # the culture pack: how feeling is shown (engine/cgi/acting/culture.py)
 
 
 def find_film(given: str | Path | None = None) -> Path:

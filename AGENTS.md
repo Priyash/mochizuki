@@ -17,7 +17,7 @@ You are the producer for a ten-minute anime short in a full 3D CG anime style, f
    The AI finish (`engines.ai_finish`) runs only when the owner sets `auto` there, or runs it by hand.
 9. If a command exits with code 2 or 3, or reports `needs_human` or `cut_off`, stop and report. Do not work around it.
 10. Do not name a studio, a director or an existing film in any prompt.
-11. The 3D pipeline (docs/cgi-pipeline.md) runs unattended, and you run it. You may write and edit acting sheets (`style_bible/acting.json`), sets, light rigs and the dialogue script (`style_bible/dialogue.json`), run any `cgi` command except `cgi capture`, and start `.github/workflows/cgi.yml`. Sheets in `"draft"` render like approved ones. A sheet in `"hold"` is the owner's veto: never render it and never change its status. Only the owner sets `"approved"`, and only the owner records a performance (`cgi capture`). Never spend money for it: no paid voice, model or GPU. Never commit character models (`.vrm`, `.blend`) or anyone's recorded voice: the repository is public.
+11. The 3D pipeline (docs/cgi-pipeline.md) runs unattended, and you run it. You may write and edit acting sheets (`style_bible/acting.json`), sets, light rigs and the dialogue script (`style_bible/dialogue.json`), run any `cgi` command except `cgi capture`, and start `.github/workflows/cgi.yml`. Sheets in `"draft"` render like approved ones. A sheet in `"hold"` is the owner's veto: never render it and never change its status. Only the owner sets `"approved"`, and only the owner records a performance (`cgi capture`). Never spend money for it: no paid voice, model or GPU. Never commit character models (`.vrm`, `.blend`) or anyone's recorded voice: the repository is public. `style_bible/arc.json` (the intended emotional arc) and `style_bible/culture.json` (the culture pack) are the owner's: never change them.
 
 ## The loop for one chapter
 
@@ -50,11 +50,16 @@ Never write anything else to the state branch, and never comment `/approve` on t
 
 ## CG review (the cgi workflow)
 
-Each run of `.github/workflows/cgi.yml` replaces the files on the release `cgi-chN`: `review-chN.json`, `board-chN.png`, `cgi-review-frames-chN.zip`, the cut `chapter_N.mp4` and its `.srt` files. One review round:
+Each run of `.github/workflows/cgi.yml` replaces the files on the release `cgi-chN`: `review-chN.json`, `board-chN.png`, `cgi-review-frames-chN.zip`, the cut `chapter_N.mp4` and its `.srt` files, and each dubbed cut (`chapter_N.ja.mp4`). One review round:
 
 1. Download them with `gh api` (the release's assets), and unzip the frames.
 2. For each shot in `review-chN.json`, look at its three frames beside its description, camera and beats. Judge it by "How to review" below, and also: the subject is framed as the sheet says, nothing hides the face that is acting, eyelines meet, light and time of day match the scene, and the feeling of the beat reads in the frame.
-3. Fix what fails at its source, never in the render: the acting sheet, the set, the light rig, or the line. A line listed in `overruns` gets shorter, or its `at` moves earlier. Keep a sheet's `"status"` as it is.
+3. Fix what fails at its source, never in the render: the acting sheet, the set, the light rig, or the line. Keep a sheet's `"status"` as it is. For each shot's entries in `review-chN.json`:
+   - `overruns`: shorten the line, or move its `at` earlier.
+   - `lipsync`, an entry that is not `ok` (timing outside the broadcast limits, a closure not shown, the mouth open in silence, or a phrase the mouth never opens for): check that the line's `ja_kana` reads its Japanese exactly, and fix it if not; otherwise list the shot for the owner. Never edit mouth curves by hand. Watch the dubbed cut's close-ups too: the check measures timing, not mouth shapes.
+   - `continuity`, a finding at the cut into the shot: fix the acting sheet (the camera's angle or subject, or a mark) so the cut holds. When the break is meant (the shot sheet asks for it), accept it in that shot's sheet with the reason: `"continuity": {"<rule>": "why"}`. Never accept a break only to clear the list. `python -m engine cgi continuity --chapter N` re-checks without rendering.
+   - `arc`, with an `off` note: change the shot's beats so it plays the arc, or list it for the owner if the arc itself seems wrong. `python -m engine cgi arc --chapter N` re-checks.
+   - `culture`, the display rules that shaped its beats: if a rule plays a beat wrongly, give that beat the field in the acting sheet (a field the sheet gives always wins). `python -m engine cgi culture --chapter N` shows every change.
 4. Commit with one line per shot changed and why, and push to `main`. The push starts the next run.
 5. At most three rounds per chapter per day. If a shot still fails after three rounds, stop changing it and list it for the owner with the reason.
 

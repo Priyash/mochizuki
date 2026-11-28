@@ -215,3 +215,69 @@ def test_the_cut_carries_a_track_and_subtitles_per_language(proj):
     langs = [s.get("tags", {}).get("language") for s in probe["streams"] if s["codec_type"] == "audio"]
     assert langs == ["eng", "jpn"]
     assert all(Path(f).exists() for f in r["subtitles"].values())
+
+
+# ---------------------------------------------------------------- dubbing: every language its own lips
+@needs_ffmpeg
+def test_each_language_has_its_own_lips_in_sync(proj):
+    dialogue.voice_shot(proj, "1-11", engine="stub")
+    man = dialogue.shot_manifest(proj, "1-11")
+    for ln in man["lines"]:
+        assert set(ln["mouths"]) == {"en", "ja"} and ln["mouth"] == ln["mouths"][man["primary"]]
+        assert ln["mouths"]["en"] != ln["mouths"]["ja"]                      # her Japanese is not her English
+        for lang, rep in ln["sync"].items():
+            assert rep["ok"], (lang, rep)                                     # within ITU-R BT.1359
+            start = ln["lines"][lang]["start"]
+            opened = [max(ln["mouths"][lang][c][f] for c in lipsync.CHANNEL.values()) for f in range(man["frames"])]
+            assert not any(opened[:lipsync.first_frame(start, man["fps"])])   # shut before her line
+    assert dialogue.dubbed_languages(man) == ["ja"]
+
+
+@needs_ffmpeg
+def test_a_dub_is_its_own_plan_with_its_own_name(proj):
+    dialogue.voice_shot(proj, "1-11", engine="stub")
+    en = planner.build(proj, "1-11", preview=True)
+    ja = planner.build(proj, "1-11", preview=True, language="ja")
+    assert en["language"] == "en" and en["output"]["clip_suffix"] == ""
+    assert ja["language"] == "ja" and ja["output"]["clip_suffix"] == ".ja"
+    assert ja["output"]["frames"] != en["output"]["frames"] and ja["output"]["blend"].endswith("1-11.ja.blend")
+    face = {p["language"]: next(c for c in p["characters"] if c["name"] == "sayo")["face"] for p in (en, ja)}
+    assert any(face["en"][ch] != face["ja"][ch] for ch in planner.MOUTHS)    # her lips follow each language
+    assert auto.plan_hash(en) != auto.plan_hash(ja)
+    with pytest.raises(ValueError, match="no fr voices"):
+        planner.build(proj, "1-11", preview=True, language="fr")
+
+
+@needs_ffmpeg
+def test_only_shots_where_someone_speaks_are_dubbed(proj):
+    dialogue.voice_shot(proj, "1-11", engine="stub")
+    dialogue.voice_shot(proj, "1-04", engine="stub")                          # her laugh: no words
+    assert auto.dub_languages(proj, "1-11") == ["ja"]
+    assert auto.dub_languages(proj, "1-04") == [] and auto.dub_languages(proj, "1-02") == []
+    laugh = planner.build(proj, "1-04", preview=True, language="ja")          # one render serves every language
+    assert laugh["language"] == "en" and laugh["output"]["clip_suffix"] == ""
+    proj.config.setdefault("cgi", {})["dubs"] = "none"
+    assert auto.dub_languages(proj, "1-11") == []
+
+
+@needs_ffmpeg
+def test_a_dubbed_cut_carries_only_its_own_language(proj):
+    from engine import assemble as asm
+    from engine import steps
+    dialogue.voice_shot(proj, "1-11", engine="stub")
+    folder = proj.root / "media" / "cgi" / "1-11"
+    for name in ("1-11-preview.mp4", "1-11-preview.ja.mp4"):
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x90:rate=24",
+                        "-t", "4", "-pix_fmt", "yuv420p", str(folder / name)], check=True)
+    proj.config.setdefault("cgi", {})["use_in_cut"] = True
+    assert asm.cgi_clip(proj, "1-11", False, "ja").endswith("1-11-preview.ja.mp4")
+    assert asm.cgi_clip(proj, "1-02", False, "ja") is None                    # no render: no dub either
+    r = asm.assemble(proj, steps.open_ledger(proj), 1, language="ja")
+    assert Path(r["file"]) == asm.cut_path(proj, 1, language="ja") and r["file"].endswith("chapter_1.ja.mp4")
+    assert r["audio"] == ["ja"] and r["subtitles"] == {} and r["undubbed"] == []
+    (folder / "1-11-preview.ja.mp4").unlink()                                  # its dub not rendered yet:
+    r = asm.assemble(proj, steps.open_ledger(proj), 1, language="ja")         # the primary picture, flagged
+    assert r["undubbed"] == ["1-11"] and r["from"]["cgi"] == 1
+    probe = json.loads(subprocess.run(["ffprobe", "-v", "error", "-show_streams", "-of", "json", r["file"]],
+                                      capture_output=True, text=True, check=True).stdout)
+    assert [s.get("tags", {}).get("language") for s in probe["streams"] if s["codec_type"] == "audio"] == ["jpn"]

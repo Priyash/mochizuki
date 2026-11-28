@@ -34,19 +34,21 @@ assets, to read human performances, and later to add a painterly finish to hero 
 ```
  shots.csv ──► acting sheet ──────────────┐   (camera, beats, restraint, gaze, timing; you approve it)
  style_bible/acting.json                  │
+ arc.json + culture.json ─────────────────┤   (drafted feelings from the arc; display rules)
                                           ▼
  iPhone take (Live Link Face) ──► capture ──► retarget ──► face curves ─┐
  or any video (MediaPipe)        52 ARKit shapes   + anime layer       │
+ dialogue.json ──► voices ──► lip sync: a mouth per language ───────────┤
                                                                         ▼
- sets.json + lights.json ───────────────────────────────────────►  PLAN (one JSON per shot)
- VRoid models (assets/characters) ─┐                                    │
+ sets.json + lights.json ───────────────────────────────────────►  PLAN (one JSON per shot and dub)
+ VRoid models (assets/characters) ─┐                                    │──► continuity check at every cut
  props from code (bowl seams = data)                                    ▼
                                    └──────────────────────────► Blender 5 EEVEE: toon shading,
                                                                 ink lines, native 4K, .blend per shot
                                                                         │
                                               (phase 3, GPU) optional AI finish on hero shots
                                                                         ▼
-                                                          assemble ──► Resolve
+                                                  assemble: a cut per language ──► Resolve
 ```
 
 ### How each requirement is met
@@ -63,13 +65,16 @@ assets, to read human performances, and later to add a painterly finish to hero 
 | Timing | `timing` | Pose to pose, with key poses found by Ramer–Douglas–Peucker. Characters move on twos, fast moves on ones, and the pose is held for three frames where a hit lands. |
 | Camera | `layout` | Framing is fixed in metres of subject, so a CU is a CU at any lens. Emotional close-ups push in. Two-shots favour the first character named. A prop in front of a face is cheated out of the shot, as a camera crew would. |
 | Light | `style_bible/lights.json` | Every scene has its own rig. The toon shader keeps the colour of the light, so the lantern reads warm and the moon reads cool on the same face. |
+| Arc | `style_bible/arc.json` | The chapter's intended feeling over time. Every shot is measured against it, and a drafted shot with no feeling of its own plays it. |
+| Culture | `style_bible/culture.json` | Display rules: how much of a feeling shows, by whom, and before whom. Sayo, at 78, holds grief in; a child's joy shows in full. |
 
 Chapter 1's acting sheets are drafted in `style_bible/acting.json`. They cover every hero shot and the key inserts. Each
 one says why the beat is played that way. All are `draft` until you change them to `approved`.
 
 **Coherent by construction.** Every shot of a scene loads the same set (`style_bible/sets.json`), props, marks and light.
 Continuity is data: the bowl has one gold seam until 3-06 mends the second crack (`cgi.props_state`). Each character is
-one model per age, and the same model appears in every shot. Each shot is saved as a `.blend` file you can open and adjust
+one model per age, and the same model appears in every shot. The continuity supervisor checks every cut before a frame
+is rendered: the 180° and 30° rules, eyelines, light, props and positions. Each shot is saved as a `.blend` file you can open and adjust
 by hand.
 
 **Super fast.** EEVEE is Blender's real-time renderer. On the Mac's GPU it should draw a toon frame in around a second
@@ -94,10 +99,14 @@ in minutes.
 | Shot plans for the whole film | `plan.py` | Tested on all 138 shots |
 | Blender builder: toon shading that keeps light colour, ink lines at constant screen width, sets and props from code, stand-in actors whose faces act, VRM models posed (arms down, kneeling) and driven by the plan | `blender/` | Run in Blender 5.3 here, including a real VRM model through the VRM add-on |
 | Runner: Blender or a bpy Python, structured logs, frame checks, H.264 or ProRes, storyboard | `render/runner.py`, `cli.py` | Tested, plus one real-Blender test |
-| The cut uses CG renders when `cgi.use_in_cut` is on | `assemble.py` | Tested |
+| The cut uses CG renders when `cgi.use_in_cut` is on, and a dubbed cut uses each language's renders | `assemble.py` | Tested |
 | Characters made from code: anime bodies, faces and hair for each age (Tsumugi at 7, 27 and 87, Sayo, the child), playing the same face channels as a VRoid model | `staging/figure.py`, `render/blender/anime.py` | Tested, and rendered in Blender 5.3 here |
-| Dialogue: the script in English and Japanese, voices (Kokoro-82M, or any engine by command), lines fitted into their shot, lip sync, one track per language, subtitles | `engine/audio/` (`dialogue.py`, `voice.py`, `lipsync.py`, `subtitles.py`, `mix.py`) | Tested with the stub voice. Kokoro runs on the GitHub runners |
-| The chapter unattended: voices, sharded renders that skip unchanged shots, board, cut, review sheet | `auto.py`, `.github/workflows/cgi.yml` | Tested |
+| Dialogue: the script in English and Japanese, voices (Kokoro-82M, or any engine by command), lines fitted into their shot, one track per language, subtitles | `engine/audio/` (`dialogue.py`, `voice.py`, `subtitles.py`, `mix.py`) | Tested with the stub voice. Kokoro runs on the GitHub runners |
+| Lip sync for dubbing: a mouth per language from its voice and text, timed to the sample, checked against broadcast limits; a render and a cut per language | `engine/audio/lipsync.py`, `plan.py`, `assemble.py` | Tested on synthetic speech with known timing and on real English and Japanese speech (macOS voices); not yet heard with Kokoro |
+| The chapter unattended: voices, sharded renders (and dubs) that skip unchanged shots, board, cuts, review sheet | `auto.py`, `.github/workflows/cgi.yml` | Tested |
+| Continuity supervisor: the 180° and 30° rules, eyelines, light, props and positions at every cut, from the plans | `continuity.py` | Tested on staged geometry; run on all five chapters |
+| Emotional arc: each shot's feeling on the circumplex against the intended arc, drafted shots filled from it | `acting/arc.py`, `style_bible/arc.json` | Tested; chapter 1 drafted |
+| Culture pack: display rules by emotion, age and company, never over a hand-written field | `acting/culture.py`, `style_bible/culture.json` | Tested |
 
 Sets exist for scenes 1A (porch, Tsukimi night), 1B (snow) and 1C (the hearth). Any other scene renders on a plain
 floor until its set is written.
@@ -152,12 +161,30 @@ is said, and whether the speaker is on screen. The lines the shot sheet only des
 2. **Placing lines.** Lines never overlap, and each starts at its cue or after the line before it, plus a breath.
    If the lines would run past the cut, they first start earlier, then the breaths shorten, then the speech is sped
    up by at most 15%. Anything still too long is listed in the review sheet, so the line can be rewritten.
-3. **Lip sync** (kuchipaku). The loudness of the voice opens and closes the mouth, and the vowels give its shape
-   (A, I, U, E, O). For Japanese the vowels come from the kana; for English, from the spelling. The mouth moves in
-   anime's few steps and is held on twos, so it reads as drawn mouth flaps. While a character speaks, their smile
-   or grief softens around the words. Akari has no mouth, so its light pulses as it speaks.
-4. **In the cut.** English is the main audio track and Japanese is a second track; YouTube can carry both. Each
-   language gets an `.srt` file next to the video. Laughs are not subtitled.
+3. **Lip sync** (kuchipaku), in every language, accurate enough to dub (`engine/audio/lipsync.py`).
+   * The text gives each syllable its vowel shape (A, I, U, E, O) and says where the lips shut for m, b, p and ん.
+     Japanese is read from the kana; English from the spelling. A Japanese line with kanji and no kana reading is
+     refused, with the line named, rather than drawn with the wrong mouth.
+   * The voice gives the timing. It is measured in the vowels' band (500 Hz to 3 kHz), so the hum of a shut-lipped
+     m and the hiss of an s never open the mouth. Syllables sit on the loudness peaks (de Jong & Wempe 2009). Each
+     closure lasts from where the vowel before stops to where the next is released.
+   * The mouth moves in anime's few steps and is held on twos, so it reads as drawn mouth flaps. A closure never hides
+     a vowel, even in fast speech. Each frame shows the sound a frame ahead, and a line's mouth is timed to the
+     sample, not to the nearest frame.
+   * Each line is checked against the limits viewers notice (ITU-R BT.1359: sound more than 45 ms before the picture,
+     or the picture more than 125 ms before the sound). The check measures every phrase's start and end, every
+     closure, and any mouth open in silence. The result goes in the review sheet.
+   * While a character speaks, their smile or grief softens around the words. Akari has no mouth, so its light
+     pulses as it speaks.
+4. **Dubs.** Each language is placed and lip-synced on its own timing. A shot where someone speaks on screen is
+   rendered once per language (`1-11.mp4`, `1-11.ja.mp4`), with its own frames, plan and `.blend`. A shot with no
+   words on screen is rendered once for every language. `cgi.dubs` in `config.json` is `"all"` (the default) or
+   `"none"`.
+5. **In the cut.** `chapter_N.mp4` has English as the main audio track and Japanese as a second track; YouTube can
+   carry both. Each language gets an `.srt` file next to it. Laughs are not subtitled. `chapter_N.ja.mp4` is the
+   Japanese dub: the Japanese renders, under the Japanese voices alone. A dub never uses an AI finish, which is
+   painted over the primary language's lips. A speaking shot whose dub is not rendered yet keeps its original
+   picture, and the cut lists it as `undubbed` (the run log warns `finish.undubbed`).
 
 ```bash
 python -m engine cgi voices --chapter 1           # voice, place and lip-sync every line of chapter 1
@@ -168,20 +195,74 @@ python -m engine cgi subtitles --chapter 1        # media/cgi/subs/chapter_1.en.
 Kokoro needs `pip install "kokoro>=0.9.4" "misaki[ja]" soundfile` and espeak-ng, on Python 3.10 to 3.12. The model
 downloads once from Hugging Face.
 
+## Continuity at every cut
+
+`python -m engine cgi continuity --chapter N` checks each cut between two shots of one scene. It reads the plans
+(the cameras, marks, eyelines, light and props Blender would render), so it runs before anything is rendered:
+
+| Rule | What breaks it |
+| --- | --- |
+| `axis` | The 180° rule. The camera crosses the line between two characters in the scene, so they swap sides of the screen. Singles count too. A shot on the line (neutral) or a camera move across it sets the line again; a cutaway does not. |
+| `jump` | The 30° rule. A cut to the same subject that moves the camera less than 30° and changes the size less than 1.5×. |
+| `eyeline` | Two looks that meet across a cut point the same way, or the same look changes direction. A look at someone off screen goes down the lens. |
+| `light` | The key light moves more than 15°, changes colour or strength, or the ambient or a practical light changes within a scene. |
+| `props` | A prop seen on both sides of a cut moves, turns or changes state (the bowl's seams), unless the first shot acts on it. |
+| `position` | A character seen on both sides of a cut jumps more than 0.3 m or turns more than 45°, unless walking. |
+
+The rules come from Arijon's *Grammar of the Film Language* and Bordwell and Thompson's *Film Art* (continuity
+editing). A break that is meant is accepted in the shot's acting sheet, with the reason:
+`"continuity": {"axis": "the shot sheet asks for her from behind, not turning"}`. The findings at each cut go in the
+review sheet; the command exits with 3 while any is not accepted.
+
+## The emotional arc
+
+`python -m engine cgi arc --chapter N` shows how the chapter feels, shot by shot, beside how it is meant to feel.
+
+* Every emotion has a place on Russell's circumplex of affect: valence (unpleasant to pleasant) and arousal (calm to
+  excited). A beat sits at its intensity times that place. A shot feels like its beats, each for as long as it lasts.
+* The intended arc is `style_bible/arc.json`. For each chapter it is either points in the chapter's time, or one of
+  the six shapes Reagan et al. found most stories follow (rags to riches, tragedy, man in a hole, Icarus, Cinderella,
+  Oedipus).
+* The report gives each shot's distance from the arc, how closely the chapter's valence follows it (a correlation),
+  and which of the six shapes the chapter actually reads as. Shots more than 0.4 off go in the review sheet.
+* With `"fill_drafts": true`, a drafted shot whose description gives no feeling plays the arc's feeling at that
+  moment. In chapter 1, Sayo shapes the mochi with tenderness and presents the dishes bittersweet. Hand-written
+  beats are never changed.
+
+## The culture pack
+
+`style_bible/culture.json` holds display rules: how a feeling is shown, by whom, and in front of whom. They follow
+Ekman and Friesen's display rules and Matsumoto's measurements across cultures. In Japan, sadness and anger are played
+down, the more so before others, and a child's open feeling is allowed. A rule's `when` names emotions, ages (from each
+character's look by chapter), who else is in the shot, and intensity. Its `then` sets the most or least restraint, a
+scale on intensity, where to look, and a held pause (*ma*).
+
+The rules are played into every acting sheet, but a hand-written beat keeps every field it gives. Restraint is played
+the anime way: the mouth and brows move less, and the eyes do more. `python -m engine cgi culture --chapter N` lists
+every change. In chapter 1 the hand-written sheets already hold Sayo's grief in, so the pack adds held poses after the
+strongest beats and gives the drafted 1-22 the elder's held-in grief, eyes down.
+
 ## Automated end to end
 
 `python -m engine cgi auto --chapter N` makes a chapter with no one at the keyboard:
 
-1. **Voices:** every line voiced, placed and lip-synced.
-2. **Render:** every shot built and rendered (previews, or `--final` for 4K). A shot whose plan has not changed since
-   its last render is skipped. `--shard 2/8` takes one share of the shots, so several machines can work on one chapter.
-3. **Finish:** the storyboard, the chapter cut with its dialogue tracks and subtitles, and `media/cgi/review-chN.json`.
-   For each shot, the review sheet holds the intent from the acting sheet, three frames to judge, the lines placed in
-   it, and any line that runs over.
+1. **Voices:** every line voiced, placed and lip-synced in every language.
+2. **Render:** every shot built and rendered (previews, or `--final` for 4K), and each speaking shot again for each
+   dub. A shot whose plan has not changed since its last render is skipped. `--shard 2/8` takes one share of the
+   shots, so several machines can work on one chapter.
+3. **Finish:** the storyboard, the chapter cut with its dialogue tracks and subtitles, a dubbed cut per language,
+   and `media/cgi/review-chN.json`. For each shot, the review sheet holds:
+   * the intent from the acting sheet;
+   * three frames to judge;
+   * the lines placed in it, and any line that runs over;
+   * each spoken line's lip sync check, in every language;
+   * the continuity findings at the cut into it;
+   * its feeling against the emotional arc, and the culture rules that shaped its beats.
 
 `.github/workflows/cgi.yml` runs the three stages on GitHub's free runners, splitting the renders across a matrix of
-machines. It runs when acting sheets, sets, lights, dialogue or the CG code change on `main`, or when started by hand.
-The board, the cut, the subtitles and the review sheet are uploaded to the release `cgi-chN`. Claude reviews them,
+machines. It runs when acting sheets, scenes, sets, lights, dialogue, the arc, the culture pack or the CG code change
+on `main`, or when started by hand.
+The board, the cut, the dubbed cuts, the subtitles and the review sheet are uploaded to the release `cgi-chN`. Claude reviews them,
 edits the sheets, sets and lines, and pushes, which starts the next round.
 
 Nothing waits for a person. A sheet set to `"status": "hold"` is skipped: that is the owner's veto. Anything that
@@ -214,8 +295,15 @@ costs money (Colab units, a paid model, a cloud GPU) still needs the owner.
    A plain video works too (MediaPipe; `pip install mediapipe` first): `cgi capture 1-05 --who tsumugi take.mov`.
 6. Final 4K: drop `--preview`. Add `--prores` for the edit in Resolve.
 
-Useful: `cgi sheets --chapter 1` lists every shot's sheet in one line each. `cgi sheet 1-11` prints one in full, so you
-can copy it into `style_bible/acting.json` and edit it.
+Useful, and none of these needs Blender:
+
+```bash
+python -m engine cgi sheets --chapter 1        # every shot's acting sheet, one line each
+python -m engine cgi sheet 1-11                # one in full: copy it into style_bible/acting.json to edit
+python -m engine cgi continuity --chapter 1    # the cuts that break a continuity rule (exit 3 while one is open)
+python -m engine cgi arc --chapter 1           # each shot's feeling against the intended arc
+python -m engine cgi culture --chapter 1       # what the display rules change in each sheet
+```
 
 ## What to train (and what not)
 
@@ -233,6 +321,10 @@ can copy it into `style_bible/acting.json` and edit it.
 
 | Work | What we take from it |
 | --- | --- |
+| Russell, circumplex of affect (1980); Reagan et al., six emotional arcs of stories (EPJ Data Science, 2016) | The emotional arc: feelings as valence and arousal, and the shapes a chapter can follow. |
+| Ekman and Friesen, display rules (1969); Matsumoto, display rules across cultures (1990, 2008) | The culture pack: how much of a feeling shows, by whom and before whom. |
+| Arijon, *Grammar of the Film Language* (1976); Bordwell and Thompson, *Film Art* | The continuity supervisor's rules: the line of interest and neutral shots, eyeline matches, the 30° rule. |
+| de Jong and Wempe, syllable nuclei (Behavior Research Methods 41, 2009); ITU-R BT.1359 | Lip sync: syllables on the loudness peaks, and the sync limits viewers notice (45 ms sound first, 125 ms picture first). |
 | AniMatrix (Tencent HY, arXiv 2605.03652, 2026) | Anime is conventions, not physics, so make them explicit categorical directives. That is the acting sheet's fixed vocabulary of framing, timing, emotion and restraint. |
 | One Euro filter (Casiez, Roussel, Vogel, CHI 2012) | Smoothing a captured face without lag on fast moves. |
 | Ramer–Douglas–Peucker | Turning continuous capture into key poses, so motion reads pose to pose. |
@@ -249,7 +341,8 @@ can copy it into `style_bible/acting.json` and edit it.
 **Phase 2: bodies and words.**
 * Body capture from video: SAM 3D Body on a GPU writes BVH files, which are retargeted to the VRM humanoid. MediaPipe pose
   on the Mac is the fallback.
-* Lip sync is done (vowels and loudness). Audio2Face-3D is the upgrade for close-ups that need the full face to speak.
+* Lip sync is done: per language, checked against broadcast limits. Audio2Face-3D is the upgrade for close-ups that
+  need the full face to speak.
 * Sets for chapters 2–5, the lunar colony and Akari's swarm.
 * Spring-bone hair and sleeves.
 * Physics for the chapter 4 action, where Blender's rigid bodies and low gravity do what video models cannot keep consistent.
@@ -272,6 +365,13 @@ can copy it into `style_bible/acting.json` and edit it.
   break on a word. The quiet lines suit it. For the lines that carry the film (Sayo's "So we made it better", Tsumugi's
   "No. It's finished."), an engine that takes directions (Qwen3-TTS) or a cast actor will be better, and both plug in
   without changing anything else.
+* **Lip sync reads English from its spelling.** Anime's five mouth shapes forgive a lot, but an irregular word (one,
+  iron) can get the wrong vowel shape. The timing and the closures come from the voice, so they hold. The sync check
+  measures timing, not shapes, so watch one dubbed close-up per chapter yourself. Japanese is exact when its kana
+  reading (`ja_kana`) is.
+* **The checks are rules, not taste.** The continuity supervisor, the arc and the culture pack flag and fill; they do
+  not decide. A deliberate break is accepted with its reason, and `arc.json` and `culture.json` are drafts until you
+  approve them.
 * **Characters made from code are simple.** They have mitten hands without fingers, clothes without folds, and hair
   in clumps. They act, and read as anime characters, but a modelled character (VRoid) or the phase-3 finish pass will
   look richer. They do not yet hold props: in 1-04 the mallet swings in front of Sayo while her arms hang.
@@ -294,7 +394,8 @@ can copy it into `style_bible/acting.json` and edit it.
 * GPU backends remain for the GPU-only extras of phases 2 and 3.
 * `assemble` cuts the chapter from CG renders when `cgi.use_in_cut` is on, falling back shot by shot to takes, keyframes
   and cards.
-* Gates are unchanged. You approve acting sheets (`"status": "approved"`), the board and the animatic.
+* Gates are unchanged. You approve acting sheets (`"status": "approved"`), the arc and the culture pack (the same
+  `status` field in `arc.json` and `culture.json`), the board and the animatic.
 
 ## Sources
 
@@ -312,4 +413,12 @@ can copy it into `style_bible/acting.json` and edit it.
 * MediaPipe Face Landmarker: https://developers.google.com/edge/mediapipe/solutions/vision/face_landmarker
 * Live Link Face: https://apps.apple.com/us/app/-/id1495370836
 * Blender 5.3: https://digitalproduction.com/2026/11/11/blender-5-3-splat-happens-and-everything-else-gets-better/
+* de Jong and Wempe, syllable nuclei (2009): https://doi.org/10.3758/BRM.41.2.385
+* ITU-R BT.1359, relative timing of sound and vision for broadcasting: https://www.itu.int/rec/R-REC-BT.1359
+* Russell, a circumplex model of affect (1980): https://doi.org/10.1037/h0077714
+* Reagan et al., the emotional arcs of stories (2016): https://doi.org/10.1140/epjds/s13688-016-0093-1
+* Ekman and Friesen, the repertoire of nonverbal behavior (1969): https://doi.org/10.1515/semi.1969.1.1.49
+* Matsumoto, display rules across cultures (1990): https://doi.org/10.1007/BF00995569
+* Matsumoto et al., mapping expressive differences around the world (2008): https://doi.org/10.1177/0022022107311854
+* Arijon, *Grammar of the Film Language* (1976), and Bordwell and Thompson, *Film Art*: books, on continuity editing
 * Local video models and licences, Nov 2026: https://vdf.ai/blog/best-local-video-generation-models/

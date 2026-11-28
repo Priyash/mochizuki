@@ -1,0 +1,37 @@
+{
+ "_note": "The culture pack (engine/cgi/acting/culture.py): display rules, how a feeling is shown and by whom, played into every acting sheet. A rule changes only what a hand-written beat leaves to the draft. `python -m engine cgi culture --chapter 1` shows what each rule changes. A draft until the owner approves it.",
+ "culture": "ja",
+ "status": "draft",
+ "rules": [
+  {
+   "name": "a child shows joy and wonder openly",
+   "when": {"emotion": ["joy", "curiosity", "surprise", "wonder"], "age": [0, 12]},
+   "then": {"restraint_max": 0.1},
+   "why": "Open positive feeling is allowed in children (Matsumoto 1990, 2008); anime plays it in full: the mouth and brows move."
+  },
+  {
+   "name": "elders hold grief in",
+   "when": {"emotion": ["sorrow", "bittersweet", "fear"], "age": [60, 120]},
+   "then": {"restraint_min": 0.8, "gaze": "down"},
+   "why": "Gaman: Japanese display rules play sadness down more than almost anywhere, most of all for elders (Matsumoto et al. 2008). The eyes carry it; the face stays still."
+  },
+  {
+   "name": "distress is played down before a child",
+   "when": {"emotion": ["sorrow", "fear", "anger"], "age": [18, 120], "with_age": [0, 12]},
+   "then": {"intensity_scale": 0.75, "restraint_min": 0.85},
+   "why": "Adults mask distress in front of children (in-group display rules, Matsumoto 1990)."
+  },
+  {
+   "name": "anger is held in",
+   "when": {"emotion": ["anger"]},
+   "then": {"restraint_min": 0.6, "intensity_scale": 0.8},
+   "why": "Anger is the feeling Japanese display rules mask most (Matsumoto 1990)."
+  },
+  {
+   "name": "ma after a strong feeling",
+   "when": {"intensity": [0.7, 1.0]},
+   "then": {"hold_min": 0.5},
+   "why": "Ma: the pause that lets a feeling land. Anime holds the key pose instead of moving on."
+  }
+ ]
+}

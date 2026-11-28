@@ -23,7 +23,7 @@ from .stage import ANIMATIC_GATE, ASSEMBLE, BOARD_GATE, CGI, REFS_GATE, SCHEDULE
 # What the film's own folder provides (films/<name>/): the chain's inputs
 FILM_INPUTS = frozenset({
     "shot sheet", "style", "reference prompts", "scenes", "acting sheets", "sets", "lights", "cast",
-    "dialogue script",
+    "dialogue script", "emotional arc", "culture pack",
     "music cues",            # planned: style_bible/sound.json, when the music stage is built
 })
 
@@ -131,12 +131,15 @@ CHAIN: tuple[Stage, ...] = (
           runner=SCHEDULER, generators=("refs",),
           skips_unchanged="a job's key holds its prompt's hash; approved stills are never painted again",
           wants=_refs_wanted, halts=_refs_unapproved, plan=steps.refs, progress=_refs_progress),
-    Stage("voices", "voices every line, places it in its shot, makes the mouths",
+    Stage("voices", "voices every line in every language, places it in its shot, makes each language's mouths "
+                    "and checks their sync",
           consumes=("dialogue script", "shot sheet"), produces=("voiced lines", "mouths", "shot dialogue tracks"),
           runner=CGI, generators=("voice", "lipsync"),
           skips_unchanged="each line is cached by its text and voice", progress=_voices_progress),
-    Stage("render", "builds every shot in Blender from its acting sheet, set, lights and cast",
-          consumes=("shot sheet", "acting sheets", "sets", "lights", "cast", "mouths"), produces=("3D renders",),
+    Stage("render", "builds every shot in Blender from its acting sheet, set, lights and cast, and each speaking "
+                    "shot again per dub language",
+          consumes=("shot sheet", "acting sheets", "emotional arc", "culture pack", "scenes", "sets", "lights", "cast",
+                    "mouths"), produces=("3D renders",),
           runner=CGI, generators=("render",),
           skips_unchanged="a render's stamp holds its plan's hash", progress=_render_progress),
     Stage("keyframes", "draws keyframe candidates from the reference stills; the reviewer picks one per shot",
@@ -157,7 +160,8 @@ CHAIN: tuple[Stage, ...] = (
     Stage("music", "scores the chapter from its music cues",
           consumes=("music cues", "shot sheet"), produces=("music track",),
           runner=SCHEDULER, generators=("music",), built=False),
-    Stage("cut", "cuts the chapter: the best picture per shot, its dialogue tracks and subtitles",
+    Stage("cut", "cuts the chapter: the best picture per shot, its dialogue tracks and subtitles, and a dubbed cut "
+                 "per language",
           consumes=("3D renders", "takes", "keyframes", "shot dialogue tracks"), produces=("chapter cut", "subtitles"),
           runner=ASSEMBLE, generators=("subtitles",),
           skips_unchanged="cheap: a cut is remade from what exists", progress=_cut_progress),

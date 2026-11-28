@@ -6,6 +6,9 @@ relies on is checked; anything else in the config is the film's own business.
 """
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from .errors import EngineError
@@ -25,6 +28,24 @@ class FilmError(EngineError):
         self.problems = problems
         super().__init__(f"{film}: {len(problems)} problem(s) in the film's files:\n"
                          + "\n".join(f"  - {x}" for x in problems))
+
+
+def read_checked(path: Path, problems_of: Callable[[dict], list[str]] | None = None) -> dict:
+    """One of the style bible's JSON files ({} when there is none), with every problem in it raised at
+    once (FilmError) instead of a KeyError in the middle of a render."""
+    if not path.exists():
+        return {}
+    name = f"{path.parent.name}/{path.name}"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise FilmError(name, [f"not valid JSON: {e}"]) from e
+    if not isinstance(data, dict):
+        raise FilmError(name, ["the file must hold one JSON object"])
+    bad = problems_of(data) if problems_of else []
+    if bad:
+        raise FilmError(name, bad)
+    return data
 
 
 def _number(v: Any) -> bool:

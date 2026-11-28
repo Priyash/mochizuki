@@ -1,0 +1,26 @@
+{
+ "_note": "The intended emotional arc of each chapter (engine/cgi/acting/arc.py): points [time 0..1 through the chapter, valence -1 unpleasant .. +1 pleasant, arousal -1 calm .. +1 excited], or a shape (rags_to_riches, tragedy, man_in_a_hole, icarus, cinderella, oedipus). `python -m engine cgi arc --chapter 1` sets the shots' feelings beside it. fill_drafts: a drafted shot whose description gives no feeling plays the arc's feeling at its moment; hand-written beats are never changed. A draft until the owner approves it.",
+ "status": "draft",
+ "fill_drafts": true,
+ "chapters": {
+  "1": {
+   "_what": "Tsukimi night: play, a memory held in, wonder at the moon; then the first snow, Sayo alone, an offering to someone who is gone, and the child taking it up.",
+   "points": [
+    [0.0, 0.3, 0.2],
+    [0.12, 0.65, 0.5],
+    [0.17, 0.7, 0.45],
+    [0.27, 0.4, -0.15],
+    [0.36, 0.15, -0.3],
+    [0.45, 0.45, 0.35],
+    [0.57, 0.5, 0.4],
+    [0.6, 0.2, -0.3],
+    [0.65, -0.45, -0.4],
+    [0.73, -0.4, -0.45],
+    [0.8, -0.15, -0.35],
+    [0.84, 0.1, 0.1],
+    [0.88, -0.3, -0.45],
+    [1.0, 0.35, -0.2]
+   ]
+  }
+ }
+}

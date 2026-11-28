@@ -25,6 +25,8 @@ DEFAULTS: dict = {
     "work": f"{MEDIA_DIR}/cgi",          # plans, .blend files, frames and clips per shot
     "use_in_cut": False,                 # assemble: prefer a shot's CG render over takes and keyframes
     "stand_in": "anime",                 # without a model file: "anime" (made from code) or "maquette"
+    "dubs": "all",                       # "all": each script language its own lip-synced render of every shot
+                                         # where someone speaks on screen (1-11.ja.mp4); "none": one render
     # Who is who, and continuity that is data (a prop's state by chapter): each film's own, in its
     # config.json -> cgi.characters / cgi.props_state. A character entry looks like
     #   "name": {"model": {"<chapter>": "assets/characters/name.vrm"}, "height_m": {"<chapter>": 1.5},

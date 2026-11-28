@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -25,6 +26,14 @@ MAC_BLENDER = "/Applications/Blender.app/Contents/MacOS/Blender"
 
 def log(event: str, msg: str = "", level: str = "info", **kw) -> None:
     _log("cgi", event, msg, level, **kw)
+
+
+OWN_FRAMES = re.compile(r"frames-(preview|final)-\d+x\d+")     # a dub's folder adds -<language>
+
+
+def frame_folders(shot_dir: Path) -> list[Path]:
+    """The shot's own frames folders, not its dubs' (the board and the review show the primary picture)."""
+    return [d for d in shot_dir.glob("frames-*") if OWN_FRAMES.fullmatch(d.name)]
 
 
 def find_blender(cfg: dict) -> str | None:
@@ -132,16 +141,18 @@ def mux_audio(clip: Path, wav: Path, offset_s: float = 0.0) -> Path:
 
 def render_shot(p, shot_id: str, preview: bool = False, frames: tuple[int, int] | None = None,
                 no_render: bool = False, codec: str | None = None, timeout: float = 6 * 3600,
-                size: tuple[int, int] | None = None, guides: tuple[str, ...] = ()) -> dict:
+                size: tuple[int, int] | None = None, guides: tuple[str, ...] = (),
+                language: str | None = None) -> dict:
     """Build and render one shot; with `guides`, also its guide passes for the AI finish, each encoded
-    beside the shot's clip as <clip>.<guide>.mp4 (1-05.depth.mp4)."""
+    beside the shot's clip as <clip>.<guide>.mp4 (1-05.depth.mp4). With `language`, a dub: that
+    language's lips and voice, in <shot>.<language>.mp4 (1-11.ja.mp4)."""
     cfg = settings(p)
     exe = find_blender(cfg)
     if not exe:
         raise RuntimeError("Blender was not found: install Blender 5.x from blender.org (or set config "
                            "cgi.blender / the BLENDER environment variable)")
     t0 = time.time()
-    plan = planner.build(p, shot_id, preview=preview, frames_only=frames, size=size, guides=guides)
+    plan = planner.build(p, shot_id, preview=preview, frames_only=frames, size=size, guides=guides, language=language)
     plan_file = planner.write(plan)
     who = {c["name"]: ("model" if c["model"] else ("lantern" if c.get("procedural") else "stand-in"))
            for c in plan["characters"]}
@@ -150,7 +161,7 @@ def render_shot(p, shot_id: str, preview: bool = False, frames: tuple[int, int] 
         faces=json.dumps({c["name"]: c["face"].get("_source") for c in plan["characters"]}) or None)
     events = run_blender(command(exe, plan_file, no_render), shot_id, timeout)
     result = {"shot": shot_id, "plan": str(plan_file), "blend": plan["output"]["blend"],
-              "characters": who, "events": len(events)}
+              "characters": who, "events": len(events), "language": plan.get("language")}
     if no_render:
         return result
     first, last = plan["frame_range"]
@@ -159,12 +170,13 @@ def render_shot(p, shot_id: str, preview: bool = False, frames: tuple[int, int] 
     if not plan.get("blackout") and blank(files[len(files) // 2]):
         raise RuntimeError(f"{shot_id}: the frames came out blank (one flat colour): check the lights in the .blend")
     enc = cfg["encode"]
-    name = f"{shot_id}-preview.mp4" if preview else f"{shot_id}.mp4"
+    name = (f"{shot_id}-preview" if preview else shot_id) + plan["output"].get("clip_suffix", "") + ".mp4"
     if (first, last) != (1, plan["frames"]):               # part of a shot never replaces the whole shot's clip
         name = name.replace(".mp4", f"-f{first}-{last}.mp4")
     clip = encode(folder, first, plan["fps"], Path(plan["output"]["dir"]) / name,
                   enc["preview_crf"] if preview else enc["crf"], codec or enc.get("codec", "libx264"))
-    track = (plan.get("audio") or {}).get("en") or next(iter((plan.get("audio") or {}).values()), None)
+    audio = plan.get("audio") or {}
+    track = audio.get(plan.get("language") or "") or next(iter(audio.values()), None)   # the voice its lips speak
     if track and Path(track).exists() and clip.suffix == ".mp4":
         clip = mux_audio(clip, Path(track), (first - 1) / plan["fps"])
     made = {}
@@ -189,7 +201,7 @@ def board(p, shots: list[str], chapter: int, cols: int = 4, width: int = 480) ->
     work = Path(cfg["work"]) if Path(cfg["work"]).is_absolute() else p.root / cfg["work"]
     tiles = []
     for sid in shots:
-        folders = sorted((d for d in (work / sid).glob("frames-*") if any(d.glob("*.png"))),
+        folders = sorted((d for d in frame_folders(work / sid) if any(d.glob("*.png"))),
                          key=lambda d: max(f.stat().st_mtime for f in d.glob("*.png")))
         if folders:                                        # the newest render; its middle frame
             pngs = sorted(folders[-1].glob("*.png"))
