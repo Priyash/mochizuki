@@ -26,6 +26,18 @@ from engine.project import Project, Shot
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
 
 
+def _pillow_loads() -> bool:
+    try:
+        from PIL import Image  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+needs_pillow = pytest.mark.skipif(not _pillow_loads(),
+                                 reason="Pillow is not installed for this Python (pip install pillow)")
+
+
 def shot(text: str, chapter: int = 1, seconds: int = 4, kind: str = "Hero", sound: str = "") -> Shot:
     return Shot("9-99", chapter, text, seconds, kind, "Editor", 0, sound)
 
@@ -368,11 +380,18 @@ def test_render_checks_and_encodes(proj, fake_blender, monkeypatch):
     assert Path(r["clip"]).name == "1-02-preview-f1-12.mp4"        # a part never replaces the shot's clip
     whole = rnd.render_shot(proj, "1-08", preview=True)
     assert Path(whole["clip"]).name == "1-08-preview.mp4"
+    built = rnd.render_shot(proj, "1-06", preview=True, no_render=True)
+    assert "clip" not in built and Path(built["plan"]).exists()
+
+
+@needs_ffmpeg
+@needs_pillow
+def test_a_blank_render_is_refused(proj, fake_blender, monkeypatch):
+    monkeypatch.setattr(rnd, "command", lambda exe, plan_file, no_render=False:
+                        [str(exe), "--plan", str(plan_file)] + (["--no-render"] if no_render else []))
     monkeypatch.setenv("FAKE_FLAT", "1")
     with pytest.raises(RuntimeError, match="blank"):
         rnd.render_shot(proj, "1-05", preview=True, frames=(1, 4))
-    built = rnd.render_shot(proj, "1-06", preview=True, no_render=True)
-    assert "clip" not in built and Path(built["plan"]).exists()
 
 
 @needs_ffmpeg

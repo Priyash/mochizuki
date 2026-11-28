@@ -90,10 +90,19 @@ def check_frames(folder: Path, first: int, last: int) -> list[Path]:
     return files
 
 
+_warned_no_pillow = False
+
+
 def blank(png: Path) -> bool:
+    """One flat colour: the lights or the camera are wrong. Needs Pillow; without it the check is off,
+    and says so once."""
+    global _warned_no_pillow
     try:
         from PIL import Image, ImageStat  # noqa: PLC0415
     except ImportError:
+        if not _warned_no_pillow:
+            _warned_no_pillow = True
+            log("check.off", "the blank-frame check is off: Pillow is not installed (pip install pillow)", level="warn")
         return False
     st = ImageStat.Stat(Image.open(png).convert("L"))
     return st.extrema[0][1] - st.extrema[0][0] < 3

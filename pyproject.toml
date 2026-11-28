@@ -32,6 +32,7 @@ include = ["engine*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]          # the engine imports however pytest is started
 
 [tool.ruff]
 line-length = 120
