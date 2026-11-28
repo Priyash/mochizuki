@@ -82,16 +82,17 @@ Each backend takes only the stages listed in its section of `config.json` (`kagg
 
 ## Setup
 
-You need Python 3.10+, ffmpeg and a free Kaggle account. Paths in this section are inside the film's folder, `films/mochizuki/`; commands pick it up by themselves (choose another with `--film` or `FILM`).
+You need Python 3.11+, ffmpeg and a free Kaggle account. Paths in this section are inside the film's folder, `films/mochizuki/`; commands pick it up by themselves (choose another with `--film` or `FILM`).
 
 1. On kaggle.com, verify your phone number (GPUs and notebook internet need it).
 2. Under **Settings → API**, create a token. Put it in `KAGGLE_API_TOKEN` in `.env`, or save `kaggle.json` to `~/.kaggle/`.
 3. Set your Kaggle username in `config.json → kaggle.username`, or `KAGGLE_USERNAME` in `.env`.
-4. `pip install -r requirements.txt`, then check `kaggle quota -v` shows your GPU hours.
+4. `pip install -e ".[kaggle]"`, then check `kaggle quota -v` shows your GPU hours.
 5. Put reference stills in `style_bible/refs/` and approve the look (see [style_bible/README.md](style_bible/README.md)).
 
 ```bash
 cp .env.example .env      # fill it in; .env is never committed
+python -m engine check    # the film's config.json and shots.csv: every problem at once
 python -m engine plan   # dry run: GPU hours per shot, and money
 ```
 
@@ -183,7 +184,13 @@ If an engine fails, the reason is in `media/batches/<id>/download/out/results.js
 | AI finish on hero shots (phase 3) | Not built |
 | The `fal` paid fallback | Written, never run; endpoint ids are placeholders |
 
-`python -m pytest -q` runs 164 tests in about 2 minutes, with no GPU or network. They need ffmpeg, plus Pillow for the blank-frame check.
+`pip install -e ".[dev]"` installs the checks CI runs on every pull request (Python 3.11 and 3.12):
+
+```bash
+ruff check .          # lint
+mypy                  # types (the Blender scripts, which run inside Blender, are left out)
+python -m pytest -q   # 172 tests in about 2 minutes, no GPU or network; they need ffmpeg
+```
 
 ---
 
@@ -223,7 +230,7 @@ engine/scheduler/        the producer loop, and one batch's life: build, submit,
 engine/providers/        where GPU work runs, behind one interface: kaggle/, colab/ (cloud), mac.py (offline)
 engine/cgi/              the 3D CG pipeline: acting/, staging/, plan, render/
 engine/audio/            sound: voice, dialogue, lip sync, subtitles, mix
-engine/mac/              the Mac worker (offline)
+engine/mac/              the Mac (offline): generators/, runtime/, worker/, training/
 worker/worker.py         runs on Kaggle and Colab: stills, keyframes, Wan takes, 4K upscale
 films/mochizuki/         this film
   shots.csv              the shot sheet: 138 shots, 600 s

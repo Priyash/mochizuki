@@ -1,4 +1,7 @@
-import subprocess, time, platform
+import platform
+import subprocess
+import time
+
 print("python", platform.python_version())
 print(subprocess.run(["nvidia-smi"], capture_output=True, text=True).stdout or "no GPU visible")
 try:

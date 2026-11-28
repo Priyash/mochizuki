@@ -14,7 +14,6 @@ import math
 
 import bpy
 
-
 ALIASES = {"Fac": ("Fac", "Factor"), "Factor": ("Factor", "Fac")}     # Blender 5 renamed Fac to Factor
 
 

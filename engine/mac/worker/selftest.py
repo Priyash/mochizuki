@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Any
 
-from .common import log
-from .sysinfo import describe
+from ..runtime.health import describe
+from ..runtime.shared import log
 
 EDIT_PROMPT = ("Low-angle shot from floor level, camera looking up at the two of them; same place, same people, "
                "same clothes, now at dusk.")
@@ -44,7 +45,7 @@ def key_art_prompt(p, look: str = "3d") -> tuple[str, dict]:
     return "\n".join(x for x in (style_text, body) if x), r
 
 
-def _step(n: str, what: str, fn):
+def _step(n: str, what: str, fn) -> dict[str, Any]:
     log(f"self-test {n}: {what}", event="selftest.start", step=n)
     t0 = time.time()
     try:
@@ -89,7 +90,7 @@ def self_test(p, engines, out: Path, edit_only: bool = False, look: str = "3d", 
             level="warn", file=str(out))
     if edit_only and out.exists():
         log(f"self-test: reusing {out}; testing only the keyframe engine", event="selftest.edit_only", file=str(out))
-        still = {"ok": True, "file": str(out), "seconds": 0, "reused": True}
+        still: dict[str, Any] = {"ok": True, "file": str(out), "seconds": 0, "reused": True}
     else:
         still = _step("1/2", "one reference still (text to image); the first run also downloads the model",
                        lambda: {**engines.run({"key": "selftest-style", "prompt": prompt, "width": r.get("width", 1664),
@@ -102,7 +103,7 @@ def self_test(p, engines, out: Path, edit_only: bool = False, look: str = "3d", 
                                          "width": r.get("width", 1664), "height": r.get("height", 928)},
                                         out.parent, edit_out), "file": str(edit_out)})
     if edit["ok"]:
-        per = still["seconds"] or edit["seconds"]
+        per = float(still["seconds"] or edit["seconds"])
         log(f"self-test passed: {out.name} and {edit_out.name} in {out.parent}. At this speed 24 stills take about "
             f"{24 * per / 3600:.1f} h.", event="selftest.passed", est_hours_24=round(24 * per / 3600, 1))
     return {"still": still, "edit": edit}
@@ -116,10 +117,24 @@ def video_test(p, engines, still: Path, out: Path, seconds: float = 2.0) -> dict
         msg = f"no still at {still}: run `mac-worker --self-test` first, or pass --image"
         log(msg, event="selftest.failed", level="error", step="video")
         return {"video": {"ok": False, "error": msg}}
-    video = _step("video", f"a {seconds:g}-second take from {still.name} (Wan 2.2); the first run downloads about 19 GB",
-                  lambda: {**engines.run({"key": "selftest-take", "kind": "take", "prompt": VIDEO_PROMPT,
-                                          "image": still.name, "seconds": seconds}, still.parent, out),
-                           "file": str(out)})
+    video = _step(
+        "video",
+        f"a {seconds:g}-second take from {still.name} (Wan 2.2); the first run downloads about 19 GB",
+        lambda: {
+            **engines.run(
+                {
+                    "key": "selftest-take",
+                    "kind": "take",
+                    "prompt": VIDEO_PROMPT,
+                    "image": still.name,
+                    "seconds": seconds,
+                },
+                still.parent,
+                out,
+            ),
+            "file": str(out),
+        },
+    )
     if video["ok"]:
         log(f"video test passed: {out}. At this speed a 10-minute film is about "
             f"{600 / seconds * video['seconds'] / 3600:.0f} h of rendering (one take per shot).",

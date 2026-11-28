@@ -6,14 +6,13 @@ import sys
 from graphlib import CycleError
 
 import pytest
+from test_pipeline import copy_project
 
 from engine import generators as gen
 from engine import scheduler as sched
 from engine import stages, steps
 from engine.project import REPO
 from engine.stages import chain
-
-from test_pipeline import copy_project
 
 
 def test_the_chain_never_loops_and_every_stage_follows_what_it_consumes():

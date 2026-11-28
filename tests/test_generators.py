@@ -4,6 +4,8 @@ from __future__ import annotations
 import importlib.util
 
 import pytest
+from test_mac import FakeRelease
+from test_pipeline import copy_project
 
 from engine import generators as gen
 from engine import scheduler as sched
@@ -12,9 +14,6 @@ from engine.providers import colab as cb
 from engine.providers.base import WORKER
 from engine.providers.kaggle import KaggleProvider, LocalKaggle
 from engine.providers.mac import MacProvider
-
-from test_pipeline import copy_project
-from test_mac import FakeRelease
 
 
 def _worker():

@@ -14,9 +14,9 @@ import threading
 import time
 from pathlib import Path
 
-from ..providers.release import Release, names
-from .common import log
-from .config import NAME
+from ...providers.release import Release, names
+from ..config import NAME
+from ..runtime.shared import log
 
 
 def _suffix(engine, job: dict) -> str:

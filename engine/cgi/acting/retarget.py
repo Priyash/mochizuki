@@ -148,7 +148,7 @@ def lantern_channels(curves: dict, frames: int, wobble: list[float]) -> Track:
     names = ["akari.glow", "akari.tilt", "akari.bob"]
     vals = []
     for f in range(frames):
-        g = lambda e: curves.get(e, [0.0] * frames)[f]  # noqa: E731
+        g = lambda e, f=f: curves.get(e, [0.0] * frames)[f]  # noqa: E731 - this frame's value of an emotion
         glow = 0.75 + 0.5 * g("joy") + 0.3 * g("wonder") + 0.2 * g("tenderness") - 0.4 * g("sorrow")
         glow += 0.12 * g("fear") * (1 if (f // 2) % 2 else -1)
         tilt = 14.0 * g("curiosity") + 6.0 * g("tenderness") - 8.0 * g("sorrow")

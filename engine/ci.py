@@ -113,9 +113,12 @@ def notice(p: Project, led: Ledger, chapter: int, state: Path, out: dict) -> dic
     blob = f"https://github.com/{repo}/blob/state/review/ch{chapter}"
     if rs and all(x == "selected" for x in rs.values()):
         names = review.refs_sheet(p, led, state / "review" / f"ch{chapter}" / "refs.jpg", chapter)
-        return {"kind": "refs", "text": f"{at}The reference stills are ready: {blob}/refs.jpg (in order: "
-                                        f"{', '.join(names)}). Comment `/approve refs` to make them the film's look, or "
-                                        "`/reject <name>` for any you don't want, and new candidates will be painted."}
+        return {
+            "kind": "refs",
+            "text": f"{at}The reference stills are ready: {blob}/refs.jpg (in order: "
+            f"{', '.join(names)}). Comment `/approve refs` to make them the film's look, or "
+            "`/reject <name>` for any you don't want, and new candidates will be painted.",
+        }
     if rs:
         return {"kind": "idle", "text": f"Reference stills: {rs}"}
     if all(led.selected(s.id) for s in shots) and not led.approved(chapter, "board"):

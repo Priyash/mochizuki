@@ -64,10 +64,23 @@ class ColabProvider(ReleaseProvider):
         return secs, setup
 
     def push(self, folder: Path, accelerator: str, timeout_s: int) -> str:
-        code, out = self.rel._gh(["api", "-X", "POST", f"repos/{self.rel.repo}/actions/workflows/{RUNNER_WORKFLOW}/dispatches",
-                                  "-f", "ref=main", "-f", "inputs[mode]=run"])
-        self.log.append(f"{RUNNER_WORKFLOW} started" if code == 0 else f"{RUNNER_WORKFLOW} not started ({out.strip()[-200:]}); "
-                        "its schedule will pick the batch up")
+        code, out = self.rel._gh(
+            [
+                "api",
+                "-X",
+                "POST",
+                f"repos/{self.rel.repo}/actions/workflows/{RUNNER_WORKFLOW}/dispatches",
+                "-f",
+                "ref=main",
+                "-f",
+                "inputs[mode]=run",
+            ]
+        )
+        self.log.append(
+            f"{RUNNER_WORKFLOW} started"
+            if code == 0
+            else f"{RUNNER_WORKFLOW} not started ({out.strip()[-200:]}); its schedule will pick the batch up"
+        )
         return Path(folder).parent.name
 
 

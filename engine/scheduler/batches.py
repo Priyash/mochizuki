@@ -20,7 +20,7 @@ from ..providers.base import WORKER, Provider, Status
 from ..stages import gpu_stages
 
 STAGES = tuple(s.name for s in gpu_stages())          # the GPU stages, in chain order (engine/stages)
-PLANNERS = {s.name: s.plan for s in gpu_stages()}
+PLANNERS = {s.name: s.plan for s in gpu_stages() if s.plan is not None}
 COLLECT_TRIES = 3          # downloads of a finished run before its batch is closed without the output
 GONE_WORDS = ("404", "not found")   # a download error that means the run's output no longer exists
 QUOTA_SANITY = 0.5         # submit only if the provider says at least this share of the batch's time is left

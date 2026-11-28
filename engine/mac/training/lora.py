@@ -22,8 +22,8 @@ import time
 import zipfile
 from pathlib import Path
 
-from .common import LORAS, WORK, log
-from .process import run_streaming
+from ..runtime.shared import LORAS, WORK, log
+from ..runtime.tools import run_streaming
 
 IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".webp")
 LOCAL_LORAS = WORK / "loras.json"            # this Mac's LoRAs; kept out of git, merged into mac.loras

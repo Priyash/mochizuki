@@ -5,8 +5,9 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
-from .common import log
+from .shared import log
 
 
 def _sh(*args: str) -> str:
@@ -63,7 +64,7 @@ def describe(folder: Path, need_gb: float = 40) -> dict:
     mem = _sh("sysctl", "-n", "hw.memsize").strip()
     ram = f"{int(mem) / 2**30:.0f} GB" if mem.isdigit() else "?"
     free = shutil.disk_usage(Path.home()).free / 1e9
-    info = {"chip": chip, "ram": ram, "macos": _sh("sw_vers", "-productVersion").strip() or "?",
+    info: dict[str, Any] = {"chip": chip, "ram": ram, "macos": _sh("sw_vers", "-productVersion").strip() or "?",
             "free_gb": round(free), "mflux": _version("mflux"), "mlx_video": _version("mlx-video")}
     log(f"this Mac: {chip}, {ram} memory, macOS {info['macos']}, {free:.0f} GB free disk, mflux {info['mflux']}, "
         f"mlx-video {info['mlx_video']}; output goes to {folder}", event="mac.info", **info)

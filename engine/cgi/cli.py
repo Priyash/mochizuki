@@ -17,13 +17,22 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from ..log import set_file
 from . import plan as planner
 from .acting import capture as cap
 from .acting import direction as dirn
-from .render import runner as rnd
 from .config import by_chapter, settings, work_dir
+from .render import runner as rnd
+
+
+def _size(text: str | None) -> tuple[int, int] | None:
+    """A render size, "WxH" -> (W, H)."""
+    if not text:
+        return None
+    w, h = (int(x) for x in text.lower().split("x"))
+    return w, h
 
 
 def add_arguments(a: argparse.ArgumentParser) -> None:
@@ -192,7 +201,7 @@ def run(p, args) -> int:
         return 0
     if cmd == "auto":
         from . import auto  # noqa: PLC0415
-        size = tuple(int(x) for x in args.size.lower().split("x")) if args.size else None
+        size = _size(args.size)
         a, _, b = args.shard.partition("/")
         r = auto.run(p, args.chapter, stage=args.stage, final=args.final, shard=(int(a), int(b or 1)),
                      engine=args.engine or None, size=size, force=args.force,
@@ -204,7 +213,7 @@ def run(p, args) -> int:
         if not shots:
             print("give a shot id, or --chapter N")
             return 2
-        size = tuple(int(x) for x in args.size.lower().split("x")) if args.size else None
+        size = _size(args.size)
         results, failed = [], []
         for sid in shots:
             frames = _frames(args.frames)
@@ -219,7 +228,7 @@ def run(p, args) -> int:
             except Exception as e:  # noqa: BLE001 - one bad shot must not stop a chapter
                 rnd.log("shot.failed", f"{sid}: {e}", level="error", shot=sid)
                 failed.append(sid)
-        out = {"rendered": results, "failed": failed}
+        out: dict[str, Any] = {"rendered": results, "failed": failed}
         if args.board and results:
             out["board"] = str(rnd.board(p, [r["shot"] for r in results], args.chapter or 0))
         print(json.dumps(out, indent=1, default=str))

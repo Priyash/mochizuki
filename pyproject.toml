@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "film-engine"
+version = "0.4.0"
+description = "Makes animated short films chapter by chapter: a 3D CG pipeline, AI generators on free and paid GPUs, and the producer loop that drives them."
+readme = "README.md"
+requires-python = ">=3.11"
+# The engine itself needs only the standard library, and ffmpeg on PATH.
+dependencies = []
+
+[project.optional-dependencies]
+kaggle = ["kaggle>=1.7", "six"]                   # the Kaggle provider's command-line tool
+dev = [
+    "pytest>=8",
+    "pillow>=10",                                 # the 3D renderer's blank-frame check, and its test
+    "ruff==0.16.9",
+    "mypy==2.3.1",
+]
+
+[project.scripts]
+film-engine = "engine.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["engine*"]
+
+[tool.setuptools.package-data]
+"engine.audio.tts" = ["*.txt"]
+"engine.cgi.render.blender" = ["*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]          # the engine imports however pytest is started
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["films", "media"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "B", "I", "UP", "SIM"]
+ignore = [
+    "B905",     # zip() without strict=: lengths are checked where they matter
+    "SIM105",   # try/except/pass is as clear as contextlib.suppress
+    "SIM108",   # a ternary is not always clearer than if/else
+]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["engine"]
+ignore_missing_imports = true
+exclude = ["engine/cgi/render/blender/"]   # runs inside Blender, against bpy

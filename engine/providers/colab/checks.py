@@ -9,12 +9,14 @@ import shutil
 import tarfile
 import time
 from pathlib import Path
+from typing import Any
 
 from ..base import WORKER
 from .cli import ColabCLI, _redact
 from .config import NAME, SESSION_PREFIX
 from .config import log as _log
 from .runner import run_remote, stop_gpu_vms
+
 
 def test_still(p, cli: ColabCLI, cfg: dict, packages: list[str], out_dir: Path, ref: str = "style") -> dict:
     """One reference still on Colab, outside the ledger and the release: proves sign-in, GPU, engine."""
@@ -111,7 +113,13 @@ def smoke(cli: ColabCLI, work: Path) -> dict:
 
     def step(name, ok, detail=""):
         st[name] = {"ok": bool(ok), "detail": _redact(str(detail))[-400:]}
-        _log(f"{'OK  ' if ok else 'FAIL'} {name} {st[name]['detail']}", event="smoke.step", level="info" if ok else "error", step=name, ok=bool(ok))
+        _log(
+            f"{'OK  ' if ok else 'FAIL'} {name} {st[name]['detail']}",
+            event="smoke.step",
+            level="info" if ok else "error",
+            step=name,
+            ok=bool(ok),
+        )
         return ok
 
     code, out = cli.run(["--help"], timeout=60)
@@ -121,6 +129,7 @@ def smoke(cli: ColabCLI, work: Path) -> dict:
     rep["balance_units"] = bal
     if not step("sign-in and balance", bal is not None, f"balance {bal} units" if bal is not None else out):
         return rep
+    assert bal is not None                       # step() returned early otherwise
     rep["gpu_needs_units"] = bal < 3
     vms = cli.assignments()
     step("list the account's VMs", vms is not None, f"{len(vms)} running: " + ", ".join(
@@ -136,11 +145,11 @@ def smoke(cli: ColabCLI, work: Path) -> dict:
         (work / "smoke_job.py").write_text(SMOKE_JOB)
         code, out = cli.run(["upload", "-s", session, str(work / "smoke_in.txt"), "/content/smoke_in.txt"], 600)
         step("upload", code == 0, out)
-        lines = []
+        lines: list[str] = []
         code, tail = cli.stream(["exec", "-s", session, "-f", str(work / "smoke_job.py"), "--timeout", "0",
                                  "--env", "MOCHI_SMOKE=42"], time.time() + 900, lines.append)
         step("run code (exec, streaming)", "MOCHI-DONE" in tail, f"exit {code}")
-        info = next((json.loads(x.split("[smoke] ", 1)[1]) for x in lines if x.startswith("[smoke] {")), {})
+        info: dict = next((json.loads(x.split("[smoke] ", 1)[1]) for x in lines if x.startswith("[smoke] {")), {})
         rep["vm"] = info
         step("env passed in", info.get("env_ok"), "")
         step("uploaded file seen on the VM", info.get("input") == "hello from GitHub", info.get("input"))
@@ -167,7 +176,7 @@ def gpu_probe(cli: ColabCLI, gpus=None, wait_s: int = 900) -> dict:
     # MOCHI_PROBE="A100:hm,G4:hm,L4" asks for each GPU in turn; ":hm" adds --high-mem
     spec = gpus or os.environ.get("MOCHI_PROBE") or "T4,L4,G4,A100,H100"
     gpus = spec.split(",") if isinstance(spec, str) else list(spec)
-    rep = {"balance_before": cli.balance(), "gpus": {}}
+    rep: dict[str, Any] = {"balance_before": cli.balance(), "gpus": {}}
     stop_gpu_vms(cli)
     for item in gpus:
         g, _, opt = item.strip().partition(":")
@@ -181,8 +190,12 @@ def gpu_probe(cli: ColabCLI, gpus=None, wait_s: int = 900) -> dict:
             _, use = cli.run(["usage"], timeout=120)
             m = re.search(r"([\d.]+)\s*(?:compute units\s*)?(?:/|per)\s*h", use)
             cli.run(["stop", "-s", s], timeout=300)
-            rep["gpus"][g_label] = {"granted": True, "seconds": took, "units_per_hour": float(m.group(1)) if m else None,
-                              "usage": _redact(use.strip())[-300:]}
+            rep["gpus"][g_label] = {
+                "granted": True,
+                "seconds": took,
+                "units_per_hour": float(m.group(1)) if m else None,
+                "usage": _redact(use.strip())[-300:],
+            }
         else:
             last = re.sub(r"\x1b\[[0-9;]*m", "", out.strip().splitlines()[-1] if out.strip() else str(code))
             rep["gpus"][g_label] = {"granted": False, "seconds": took, "error": _redact(last)[-250:]}

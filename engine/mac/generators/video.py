@@ -12,11 +12,11 @@ import tempfile
 import time
 from pathlib import Path
 
-from ...generators import wan_frames as frames_for  # noqa: F401 - engine.mac.engines exports it
+from ...generators import wan_frames as frames_for  # noqa: F401 - engine.mac.generators exports it
 from ...generators import wan_segments as segments
-from ..common import MODELS, ffmpeg_exe, log, seed_for
-from ..models import resolve_cmd
-from ..process import run_streaming
+from ..runtime.downloads import resolve_cmd
+from ..runtime.shared import MODELS, ffmpeg_exe, log, seed_for
+from ..runtime.tools import run_streaming
 from .base import check_video
 
 
@@ -77,8 +77,8 @@ class MlxVideoEngine:
             f"{self.e['width']}x{self.e['height']} at {fps} fps", event="video.start", key=job["key"],
             clips=len(segs), frames=sum(segs) - len(segs) + 1)
         t0 = time.time()
-        with tempfile.TemporaryDirectory(prefix="mochi-video-") as tmp:
-            tmp = Path(tmp)
+        with tempfile.TemporaryDirectory(prefix="mochi-video-") as tmp_name:
+            tmp = Path(tmp_name)
             start = self._fit(image, tmp / "start-0.png")
             clips = []
             for n, frames in enumerate(segs):

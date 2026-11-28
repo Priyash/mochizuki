@@ -19,29 +19,41 @@ from pathlib import Path
 
 from ..log import set_file
 from ..providers.release import Release
-from .common import WORK, log
 from .config import settings, with_engine_set
-from .engines import build
-from .selftest import key_art_prompt, self_test, video_test
-from .train import LOCAL_LORAS, train_lora
-from .worker import worker_loop
+from .generators import build
+from .runtime.shared import WORK, log
+from .training.lora import LOCAL_LORAS, train_lora
+from .worker.loop import worker_loop
+from .worker.selftest import key_art_prompt, self_test, video_test
 
 
 def add_arguments(a: argparse.ArgumentParser) -> None:
     a.add_argument("--once", action="store_true", help="take what is waiting, then stop")
-    a.add_argument("--self-test", action="store_true", help="one still and one keyframe here; nothing is sent to GitHub")
-    a.add_argument("--edit-only", action="store_true", help="self-test: reuse the last self-test still, test only the keyframe engine")
+    a.add_argument(
+        "--self-test", action="store_true", help="one still and one keyframe here; nothing is sent to GitHub"
+    )
+    a.add_argument(
+        "--edit-only",
+        action="store_true",
+        help="self-test: reuse the last self-test still, test only the keyframe engine",
+    )
     a.add_argument("--look", default="3d", choices=["3d", "2d"],
                    help="self-test: the 3D (default) or 2D wording of the key art; files get -2d in their name")
     a.add_argument("--variants", type=int, default=1, help="self-test: this many stills, each with its own seed")
-    a.add_argument("--video-test", action="store_true", help="animate the self-test still (or --image) into a short take")
+    a.add_argument(
+        "--video-test", action="store_true", help="animate the self-test still (or --image) into a short take"
+    )
     a.add_argument("--image", default="", help="video test: the still to animate")
     a.add_argument("--seconds", type=float, default=2.0, help="video test: length of the take")
     a.add_argument("--train-lora", default="", metavar="NAME", help="train a LoRA called NAME from --images")
-    a.add_argument("--images", default="", help="training: folder of 15-30 images (an optional NAME.txt caption beside each)")
+    a.add_argument(
+        "--images", default="", help="training: folder of 15-30 images (an optional NAME.txt caption beside each)"
+    )
     a.add_argument("--trigger", default="", help="training: the trigger word (default mchz_<NAME>)")
     a.add_argument("--caption", default="", help="training: caption for images without their own .txt")
-    a.add_argument("--train-steps", type=int, default=0, help="training: total steps (default config mac.train.steps_total)")
+    a.add_argument(
+        "--train-steps", type=int, default=0, help="training: total steps (default config mac.train.steps_total)"
+    )
     a.add_argument("--scale", type=float, default=0.8, help="training: how strongly the engines apply the LoRA")
     a.add_argument("--dry-run", action="store_true", help="training: build and check the config, do not train")
     a.add_argument("--engines", default="", help="another engine set from config mac.engines_<name>, e.g. zimage_base")

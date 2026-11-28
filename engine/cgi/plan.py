@@ -12,16 +12,16 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-
-from ..generators import seed_for
-from ..project import SETS_FILE
+from typing import Any
 
 from ..audio import dialogue
+from ..generators import seed_for
+from ..project import SETS_FILE
 from .acting import direction as dirn
 from .acting import retarget, timing
 from .acting.capture import Track, resample, smooth
-from .staging import figure, layout, palette
 from .config import by_chapter, settings, work_dir
+from .staging import figure, layout, palette
 
 POSTURE_HEAD = {"standing": 0.9, "walking": 0.9, "kneeling": 0.54, "seiza": 0.52}   # eye height / body height
 POSTURE_HANDS = {"standing": 0.55, "walking": 0.55, "kneeling": 0.36, "seiza": 0.34}
@@ -217,7 +217,7 @@ def face_track(p, cfg: dict, d, me: dict, frames: int, fps: int, gaze: dict, sho
         source = "capture"
     else:
         tr = emo
-    channels = {n: tr.channel(n) for n in tr.names}
+    channels: dict[str, Any] = {n: tr.channel(n) for n in tr.names}
     if source == "beats":
         channels.update(gaze)
     on = cfg["character_step"]
@@ -240,13 +240,13 @@ def mallet_motion(frames: int, fps: int, strikes: list[float]) -> list[dict]:
     high = {"at": [0.31, 0.0, 1.14], "rot": [0, 30, 0]}
     hit = {"at": [0.02, 0.0, 0.5], "rot": [0, 72, 0]}
     rebound = {"at": [0.05, 0.0, 0.57], "rot": [0, 67, 0]}
-    keys = [(0, up, "ease")]
+    keys: list[tuple[int, dict, str]] = [(0, up, "ease")]
     for t in sorted(strikes):
         fi = timing.seconds_to_frame(t, fps)
         keys += [(max(1, fi - 9), high, "ease"), (fi, hit, "fall"), (fi + 3, hit, "hold"),
                  (fi + 9, rebound, "ease"), (fi + 30, up, "ease")]
     keys = sorted(((f, k, how) for f, k, how in keys), key=lambda x: x[0])
-    out = []
+    out: list[dict[str, Any]] = []
     for f in range(frames):
         prev = max((k for k in keys if k[0] <= f), key=lambda k: k[0])
         nxt = min((k for k in keys if k[0] > f), key=lambda k: k[0], default=None)

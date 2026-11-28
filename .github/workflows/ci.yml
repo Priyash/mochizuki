@@ -1,16 +1,37 @@
+# Every pull request and every push to main: lint, types and tests, on the Python versions the
+# workflows use. The tests need no GPU, network or Blender (a real-Blender test skips itself).
 name: tests
 on:
   push:
     branches: [main]
   pull_request:
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
 jobs:
-  test:
+  check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - run: pip install pytest
-      - run: python -m pytest -q
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: ffmpeg
+        run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+      - name: Install the engine and its dev tools
+        run: pip install -q -e ".[dev]"
+      - name: Lint
+        run: ruff check .
+      - name: Types
+        run: mypy
+      - name: Tests
+        run: python -m pytest -q

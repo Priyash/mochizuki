@@ -27,7 +27,8 @@ class ColabCLI:
         try:
             r = subprocess.run(self._cmd(args), capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired as e:
-            return 124, f"timed out after {timeout} s: {(e.stdout or '')[-500:]}"
+            out = e.stdout.decode(errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
+            return 124, f"timed out after {timeout} s: {out[-500:]}"
         return r.returncode, (r.stdout or "") + (r.stderr or "")
 
     def stream(self, args: list[str], deadline: float, on_line=None) -> tuple[int, str]:
@@ -36,6 +37,7 @@ class ColabCLI:
         tail: list[str] = []
         killer = threading.Timer(max(1.0, deadline - time.time()), p.kill)
         killer.start()
+        assert p.stdout is not None
         try:
             for line in p.stdout:
                 line = line.rstrip()

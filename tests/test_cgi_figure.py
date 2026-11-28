@@ -6,9 +6,8 @@ import math
 
 import pytest
 
-from engine.cgi.staging import figure
 from engine.cgi import plan as planner
-
+from engine.cgi.staging import figure
 
 
 def test_anime_proportions_by_age():

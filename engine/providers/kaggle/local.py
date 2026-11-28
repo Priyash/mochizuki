@@ -26,7 +26,7 @@ def _no_cli(args: list[str]) -> tuple[int, str]:
 
 
 class LocalKaggle(KaggleProvider):
-    capabilities = CAPABILITIES      # stand-in engines run anything
+    capabilities: frozenset[str] = CAPABILITIES   # stand-in engines run anything
 
     def __init__(self, root: Path, name: str = NAME):
         super().__init__(runner=_no_cli)
@@ -66,7 +66,7 @@ class LocalKaggle(KaggleProvider):
     def publish_dataset(self, folder: Path, ref: str, message: str) -> None:
         self.datasets[ref] = folder
 
-    def wait_dataset_ready(self, ref: str, **_) -> None:
+    def wait_dataset_ready(self, ref: str, timeout: float = 900, poll: float = 15) -> None:
         if ref not in self.datasets:
             raise KaggleError(f"dataset {ref} was never published")
 
@@ -76,7 +76,10 @@ class LocalKaggle(KaggleProvider):
         data = self.datasets[meta["dataset_sources"][0]] if self._is_kaggle else folder.parent / "dataset"
         out = self.root / "local_kaggle" / ref.replace("/", "_") / "out"
         shutil.rmtree(out, ignore_errors=True)
-        batch = re.search(r"BATCH_ID = '([^']+)'", (folder / "bootstrap.py").read_text()).group(1)
+        found = re.search(r"BATCH_ID = '([^']+)'", (folder / "bootstrap.py").read_text())
+        if found is None:
+            raise KaggleError(f"{folder}/bootstrap.py names no batch")
+        batch = found.group(1)
         r = subprocess.run([sys.executable, str(data / "worker.py"), "--manifest", str(data / "manifest.json"),
                             "--inputs", str(data), "--out", str(out), "--engine-set", STUB_ENGINES,
                             "--expect-batch", batch], capture_output=True, text=True)

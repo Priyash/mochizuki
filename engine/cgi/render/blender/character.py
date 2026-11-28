@@ -93,16 +93,25 @@ def maquette(kit: props.Kit, c: dict, frames: int):
     face = c.get("face", {})
     fr = frames
     close = _ch(face, "Fcl_EYE_Close", fr)
-    joy_eye = [max(a, b) for a, b in zip(_ch(face, "Fcl_EYE_Joy", fr),
-                                         [(x + y) / 2 for x, y in zip(_ch(face, "Fcl_EYE_Joy_L", fr), _ch(face, "Fcl_EYE_Joy_R", fr))])]
+    joy_eye = [
+        max(a, b)
+        for a, b in zip(
+            _ch(face, "Fcl_EYE_Joy", fr),
+            [(x + y) / 2 for x, y in zip(_ch(face, "Fcl_EYE_Joy_L", fr), _ch(face, "Fcl_EYE_Joy_R", fr))],
+        )
+    ]
     wide = _ch(face, "Fcl_EYE_Surprised", fr)
     for side in ("L", "R"):
         eye, shine, brow, blush, tear = parts[side]
         lid = [max(a, b) for a, b in zip(close, _ch(face, f"Fcl_EYE_Close_{side}", fr))]
-        _key_curve(eye, "scale", [max(0.08, 1 - 0.92 * max(l, 0.7 * j)) * (1 + 0.25 * w)
-                                  for l, j, w in zip(lid, joy_eye, wide)], index=2)
-        _key_curve(shine, "scale", [(1 + 1.2 * x) * (1 - l) for x, l in zip(_ch(face, "anime.highlight", fr), lid)], index=0)
-        _key_curve(shine, "scale", [(1 + 1.2 * x) * (1 - l) for x, l in zip(_ch(face, "anime.highlight", fr), lid)], index=2)
+        _key_curve(eye, "scale", [max(0.08, 1 - 0.92 * max(shut, 0.7 * j)) * (1 + 0.25 * w)
+                                  for shut, j, w in zip(lid, joy_eye, wide)], index=2)
+        _key_curve(
+            shine, "scale", [(1 + 1.2 * x) * (1 - c) for x, c in zip(_ch(face, "anime.highlight", fr), lid)], index=0
+        )
+        _key_curve(
+            shine, "scale", [(1 + 1.2 * x) * (1 - c) for x, c in zip(_ch(face, "anime.highlight", fr), lid)], index=2
+        )
         sad = _ch(face, "Fcl_BRW_Sorrow", fr)
         ang = _ch(face, "Fcl_BRW_Angry", fr)
         up = _ch(face, "Fcl_BRW_Surprised", fr)
@@ -180,10 +189,16 @@ def _aim(arm_ob, pb, direction_arm: Vector) -> None:
     pb.rotation_quaternion = local.to_quaternion()
 
 
-HUMAN = {"hips": ("hips", "J_Bip_C_Hips"), "head": ("head", "J_Bip_C_Head"),
-         "leftUpperArm": ("left_upper_arm", "J_Bip_L_UpperArm"), "rightUpperArm": ("right_upper_arm", "J_Bip_R_UpperArm"),
-         "leftUpperLeg": ("left_upper_leg", "J_Bip_L_UpperLeg"), "rightUpperLeg": ("right_upper_leg", "J_Bip_R_UpperLeg"),
-         "leftLowerLeg": ("left_lower_leg", "J_Bip_L_LowerLeg"), "rightLowerLeg": ("right_lower_leg", "J_Bip_R_LowerLeg")}
+HUMAN = {
+    "hips": ("hips", "J_Bip_C_Hips"),
+    "head": ("head", "J_Bip_C_Head"),
+    "leftUpperArm": ("left_upper_arm", "J_Bip_L_UpperArm"),
+    "rightUpperArm": ("right_upper_arm", "J_Bip_R_UpperArm"),
+    "leftUpperLeg": ("left_upper_leg", "J_Bip_L_UpperLeg"),
+    "rightUpperLeg": ("right_upper_leg", "J_Bip_R_UpperLeg"),
+    "leftLowerLeg": ("left_lower_leg", "J_Bip_L_LowerLeg"),
+    "rightLowerLeg": ("right_lower_leg", "J_Bip_R_LowerLeg"),
+}
 
 
 def human_bone(arm_ob, name: str):

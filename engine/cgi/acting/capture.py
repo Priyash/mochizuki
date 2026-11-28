@@ -136,6 +136,7 @@ def _frames_rgb(video: Path, w: int, h: int):
     proc = subprocess.Popen(["ffmpeg", "-v", "error", "-i", str(video), "-vf", f"scale={w}:{h}",
                              "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], stdout=subprocess.PIPE)
     size = w * h * 3
+    assert proc.stdout is not None
     try:
         while True:
             buf = proc.stdout.read(size)
@@ -207,7 +208,8 @@ class OneEuro:
 
     def __init__(self, freq: float, min_cutoff: float = 1.0, beta: float = 0.02, d_cutoff: float = 1.0):
         self.freq, self.min_cutoff, self.beta, self.d_cutoff = freq, min_cutoff, beta, d_cutoff
-        self.x = self.dx = None
+        self.x: float | None = None
+        self.dx: float | None = None
 
     def _alpha(self, cutoff: float) -> float:
         tau = 1.0 / (2 * math.pi * cutoff)
@@ -219,7 +221,7 @@ class OneEuro:
             return x
         dx = (x - self.x) * self.freq
         a_d = self._alpha(self.d_cutoff)
-        self.dx = a_d * dx + (1 - a_d) * self.dx
+        self.dx = a_d * dx + (1 - a_d) * (self.dx or 0.0)
         a = self._alpha(self.min_cutoff + self.beta * abs(self.dx))
         self.x = a * x + (1 - a) * self.x
         return self.x

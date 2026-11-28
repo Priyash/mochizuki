@@ -155,7 +155,9 @@ def test_subtitles_and_the_chapter_track_follow_the_cut(proj):
     assert len(cues) == 2                                             # the two lines; the laugh is not subtitled
     first = dialogue.shot_manifest(proj, "1-11")["lines"][0]["lines"]["en"]
     h, m, rest = cues[0][1].split(" --> ")[0].split(":")
-    assert int(h) * 3600 + int(m) * 60 + float(rest.replace(",", ".")) == pytest.approx(off["1-11"] + first["start"], abs=0.002)
+    assert int(h) * 3600 + int(m) * 60 + float(rest.replace(",", ".")) == pytest.approx(
+        off["1-11"] + first["start"], abs=0.002
+    )
     ends = [c[1].split(" --> ") for c in cues]
     assert ends[0][1] <= ends[1][0]                                   # one subtitle at a time
     ja = subtitles.write_srt(proj, 1, "ja").read_text(encoding="utf-8")

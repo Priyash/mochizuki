@@ -1,10 +1,12 @@
 """Colab's settings: the film's config.json -> "colab", over the defaults here."""
 from __future__ import annotations
 
+from typing import Any
+
 from ...log import log as _structured_log
 
 NAME = "colab"
-DEFAULTS = {
+DEFAULTS: dict[str, Any] = {
     "enabled": False,
     "stages": ["refs", "keyframes"],
     "gpus": ["A100", "L4"],

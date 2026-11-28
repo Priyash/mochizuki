@@ -89,9 +89,9 @@ def assemble(p: Project, led: Ledger, chapter: int, four_k: bool = False) -> dic
         if up:
             src = up
             used["4k"] += 1
-        if kind in ("take", "cgi"):
+        if kind in ("take", "cgi") and src is not None:
             _ff(["-i", src, "-t", str(s.seconds), *_norm(w, h, crf, hold=s.seconds), str(seg)])
-        elif kind == "keyframe":
+        elif kind == "keyframe" and src is not None:
             _ff(["-loop", "1", "-i", src, "-t", str(s.seconds), *_norm(w, h, crf), str(seg)])
         else:
             _ff(["-f", "lavfi", "-i", f"color=c={CARD.get(s.type, 'gray')}:s={w}x{h}:r={FPS}",
@@ -123,7 +123,11 @@ def dialogue_tracks(p: Project, chapter: int, video: Path) -> dict:
     for _, t in tracks:
         args += ["-i", str(t)]
     maps = ["-map", "0:v"] + [m for i in range(len(tracks)) for m in ("-map", f"{i + 1}:a")]
-    meta = [m for i, (x, _) in enumerate(tracks) for m in (f"-metadata:s:a:{i}", f"language={'jpn' if x == 'ja' else 'eng'}")]
+    meta = [
+        m
+        for i, (x, _) in enumerate(tracks)
+        for m in (f"-metadata:s:a:{i}", f"language={'jpn' if x == 'ja' else 'eng'}")
+    ]
     tmp = video.with_suffix(".tmp.mp4")
     _ff([*args, *maps, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", *meta, "-shortest", str(tmp)])
     tmp.replace(video)

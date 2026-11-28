@@ -44,10 +44,12 @@ def command(exe: str, plan_file: Path, no_render: bool = False) -> list[str]:
 
 def run_blender(cmd: list[str], shot: str, timeout: float) -> list[dict]:
     """Stream Blender's output: its CGI lines become log events; the rest is kept for errors."""
-    events, tail = [], []
+    events: list[dict] = []
+    tail: list[str] = []
     t0 = time.time()
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     last_note = 0.0
+    assert proc.stdout is not None
     try:
         for line in proc.stdout:
             line = line.rstrip()
@@ -88,10 +90,19 @@ def check_frames(folder: Path, first: int, last: int) -> list[Path]:
     return files
 
 
+_warned_no_pillow = False
+
+
 def blank(png: Path) -> bool:
+    """One flat colour: the lights or the camera are wrong. Needs Pillow; without it the check is off,
+    and says so once."""
+    global _warned_no_pillow
     try:
         from PIL import Image, ImageStat  # noqa: PLC0415
     except ImportError:
+        if not _warned_no_pillow:
+            _warned_no_pillow = True
+            log("check.off", "the blank-frame check is off: Pillow is not installed (pip install pillow)", level="warn")
         return False
     st = ImageStat.Stat(Image.open(png).convert("L"))
     return st.extrema[0][1] - st.extrema[0][0] < 3

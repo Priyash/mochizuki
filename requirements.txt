@@ -1,6 +1,10 @@
-# The pipeline itself needs only the Python standard library and ffmpeg.
+# The engine needs only the Python standard library and ffmpeg. Everything else is optional:
+#   pip install -e ".[kaggle]"     the Kaggle provider's command-line tool
+#   pip install -e ".[dev]"        tests, lint, types (pytest, pillow, ruff, mypy)
+# (see pyproject.toml). This file stays for tools that read requirements.txt.
 kaggle>=1.7        # the Kaggle command-line tool, used to submit batches
 six                # needed by the kaggle tool, which does not declare it
 pytest             # the tests
+pillow             # the 3D renderer's blank-frame check
 # fal-client       # only for the paid fallback
 # The GPU packages (diffusers, transformers, gguf ...) are installed on Kaggle by the batch itself.

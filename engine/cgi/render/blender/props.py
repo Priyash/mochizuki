@@ -251,7 +251,9 @@ def hearth(kit: Kit, size: float = 0.9, **_):
     t = 0.06
     for dx, dy, sx, sy in ((0, size / 2, size, t), (0, -size / 2, size, t), (size / 2, 0, t, size),
                            (-size / 2, 0, t, size)):
-        bmesh.ops.create_cube(bm, size=1.0, matrix=Matrix.Translation((dx, dy, 0.03)) @ Matrix.Diagonal((sx, sy, 0.06, 1)))
+        bmesh.ops.create_cube(
+            bm, size=1.0, matrix=Matrix.Translation((dx, dy, 0.03)) @ Matrix.Diagonal((sx, sy, 0.06, 1))
+        )
     frame = _obj("hearth", bm, [kit.mat("dark_wood")], smooth=False)
     ash = box("hearth.ash", (size - t, size - t, 0.01), [kit.mat("ash")])
     ash.parent = frame

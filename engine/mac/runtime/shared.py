@@ -6,8 +6,8 @@ import struct
 import zlib
 from pathlib import Path
 
-from ..generators import seed_for  # noqa: F401 - the engines import it from here
-from ..log import log as _structured_log
+from ...generators import seed_for  # noqa: F401 - the engines import it from here
+from ...log import log as _structured_log
 
 WORK = Path.home() / "mochizuki-mac"            # pictures, logs, models, training runs, LoRAs
 MODELS = WORK / "models"

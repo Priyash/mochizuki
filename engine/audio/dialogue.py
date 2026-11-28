@@ -17,9 +17,8 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from ..project import DIALOGUE_FILE
-
 from ..cgi.config import by_chapter, settings, work_dir
+from ..project import DIALOGUE_FILE
 from . import lipsync, voice
 
 GAP = 0.25            # seconds between two lines in the same shot
@@ -167,7 +166,8 @@ def fit(lines: list[Line], wavs: list[Path], seconds: float, scratch: Path) -> d
     limit = seconds - TAIL
 
     def place(gap: float, speed: float = 1.0) -> list[tuple[float, float]]:
-        t, out = 0.0, []
+        t = 0.0
+        out: list[tuple[float, float]] = []
         for ln, d in zip(lines, durs):
             start = max(ln.at, t + (gap if out else 0.0))
             out.append((start, start + d / speed))

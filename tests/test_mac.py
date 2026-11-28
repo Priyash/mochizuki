@@ -4,21 +4,21 @@ from __future__ import annotations
 import json
 import shutil
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
+from test_pipeline import copy_project
+
 from engine import scheduler as sched
+from engine import steps
 from engine.mac.config import settings as mac_settings
-from engine.mac.engines import StubImageEngine
-from engine.mac.models import resolve_cmd
-from engine.mac.selftest import self_test
-from engine.mac.worker import worker_loop
+from engine.mac.generators import StubImageEngine
+from engine.mac.runtime.downloads import resolve_cmd
+from engine.mac.worker.loop import worker_loop
+from engine.mac.worker.selftest import self_test
 from engine.providers.kaggle import LocalKaggle
 from engine.providers.mac import MacProvider
 from engine.providers.release import Release
-from engine import steps
-
-from test_pipeline import copy_project
 
 
 class FakeRelease:
@@ -33,7 +33,7 @@ class FakeRelease:
         if args[:2] == ["release", "upload"]:
             src = Path(args[3])
             shutil.copyfile(src, self.dir / src.name)
-            self.created.setdefault(src.name, datetime.now(timezone.utc).isoformat())
+            self.created.setdefault(src.name, datetime.now(UTC).isoformat())
             return 0, ""
         if args[:2] == ["release", "delete-asset"]:
             (self.dir / args[3]).unlink(missing_ok=True)
@@ -41,7 +41,7 @@ class FakeRelease:
             return 0, ""
         if args[0] == "api":
             assets = [{"name": f.name, "browser_download_url": f.as_uri(), "created_at": self.created[f.name],
-                       "updated_at": datetime.fromtimestamp(f.stat().st_mtime, timezone.utc).isoformat()}
+                       "updated_at": datetime.fromtimestamp(f.stat().st_mtime, UTC).isoformat()}
                       for f in sorted(self.dir.iterdir())]
             return 0, json.dumps({"assets": assets})
         return 0, ""
@@ -53,7 +53,9 @@ class FakeRelease:
 def _setup(tmp_path):
     d = tmp_path / "p"
     d.mkdir()
-    proj = copy_project(d, cfg_edit=lambda c: c.update(mac={"enabled": True}, kaggle={**c["kaggle"], "stages": ["video"]}))
+    proj = copy_project(
+        d, cfg_edit=lambda c: c.update(mac={"enabled": True}, kaggle={**c["kaggle"], "stages": ["video"]})
+    )
     for f in (proj.root / "style_bible" / "refs").glob("*.png"):
         f.unlink()                                       # chapter 1 needs its reference stills
     fr = FakeRelease(tmp_path / "release")

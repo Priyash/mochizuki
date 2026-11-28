@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 from typing import Protocol
 
-from ..common import ffmpeg_exe, write_png
+from ..runtime.shared import ffmpeg_exe, write_png
 
 
 class Engine(Protocol):

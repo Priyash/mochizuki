@@ -10,23 +10,25 @@ from pathlib import Path
 import pytest
 
 from engine.mac import config as mc
-from engine.mac import train as mt
-from engine.mac.engines import Engines, StubImageEngine, StubVideoEngine, build, lora_args, segments
-from engine.mac.engines import video as mv
-from engine.mac.engines.image import lora_triggers
-from engine.mac.process import run_streaming
+from engine.mac.generators import Engines, StubImageEngine, StubVideoEngine, build, lora_args, segments
+from engine.mac.generators import video as mv
+from engine.mac.generators.image import lora_triggers
+from engine.mac.runtime.tools import run_streaming
+from engine.mac.training import lora as mt
 
-FAKE_WAN = textwrap.dedent('''
+FAKE_WAN = textwrap.dedent("""
     import sys, time, subprocess
     a = sys.argv
     out = a[a.index("--output-path") + 1]; n = int(a[a.index("--num-frames") + 1])
     for i in range(1, 4):
-        sys.stderr.write(f"\\rDiffusion: {i*33}%|##| {i}/3 [00:0{i}<00:00, 0.1s/it]"); sys.stderr.flush(); time.sleep(0.05)
+        sys.stderr.write(f"\\rDiffusion: {i*33}%|##| {i}/3 [00:0{i}<00:00, 0.1s/it]")
+        sys.stderr.flush()
+        time.sleep(0.05)
     print()
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", f"testsrc=size=128x64:rate=24",
                     "-frames:v", str(n), "-pix_fmt", "yuv420p", out], check=True)
     print("Video saved to", out)
-''')
+""")
 
 FAKE_TRAIN = textwrap.dedent('''
     import sys, json, zipfile, time
@@ -191,7 +193,7 @@ def test_streaming_logs_steps_and_other_output(tmp_path, capsys):
 
 def test_an_old_picture_is_never_taken_for_a_new_one(tmp_path, monkeypatch):
     """mflux saves <name>_2.png when <name>.png exists; the engine must end up with the new picture."""
-    from engine.mac.engines import image as mi
+    from engine.mac.generators import image as mi
     fake = tmp_path / "mflux-generate-z-image-turbo"
     fake.write_text(f"#!{sys.executable}\n" + textwrap.dedent('''
         import sys, shutil

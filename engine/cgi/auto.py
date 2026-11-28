@@ -20,12 +20,12 @@ import json
 import time
 from pathlib import Path
 
-from ..log import log as _log
 from ..audio import dialogue
+from ..log import log as _log
 from . import plan as planner
 from .acting import direction as dirn
-from .render import runner as rnd
 from .config import settings, work_dir
+from .render import runner as rnd
 
 
 def log(event: str, msg: str = "", level: str = "info", **kw) -> None:
@@ -48,7 +48,7 @@ def held(p, shot_id: str) -> bool:
 
 
 def stage_voices(p, chapter: int, engine: str | None, shots: list[str]) -> dict:
-    out = {"voiced": [], "overruns": [], "failed": []}
+    out: dict[str, list] = {"voiced": [], "overruns": [], "failed": []}
     langs = dialogue.load(p).get("languages", ["en"])
     for sid in shots:
         if not dialogue.lines_for(p, sid):
@@ -65,7 +65,9 @@ def stage_voices(p, chapter: int, engine: str | None, shots: list[str]) -> dict:
                 continue
         out["voiced"].append(sid)
         out["overruns"] += [{"shot": sid, **o} for o in r.get("overruns", [])]
-        log("voices.done", f"{sid}: {r['lines']} lines", shot=sid, lines=r["lines"], overruns=len(r.get("overruns", [])))
+        log(
+            "voices.done", f"{sid}: {r['lines']} lines", shot=sid, lines=r["lines"], overruns=len(r.get("overruns", []))
+        )
     return out
 
 
@@ -87,7 +89,7 @@ def prune_frames(folder: Path, keep: int = 3) -> int:
 
 def stage_render(p, chapter: int, shots: list[str], final: bool, size, force: bool, prune: bool = False) -> dict:
     cfg = settings(p)
-    out = {"rendered": [], "skipped": [], "held": [], "failed": []}
+    out: dict[str, list] = {"rendered": [], "skipped": [], "held": [], "failed": []}
     tag = "final" if final else "preview"
     for sid in shots:
         if held(p, sid):

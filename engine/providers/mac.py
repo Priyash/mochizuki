@@ -1,7 +1,7 @@
 """The Mac as a provider: your own Apple Silicon machine, offline and free.
 
 A batch for the Mac waits in the `batches` release until `python -m engine mac-worker`, running on the
-Mac, takes it (engine/mac/worker.py). It is used only when the film's config switches mac.enabled on.
+Mac, takes it (engine/mac/worker/loop.py). It is used only when the film's config switches mac.enabled on.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from .release import ReleaseProvider
 class MacProvider(ReleaseProvider):
     name = NAME
     kind = OFFLINE
-    capabilities = frozenset({BF16})   # Apple Silicon
+    capabilities: frozenset[str] = frozenset({BF16})   # Apple Silicon
 
     def __init__(self, p, repo: str, gh=None, fetch=None, **kw):
         super().__init__(p, repo, gh, fetch, cfg=settings(p), **kw)
