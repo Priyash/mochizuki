@@ -9,7 +9,7 @@ Stages, each safe to repeat (only what changed is redone):
              has not changed since its last render is skipped
     finish   the storyboard, the chapter cut with its dialogue tracks and .srt files, a dubbed cut per
              other language (chapter_N.<language>.mp4: its own lips and voice), and a review sheet
-             (review.json) for Claude's reviewer run
+             (review.json, with the continuity findings at every cut) for Claude's reviewer run
 
 Shards let many machines share a chapter (GitHub's runners: .github/workflows/cgi.yml). Nothing here
 waits for a person: acting sheets in "draft" render like approved ones; a sheet set to "hold" is
@@ -24,6 +24,7 @@ from pathlib import Path
 
 from ..audio import dialogue
 from ..log import log as _log
+from . import continuity
 from . import plan as planner
 from .acting import direction as dirn
 from .config import settings, work_dir
@@ -141,10 +142,17 @@ def stage_render(p, chapter: int, shots: list[str], final: bool, size, force: bo
 
 def review_sheet(p, chapter: int, final: bool) -> Path:
     """What Claude's reviewer run looks at: per shot, the acting sheet's intent, the frames to judge
-    (start, middle, end), the dialogue placed in it, any line that overruns the shot, and each spoken
-    line's lip sync in every language (lipsync.sync_report: ok means within broadcast tolerance)."""
+    (start, middle, end), the dialogue placed in it, any line that overruns the shot, each spoken
+    line's lip sync in every language (lipsync.sync_report: ok means within broadcast tolerance), and
+    the continuity findings at the cut into it (continuity.check)."""
     cfg = settings(p)
     items = []
+    cuts: dict[str, list] = {}
+    try:
+        for f in continuity.check(p, chapter):
+            cuts.setdefault(f.shot, []).append({k: v for k, v in f.to_dict().items() if k != "shot"})
+    except Exception as e:  # noqa: BLE001 - the review sheet is still worth having without it
+        log("continuity.failed", str(e)[:300], level="error")
     for s in p.chapter(chapter):
         d = dirn.direction_for(p, s.id)
         folder = work_dir(p, cfg, s.id)
@@ -160,6 +168,7 @@ def review_sheet(p, chapter: int, final: bool) -> Path:
             "lines": [f"{ln['who']}: {ln['lines'].get(man.get('primary', 'en'), {}).get('text', '')}"
                       for ln in man.get("lines", [])],
             "overruns": man.get("overruns", []),
+            "continuity": cuts.get(s.id, []),
             "lipsync": [{"who": ln["who"], "language": lang, **rep}
                         for ln in man.get("lines", []) if ln.get("on_screen", True) and not ln.get("nonverbal")
                         for lang, rep in ln.get("sync", {}).items()],
@@ -167,6 +176,7 @@ def review_sheet(p, chapter: int, final: bool) -> Path:
                                                              + frames[-1:])] if frames else [],
         })
     out = p.root / cfg["work"] / f"review-ch{chapter}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"chapter": chapter, "quality": "final" if final else "preview",
                                "made": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "shots": items},
                               indent=1, ensure_ascii=False), encoding="utf-8")

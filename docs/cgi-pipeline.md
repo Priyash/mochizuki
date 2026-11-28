@@ -98,6 +98,7 @@ in minutes.
 | Characters made from code: anime bodies, faces and hair for each age (Tsumugi at 7, 27 and 87, Sayo, the child), playing the same face channels as a VRoid model | `staging/figure.py`, `render/blender/anime.py` | Tested, and rendered in Blender 5.3 here |
 | Dialogue: the script in English and Japanese, voices (Kokoro-82M, or any engine by command), lines fitted into their shot, lip sync, one track per language, subtitles | `engine/audio/` (`dialogue.py`, `voice.py`, `lipsync.py`, `subtitles.py`, `mix.py`) | Tested with the stub voice. Kokoro runs on the GitHub runners |
 | The chapter unattended: voices, sharded renders that skip unchanged shots, board, cut, review sheet | `auto.py`, `.github/workflows/cgi.yml` | Tested |
+| Continuity supervisor: the 180° and 30° rules, eyelines, light, props and positions at every cut, from the plans | `continuity.py` | Tested on staged geometry; run on all five chapters |
 
 Sets exist for scenes 1A (porch, Tsukimi night), 1B (snow) and 1C (the hearth). Any other scene renders on a plain
 floor until its set is written.
@@ -182,6 +183,25 @@ python -m engine cgi subtitles --chapter 1        # media/cgi/subs/chapter_1.en.
 Kokoro needs `pip install "kokoro>=0.9.4" "misaki[ja]" soundfile` and espeak-ng, on Python 3.10 to 3.12. The model
 downloads once from Hugging Face.
 
+## Continuity at every cut
+
+`python -m engine cgi continuity --chapter N` checks each cut between two shots of one scene. It reads the plans
+(the cameras, marks, eyelines, light and props Blender would render), so it runs before anything is rendered:
+
+| Rule | What breaks it |
+| --- | --- |
+| `axis` | The 180° rule. The camera crosses the line between two characters in the scene, so they swap sides of the screen. Singles count too. A shot on the line (neutral) or a camera move across it sets the line again; a cutaway does not. |
+| `jump` | The 30° rule. A cut to the same subject that moves the camera less than 30° and changes the size less than 1.5×. |
+| `eyeline` | Two looks that meet across a cut point the same way, or the same look changes direction. A look at someone off screen goes down the lens. |
+| `light` | The key light moves more than 15°, changes colour or strength, or the ambient or a practical light changes within a scene. |
+| `props` | A prop seen on both sides of a cut moves, turns or changes state (the bowl's seams), unless the first shot acts on it. |
+| `position` | A character seen on both sides of a cut jumps more than 0.3 m or turns more than 45°, unless walking. |
+
+The rules come from Arijon's *Grammar of the Film Language* and Bordwell and Thompson's *Film Art* (continuity
+editing). A break that is meant is accepted in the shot's acting sheet, with the reason:
+`"continuity": {"axis": "the shot sheet asks for her from behind, not turning"}`. The findings at each cut go in the
+review sheet; the command exits with 3 while any is not accepted.
+
 ## Automated end to end
 
 `python -m engine cgi auto --chapter N` makes a chapter with no one at the keyboard:
@@ -195,7 +215,8 @@ downloads once from Hugging Face.
    * the intent from the acting sheet;
    * three frames to judge;
    * the lines placed in it, and any line that runs over;
-   * each spoken line's lip sync check, in every language.
+   * each spoken line's lip sync check, in every language;
+   * the continuity findings at the cut into it.
 
 `.github/workflows/cgi.yml` runs the three stages on GitHub's free runners, splitting the renders across a matrix of
 machines. It runs when acting sheets, sets, lights, dialogue or the CG code change on `main`, or when started by hand.
@@ -251,6 +272,8 @@ can copy it into `style_bible/acting.json` and edit it.
 
 | Work | What we take from it |
 | --- | --- |
+| Arijon, *Grammar of the Film Language* (1976); Bordwell and Thompson, *Film Art* | The continuity supervisor's rules: the line of interest and neutral shots, eyeline matches, the 30° rule. |
+| de Jong and Wempe, syllable nuclei (Behavior Research Methods 41, 2009); ITU-R BT.1359 | Lip sync: syllables on the loudness peaks, and the sync limits viewers notice (45 ms sound first, 125 ms picture first). |
 | AniMatrix (Tencent HY, arXiv 2605.03652, 2026) | Anime is conventions, not physics, so make them explicit categorical directives. That is the acting sheet's fixed vocabulary of framing, timing, emotion and restraint. |
 | One Euro filter (Casiez, Roussel, Vogel, CHI 2012) | Smoothing a captured face without lag on fast moves. |
 | Ramer–Douglas–Peucker | Turning continuous capture into key poses, so motion reads pose to pose. |

@@ -8,6 +8,8 @@
     cgi render --chapter 1 --preview    every shot of a chapter (the animatic)
     cgi capture 1-05 --who tsumugi take.csv     a face performance for a shot (Live Link Face CSV,
                                                 a saved track, or a video read by MediaPipe)
+    cgi continuity --chapter 1          the continuity supervisor: the 180 and 30 degree rules, eyelines,
+                                        light, props and positions at every cut (engine/cgi/continuity.py)
 """
 from __future__ import annotations
 
@@ -76,6 +78,9 @@ def add_arguments(a: argparse.ArgumentParser) -> None:
     s.add_argument("--shots", default="", help="only these shots, e.g. 1-02,1-11")
     s.add_argument("--prune", action="store_true",
                    help="keep only the first, middle and last frame of each render (for runners and caches)")
+    s = sub.add_parser("continuity", help="check every cut of a chapter: axis, jump, eyeline, light, props, position")
+    s.add_argument("--chapter", type=int, required=True)
+    s.add_argument("--json", action="store_true", help="the findings as JSON")
     s = sub.add_parser("capture", help="a face performance for a shot")
     s.add_argument("shot")
     s.add_argument("source", help="Live Link Face .csv, a saved .json track, or a video")
@@ -142,6 +147,22 @@ def sheets(p, chapter: int) -> int:
     return 3 if bad else 0
 
 
+def continuity_cmd(p, chapter: int, as_json: bool = False) -> int:
+    """Every continuity finding at the chapter's cuts; 3 when one is not accepted in its acting sheet."""
+    from . import continuity  # noqa: PLC0415
+    found = continuity.check(p, chapter)
+    if as_json:
+        print(json.dumps([f.to_dict() for f in found], indent=1, ensure_ascii=False))
+    else:
+        for f in found:
+            print(f"{f.shot:5} after {f.after or '-':5} {f.rule:8} {f.message}"
+                  + (f"\n{'':21}accepted: {f.accepted}" if f.accepted else ""))
+        open_ = sum(1 for f in found if not f.accepted)
+        print(f"{len(found)} finding(s), {open_} not accepted (accept one with \"continuity\": "
+              f"{{\"<rule>\": \"why\"}} in the shot's acting sheet)")
+    return 3 if any(not f.accepted for f in found) else 0
+
+
 def capture_cmd(p, args) -> int:
     cfg = settings(p)
     src = Path(args.source).expanduser()
@@ -186,6 +207,8 @@ def run(p, args) -> int:
         return 0
     if cmd == "capture":
         return capture_cmd(p, args)
+    if cmd == "continuity":
+        return continuity_cmd(p, args.chapter, args.json)
     if cmd == "voices":
         from ..audio import dialogue  # noqa: PLC0415
         shots = [args.shot] if args.shot else [s.id for s in p.chapter(args.chapter)] if args.chapter else []

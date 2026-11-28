@@ -34,6 +34,7 @@ MOVES = ("static", "push", "pull", "pan", "tilt", "drift", "track")
 TIMINGS = ("ones", "twos", "threes", "mixed")
 PERFORMANCES = ("procedural", "capture", "reference")
 LENS = {"ECU": 100, "CU": 85, "MCU": 65, "MS": 50, "MLS": 35, "WIDE": 24, "INSERT": 100}
+CONTINUITY_RULES = ("axis", "jump", "eyeline", "light", "props", "position")   # engine/cgi/continuity.py
 
 CHARACTER_NAMES = {"tsumugi": "tsumugi", "sayo": "sayo", "akari": "akari", "child": "child", "children": "child"}
 PROP_WORDS = {"mallet": "mallet", "mortar": "mortar", "bowl": "bowl", "lantern": "lantern", "lanterns": "lantern",
@@ -107,6 +108,7 @@ class Direction:
     marks: dict = field(default_factory=dict)       # this shot only: {"sayo": {"at": [x, y, 0], "yaw": 145}}
     blackout: bool = False                          # a black frame (the film opens on one)
     dialogue: str = ""
+    continuity: dict = field(default_factory=dict)  # a cut into this shot breaks a rule on purpose: {"axis": "why"}
     status: str = "draft"
     notes: str = ""
 
@@ -320,4 +322,9 @@ def problems(d: Direction) -> list[str]:
     for t in d.impacts:
         if not 0 <= t <= d.seconds:
             out.append(f"impact at {t}s is outside the shot")
+    for rule, why in d.continuity.items():
+        if rule not in CONTINUITY_RULES:
+            out.append(f"continuity.{rule}: not a rule; the rules are {CONTINUITY_RULES}")
+        elif not isinstance(why, str) or not why.strip():
+            out.append(f"continuity.{rule}: say why the cut breaks it")
     return out

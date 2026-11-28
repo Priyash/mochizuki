@@ -81,6 +81,14 @@ def character_entries(p, cfg: dict, d, chapter: int, the_set: dict) -> list[dict
     return out
 
 
+def mark_entry(cfg: dict, name: str, mark: dict, chapter: int) -> dict:
+    """Someone standing on their mark, in the shot or not: enough for eyelines and continuity."""
+    spec = cfg["characters"].get(name, {})
+    return {"name": name, "at": list(mark["at"]), "yaw": float(mark.get("yaw", 0)),
+            "posture": mark.get("posture", "standing"), "height": by_chapter(spec.get("height_m", {}), chapter, 1.5),
+            "procedural": spec.get("procedural", "")}
+
+
 def head_point(c: dict) -> list[float]:
     """Where the eyes are. A character's measured eye heights (config cgi.characters.<name>.eye_height_m,
     by posture) win over the anime-proportion defaults."""
@@ -517,11 +525,7 @@ def build(p, shot_id: str, preview: bool = False, frames_only: tuple[int, int] |
     seen_by = dict(chars)
     for name, mark in {**the_set.get("marks", {}), **d.marks}.items():
         if name not in seen_by:
-            spec = cfg["characters"].get(name, {})
-            seen_by[name] = {"name": name, "at": list(mark["at"]), "yaw": float(mark.get("yaw", 0)),
-                             "posture": mark.get("posture", "standing"),
-                             "height": by_chapter(spec.get("height_m", {}), s.chapter, 1.5),
-                             "procedural": spec.get("procedural", "")}
+            seen_by[name] = mark_entry(cfg, name, mark, s.chapter)
     spoken = dialogue.shot_manifest(p, shot_id)
     primary = (spoken or {}).get("primary")
     if language and spoken and language not in spoken.get("languages", []):
