@@ -12,20 +12,9 @@
    "backend": "kaggle"
   },
   {
-   "action": "collected",
-   "batch": "b20261127-221301-fe71",
-   "backend": "colab",
-   "status": "complete",
-   "made": 24,
-   "failed": 0,
-   "not_reached": 0,
-   "stale": false,
-   "error": null
-  },
-  {
    "action": "idle",
    "reason": "waiting for a person",
-   "to_review": 24,
+   "to_review": 0,
    "states": {
     "waiting_anchor": 26,
     "todo": 1
@@ -34,7 +23,7 @@
   }
  ],
  "reviews": {
-  "applied": 0,
+  "applied": 30,
   "errors": [],
   "refused": []
  },
@@ -45,13 +34,13 @@
   "kernels list --mine": "1:  with OAuth via a web-based authorization flow.\nNo token to manage; credentials are cached locally for you.\n    kaggle auth login\n\nIf you'd rather not use OAuth, generate an API token at\n  https://www.kaggle.com/settings/api  (click \"Generate New Token\" under \"API\")\nand supply it to the CLI in one of these ways:\n\n  Option A: Environment variable\n    export KAGGLE_API_TOKEN=xxxxxxxxxxxxxx  # token copied from the settings UI\n\n  Option B: API token file\n    Save the token to ~/.kaggle/access_token",
   "config view": "0: Configuration values from /home/runner/.config/kaggle\n- username: priyash11\n- auth_method: LEGACY_API_KEY\n- path: None\n- proxy: None\n- competition: None"
  },
- "uploaded": 24,
+ "uploaded": 0,
  "review": {
-  "items": 6
+  "items": 0
  },
  "notice": {
-  "kind": "review",
-  "text": "Chapter 1: 6 items wait for Claude's review."
+  "kind": "refs",
+  "text": "@Priyash The reference stills are ready: https://github.com/Priyash/mochizuki/blob/state/review/ch1/refs.jpg (in order: style, tsumugi_ch1, sayo, bowl_ch1, farmhouse_ch1, hearth_ch1). Comment `/approve refs` to make them the film's look, or `/reject <name>` for any you don't want, and new candidates will be painted."
  },
  "status": {
   "waiting_anchor": 26,
