@@ -50,9 +50,12 @@ jobs:
             3.12
             3.13
       - name: Which film
+        env:
+          CONTROLS: ${{ inputs.controls }}
         run: |
           echo "CGI=$(python -m engine where cgi)" >> "$GITHUB_ENV"
           echo "LEDGER=$(python -m engine where ledger)" >> "$GITHUB_ENV"
+          echo "GUIDES=${CONTROLS//,/-}" >> "$GITHUB_ENV"        # a cache key cannot hold a comma
       - name: Tools, software OpenGL
         run: |
           sudo apt-get update -q
@@ -66,7 +69,7 @@ jobs:
             ${{ env.CGI }}/${{ inputs.shot }}/${{ inputs.shot }}.mp4
             ${{ env.CGI }}/${{ inputs.shot }}/${{ inputs.shot }}.depth.mp4
             ${{ env.CGI }}/${{ inputs.shot }}/${{ inputs.shot }}.lines.mp4
-          key: finish-test-render-${{ inputs.shot }}-${{ inputs.size }}-${{ inputs.controls }}-${{ hashFiles('films/*/style_bible/*.json', 'films/*/shots.csv', 'films/*/config.json', 'engine/cgi/**', 'engine/audio/**') }}
+          key: finish-test-render-${{ inputs.shot }}-${{ inputs.size }}-${{ env.GUIDES }}-${{ hashFiles('films/*/style_bible/*.json', 'films/*/shots.csv', 'films/*/config.json', 'engine/cgi/**', 'engine/audio/**') }}
       - name: Kokoro (CPU, Python 3.12) for the shot's voice
         if: steps.render-cache.outputs.cache-hit != 'true'
         run: |
