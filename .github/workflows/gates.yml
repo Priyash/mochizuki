@@ -48,6 +48,7 @@ jobs:
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          GH_TOKEN: ${{ github.token }}            # /approve refs downloads the chosen stills from the releases
         run: python -m engine gate --state state > reply.txt && cat reply.txt
       - name: Save state
         run: .github/scripts/save_state.sh "owner command on issue ${{ github.event.issue.number }}"

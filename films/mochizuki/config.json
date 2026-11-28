@@ -153,7 +153,7 @@
       "vram_headroom_gb": 2.5
     },
     "ai_finish": {
-      "_note": "The AI finish (worker WanFinish): repaints a shot's 3D render in the reference stills' look, guided by the render's depth (or lines), with Wan VACE. Render the shot first with guides: `python -m engine cgi render 1-05 --size 832x480 --guides`. This first setting is the cheap test: Wan2.1-VACE-1.3B at 832x480 (the 1.3B model is trained for 480p). For 720p use Wan-AI/Wan2.1-VACE-14B-diffusers, 1280x720, flow_shift 5.0: far heavier, best on a Colab A100. auto: false keeps it out of the producer's loop until the owner has looked at a first shot; use_in_cut: false keeps finished shots out of the cut until approved. gpu_seconds_per_output_second is a guess until the first run measures it.",
+      "_note": "The AI finish (worker WanFinish): repaints a shot's 3D render in the reference stills' look, guided by the render's depth (or lines), with Wan VACE. Render the shot first with guides: `python -m engine cgi render 1-05 --size 1280x720 --guides`, and test one shot outside the ledger with `python -m engine finish-test 1-05` (.github/workflows/finish-test.yml). This base setting is the cheap check: Wan2.1-VACE-1.3B at 832x480 (the 1.3B model is trained for 480p); ai_finish_720 is the 14B at 720p. style replaces style.txt in the finish's prompt: style.txt describes the 3D render's toon look, the finish paints the look of the approved stills. The stills are the shot's subjects, never the style scene (its people are not the cast); crops cuts a character sheet to its front view (x, y, width, height as fractions) and who says who each still shows. auto: false keeps it out of the producer's loop until the owner has looked at a first shot; use_in_cut: false keeps finished shots out of the cut until approved. gpu_seconds_per_output_second is a guess until the first run measures it.",
       "model": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
       "control": "depth",
       "width": 832,
@@ -169,7 +169,57 @@
       "shots": "Hero",
       "auto": false,
       "use_in_cut": false,
-      "gpu_seconds_per_output_second": 400
+      "gpu_seconds_per_output_second": 400,
+      "style": "3D CGI animated feature film still: stylised 3D characters with soft rounded features and large expressive eyes, soft subsurface-lit skin, finely detailed hair, woven cotton cloth with visible stitching and wear, physically based materials, soft global illumination with warm practical light and a gentle rim light, rich natural colour, cinematic 16:9 framing. No text, no logos, no watermark.",
+      "crops": {
+        "tsumugi_ch1": [
+          0.0,
+          0.0,
+          0.32,
+          1.0
+        ],
+        "sayo": [
+          0.0,
+          0.0,
+          0.325,
+          1.0
+        ]
+      },
+      "who": {
+        "tsumugi_ch1": "Tsumugi, a seven-year-old girl: a short black bob with a soft fringe, large dark eyes, an indigo sashiko-stitched cotton jacket over a cream crossed-collar top, dark trousers, straw sandals.",
+        "sayo": "Sayo, a grandmother in her seventies: silver hair in a low bun, a weathered kind face, a faded indigo work kimono, a plain apron tied with a rope sash."
+      }
+    },
+    "ai_finish_720": {
+      "_note": "The AI finish at 720p, for the whole film: Wan2.1 VACE 14B with the lightx2v step and CFG distillation (4 steps, no CFG), as a GGUF. Lists only what it changes from ai_finish. On a 16 GB T4 the model waits in the machine's memory and goes to the GPU a block at a time (offload: group): at 720p the activations alone take most of the card. UniPC at 4 steps with flow_shift 5 samples at the distillation's own steps; solver_order 1 without the corrector makes each a plain Euler step, as it was trained. max_gb caps the GGUF by the machine's memory (Kaggle: about 30 GB).",
+      "model": "Wan-AI/Wan2.1-VACE-14B-diffusers",
+      "transformer_gguf": {
+        "repo": "QuantStack/Wan2.1_T2V_14B_LightX2V_StepCfgDistill_VACE-GGUF",
+        "fallback_repos": [
+          "lym00/Wan2.1_T2V_14B_LightX2V_StepCfgDistill_VACE-GGUF"
+        ],
+        "prefer": [
+          "Q5_K_M",
+          "Q4_K_M"
+        ],
+        "max_gb": 15
+      },
+      "offload": "group",
+      "width": 1280,
+      "height": 720,
+      "steps": 4,
+      "guidance_scale": 1.0,
+      "flow_shift": 5.0,
+      "scheduler_args": {
+        "solver_order": 1,
+        "disable_corrector": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "gpu_seconds_per_output_second": 600
     }
   },
   "providers": {

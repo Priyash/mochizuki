@@ -101,8 +101,13 @@ def test_no_finish_without_approved_reference_stills(tmp_path):
     out = steps.finish(proj, led, steps.BatchExecutor("b", 3600), 1, SHOT)
     assert out["made"] == 0 and out["no_reference_stills"] == [SHOT]
 
+def _no_finish(cfg):
+    for name in [n for n in cfg["engines"] if n.startswith("ai_finish")]:
+        cfg["engines"].pop(name)
+
+
 def test_a_film_without_the_finish_is_told_so(tmp_path):
-    proj = copy_project(tmp_path, cfg_edit=lambda c: c["engines"].pop("ai_finish"))
+    proj = copy_project(tmp_path, cfg_edit=_no_finish)
     led = steps.open_ledger(proj)
     with pytest.raises(ValueError, match="not set up"):
         steps.finish(proj, led, steps.BatchExecutor("b", 3600), 1)
@@ -145,3 +150,230 @@ def test_the_worker_reads_a_guide_clip_at_the_finishs_size_and_frame_rate(tmp_pa
     ref = w.letterbox(tall, 64, 48)
     assert ref.size == (64, 48) and ref.getpixel((0, 0)) == (255, 255, 255)    # whole, on white, never cropped
     assert w.generator_for("ai_finish", [{"kind": "finish"}]) == "ai_finish"
+
+
+@needs_ffmpeg
+def test_the_finish_paints_the_stills_look_not_the_toon_render(tmp_path):
+    proj = copy_project(tmp_path)
+    led = steps.open_ledger(proj)
+    _guide(proj)
+    ex = steps.BatchExecutor("b", 3600)
+    assert steps.finish(proj, led, ex, 1, SHOT)["made"] == 1
+    prompt = ex.specs[0]["prompt"]
+    style_txt = proj.style_file.read_text(encoding="utf-8").strip()
+    assert "cel-shaded" in style_txt and "cel-shaded" not in prompt            # style.txt is the 3D render's look
+    assert prompt.startswith(proj.engine("ai_finish")["style"])
+    assert proj.engine("ai_finish")["who"]["tsumugi_ch1"] in prompt            # who the still shows
+    assert proj.shot(SHOT).shot in prompt
+    assert proj.prompt(proj.shot(SHOT)).startswith(style_txt)                  # keyframes keep style.txt
+
+
+@needs_ffmpeg
+def test_the_finish_never_takes_the_style_scene_and_cuts_a_sheet_to_one_view(tmp_path):
+    image = pytest.importorskip("PIL.Image")
+    proj = copy_project(tmp_path)
+    s = proj.shot(SHOT)
+    assert [r.stem for r in proj.refs_for(s)] == ["style", "tsumugi_ch1"]            # keyframes: style first
+    cfg = steps.finish_config(proj)
+    refs = steps.finish_refs(proj, s, cfg)
+    assert len(refs) == 1 and refs[0].name.startswith("tsumugi_ch1.")                # no style scene
+    assert refs[0].parent == proj.media / "finished" / "refs"                         # never in the refs release
+    sheet = image.open(proj.ref_path("tsumugi_ch1")).size
+    assert image.open(refs[0]).size == (round(sheet[0] * 0.32), sheet[1])            # the front view only
+    clip = _guide(proj)
+    key = steps.finish_spec(proj, s, 0, clip)["key"]
+    proj.config["engines"]["ai_finish"]["crops"]["tsumugi_ch1"] = [0.0, 0.0, 0.3, 1.0]
+    moved = steps.finish_refs(proj, s, steps.finish_config(proj))
+    assert moved[0] != refs[0] and steps.finish_spec(proj, s, 0, clip)["key"] != key  # a new box is a new job
+    del proj.config["engines"]["ai_finish"]["crops"]["tsumugi_ch1"]
+    assert steps.finish_refs(proj, s, steps.finish_config(proj)) == [proj.ref_path("tsumugi_ch1")]   # no box: whole
+
+
+@needs_ffmpeg
+def test_a_variant_finish_is_its_own_job_at_its_own_size(tmp_path):
+    proj = copy_project(tmp_path)
+    s = proj.shot(SHOT)
+    clip = _guide(proj)
+    base = steps.finish_spec(proj, s, 0, clip)
+    big = steps.finish_spec(proj, s, 0, clip, engine="ai_finish_720")
+    assert big["engine"] == "ai_finish_720" and big["key"] != base["key"] and big["refs"] == base["refs"]
+    cfg = steps.finish_config(proj, "ai_finish_720")
+    assert (cfg["width"], cfg["height"], cfg["fps"]) == (1280, 720, proj.engine("ai_finish")["fps"])
+    lines = _guide(proj, control="lines")
+    assert steps.finish_spec(proj, s, 0, lines, control="lines")["key"] != base["key"]   # each guide its own job
+
+
+def _fake_gpu_stack(calls: dict):
+    """Stand-ins for torch and diffusers that record what the finish engine asks of them."""
+    import types
+    torch = types.ModuleType("torch")
+    torch.float16, torch.float32, torch.bfloat16 = "fp16", "fp32", "bf16"
+    torch.cuda = types.SimpleNamespace(is_available=lambda: True, get_device_capability=lambda *a: (7, 5))
+    torch.device = lambda name: f"device:{name}"
+    d = types.ModuleType("diffusers")
+
+    class Module:
+        def __init__(self, name):
+            self.name = name
+
+        def to(self, dev):
+            calls.setdefault("moved", []).append((self.name, dev))
+            return self
+
+        def enable_tiling(self):
+            pass
+
+        def enable_group_offload(self, **kw):
+            calls["group_offload"] = kw
+
+    class Pipe:
+        def __init__(self, local, **kw):
+            calls["pipeline"] = (local, kw)
+            self.transformer = kw.get("transformer") or Module("transformer")
+            self.vae, self.scheduler = kw["vae"], types.SimpleNamespace(config={"use_flow_sigmas": True})
+
+        def enable_model_cpu_offload(self):
+            calls["model_offload"] = True
+
+        def set_progress_bar_config(self, **kw):
+            pass
+
+    def scheduler(kind):
+        return types.SimpleNamespace(from_config=lambda config, **kw: calls.__setitem__("scheduler", (kind, kw))
+                                     or (kind, kw))
+    d.AutoencoderKLWan = types.SimpleNamespace(from_pretrained=lambda *a, **k: Module("vae"))
+    d.WanVACEPipeline = types.SimpleNamespace(from_pretrained=lambda local, **kw: Pipe(local, **kw))
+    d.GGUFQuantizationConfig = lambda compute_dtype: ("gguf", compute_dtype)
+    d.WanVACETransformer3DModel = types.SimpleNamespace(
+        from_single_file=lambda path, **kw: calls.__setitem__("single_file", (path, kw)) or Module("gguf"))
+    d.UniPCMultistepScheduler, d.FlowMatchEulerDiscreteScheduler = scheduler("unipc"), scheduler("euler")
+    return torch, d
+
+
+def _finish_engine(monkeypatch, cfg: dict, gguf_in: str = "lym00"):
+    import sys
+    w, calls = _worker(), {}
+    torch, diffusers = _fake_gpu_stack(calls)
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setitem(sys.modules, "diffusers", diffusers)
+    monkeypatch.setattr(w, "snapshot", lambda model, skip: calls.__setitem__("snapshot", (model, skip)) or "/hf")
+    monkeypatch.setattr(w, "encode_prompts_on_cpu", lambda local, texts: {t: t for t in texts})
+    monkeypatch.setattr(w, "gpu_room_gb", lambda headroom: 15.0 - headroom)
+    monkeypatch.setattr(w, "find_gguf", lambda repo, sub, prefer, room: calls.setdefault("gguf", []).append(
+        (repo, room)) or (f"/{repo}.gguf" if gguf_in in repo else None))
+    w.WanFinish(cfg, "auto", ["a prompt"], "a negative")
+    return calls
+
+
+def test_the_14b_finish_comes_as_a_gguf_and_goes_to_the_gpu_a_block_at_a_time(tmp_path, monkeypatch):
+    proj = copy_project(tmp_path)
+    calls = _finish_engine(monkeypatch, steps.finish_config(proj, "ai_finish_720"))
+    assert calls["snapshot"] == ("Wan-AI/Wan2.1-VACE-14B-diffusers", ["transformer"])   # the GGUF replaces it
+    assert [r for r, _ in calls["gguf"]] == ["QuantStack/Wan2.1_T2V_14B_LightX2V_StepCfgDistill_VACE-GGUF",
+                                            "lym00/Wan2.1_T2V_14B_LightX2V_StepCfgDistill_VACE-GGUF"]
+    assert all(room == 15 for _, room in calls["gguf"])                     # sized by memory, not by the GPU
+    path, kw = calls["single_file"]
+    assert path.startswith("/lym00") and kw["config"] == "/hf" and kw["subfolder"] == "transformer"
+    assert kw["quantization_config"] == ("gguf", "fp16")                    # a T4 computes in fp16
+    assert calls["pipeline"][1]["transformer"].name == "gguf" and calls["pipeline"][1]["text_encoder"] is None
+    assert calls["group_offload"]["offload_type"] == "block_level" and "model_offload" not in calls
+    assert ("vae", "device:cuda") in calls["moved"]
+    assert calls["scheduler"] == ("unipc", {"solver_order": 1, "disable_corrector": [0, 1, 2, 3], "flow_shift": 5.0})
+
+
+def test_the_small_finish_loads_whole_and_offloads_by_model(tmp_path, monkeypatch):
+    proj = copy_project(tmp_path)
+    calls = _finish_engine(monkeypatch, steps.finish_config(proj))
+    assert calls["snapshot"] == ("Wan-AI/Wan2.1-VACE-1.3B-diffusers", [])
+    assert "gguf" not in calls and "transformer" not in calls["pipeline"][1]
+    assert calls["model_offload"] and "group_offload" not in calls
+    assert calls["scheduler"] == ("unipc", {"flow_shift": 3.0})
+
+
+def test_no_gguf_anywhere_is_a_clear_error(tmp_path, monkeypatch):
+    proj = copy_project(tmp_path)
+    with pytest.raises(RuntimeError, match="no GGUF in QuantStack/.*, lym00/"):
+        _finish_engine(monkeypatch, steps.finish_config(proj, "ai_finish_720"), gguf_in="nowhere")
+
+
+class _KaggleHere:
+    """Kaggle for the finish test, run here: the notebook's archive comes from the fake release and the
+    worker runs with its stand-in engines."""
+
+    def __init__(self, release_dir, tmp):
+        self.release_dir, self.tmp, self.log, self.pushed = release_dir, tmp, [], []
+
+    def push(self, folder, accelerator, timeout_s):
+        import re
+        import sys
+        import tarfile
+        script = (folder / "finish_test.py").read_text()
+        name = re.search(r"urlretrieve\('([^']+)'", script).group(1).rsplit("/", 1)[1]
+        test_id = re.search(r'"--expect-batch", \'([^\']+)\'', script).group(1)
+        self.pushed.append((json.loads((folder / "kernel-metadata.json").read_text()), accelerator, timeout_s))
+        inputs = self.tmp / "in"
+        with tarfile.open(self.release_dir / name) as t:
+            t.extractall(inputs, filter="data")
+        subprocess.run([sys.executable, str(inputs / "worker.py"), "--manifest", str(inputs / "manifest.json"),
+                        "--inputs", str(inputs), "--out", str(self.tmp / "working" / "out"), "--engine-set", "stub",
+                        "--expect-batch", test_id], check=True)
+
+    def status(self, ref):
+        return "complete"
+
+    def output(self, ref, dest):
+        shutil.copytree(self.tmp / "working", dest, dirs_exist_ok=True)
+
+
+@needs_ffmpeg
+def test_a_finish_test_runs_one_shot_outside_the_ledger_and_lays_it_beside_the_render(tmp_path):
+    pytest.importorskip("PIL")
+    from test_mac import FakeRelease
+
+    from engine.providers.kaggle import finish_test as ft
+    from engine.providers.release import Release
+    (tmp_path / "film").mkdir()
+    proj = copy_project(tmp_path / "film")
+    for control in ("depth", "lines"):
+        _guide(proj, control=control)
+    render = cgi_config.work_dir(proj, cgi_config.settings(proj), SHOT) / f"{SHOT}.mp4"   # the 3D render itself
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "smptebars=size=320x180:rate=24",
+                    "-t", "3", "-pix_fmt", "yuv420p", str(render)], check=True)
+    fr = FakeRelease(tmp_path / "release")
+    kaggle = _KaggleHere(fr.dir, tmp_path / "kaggle")
+    r = ft.run(proj, kaggle, Release("o/r", gh=fr.gh, tag=ft.RELEASE), SHOT, "ai_finish_720", ["depth", "lines"],
+               tmp_path / "work", minutes=120, poll=0, sleep=lambda s: None)
+    assert set(r["jobs"]) == {"depth", "lines"} and all(j["ok"] for j in r["jobs"].values()), r
+    assert r["jobs"]["depth"]["size"] == "1280x720" and r["engine"] == "ai_finish_720"
+    meta, accelerator, timeout = kaggle.pushed[0]
+    assert meta["id"] == "tester/film-finish-test" and meta["enable_internet"] == "true"   # its own notebook
+    assert accelerator == "NvidiaTeslaT4" and timeout == 120 * 60
+    test = r["test"]
+    names = set(fr.names())
+    assert {f"{test}-inputs.tar.gz", f"{test}-depth.mp4", f"{test}-depth-side.mp4", f"{test}-depth-middle.png",
+            f"{test}-lines-middle.png", f"{test}-summary.json", f"{test}-worker.jsonl"} <= names
+    assert all(u.startswith(f"https://github.com/o/r/releases/download/{ft.RELEASE}/") for u in r["files"])
+    from PIL import Image
+    middle = Image.open(fr.dir / f"{test}-depth-middle.png")
+    assert middle.height == 720 and middle.width > 2 * 1280                         # render, finish, the still
+    assert steps.open_ledger(proj).jobs(SHOT, "finish") == []                         # the ledger never knew
+
+
+@needs_ffmpeg
+def test_a_finish_test_kaggle_will_not_start_says_why(tmp_path):
+    from test_mac import FakeRelease
+
+    from engine.providers.kaggle import KaggleError
+    from engine.providers.kaggle import finish_test as ft
+    from engine.providers.release import Release
+
+    class Busy(_KaggleHere):
+        def push(self, folder, accelerator, timeout_s):
+            raise KaggleError("kaggle kernels push failed: Maximum batch GPU session count of 2 reached.")
+    proj = copy_project(tmp_path)
+    _guide(proj)
+    fr = FakeRelease(tmp_path / "release")
+    r = ft.run(proj, Busy(fr.dir, tmp_path / "k"), Release("o/r", gh=fr.gh, tag=ft.RELEASE), SHOT, "ai_finish",
+               ["depth"], tmp_path / "work", poll=0, sleep=lambda s: None)
+    assert "GPU session count" in r["error"] and r["statuses"] == ["not started"]
+    assert not r["jobs"]["depth"]["ok"] and f"{r['test']}-summary.json" in fr.names()

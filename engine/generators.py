@@ -114,3 +114,14 @@ def wan_segments(seconds: float, fps: int, max_frames: int) -> list[int]:
 def seed_for(key: str) -> int:
     """A stable seed per key, so a rerun of the same job (or shot) draws the same picture."""
     return int(hashlib.sha1(key.encode()).hexdigest()[:8], 16)
+
+
+VARIANT_BASES = ("refs", "ai_finish")      # engines with variants: refs_fp16 (the probe), ai_finish_720
+
+
+def engine_settings(engines: dict, name: str) -> dict:
+    """An engine's settings. A variant (ai_finish_720) lists only what it changes from its base
+    (ai_finish): the base's settings with the variant's on top."""
+    base = next((b for b in VARIANT_BASES if name.startswith(b + "_")), None)
+    own = dict(engines.get(name) or {})
+    return {**engines[base], **own} if base and isinstance(engines.get(base), dict) else own

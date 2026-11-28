@@ -40,6 +40,8 @@ def test_the_worker_picks_a_generator_by_name_or_by_takes_and_never_guesses():
     assert w.generator_for("refs_fp16", [{"kind": "ref"}]) == "refs"            # the probe's variants
     assert w.generator_for("keyframe", [{"kind": "variant"}]) == "keyframe"
     assert w.generator_for("Wan 2.2 14B", [{"kind": "take"}, {"kind": "take"}]) == "video"
+    assert w.generator_for("ai_finish", [{"kind": "finish"}]) == "ai_finish"
+    assert w.generator_for("ai_finish_720", [{"kind": "finish"}]) == "ai_finish"   # a variant of the finish
     with pytest.raises(ValueError, match="no generator"):
         w.generator_for("Something New", [{"kind": "keyframe"}])               # once, this ran Wan
 
@@ -48,6 +50,25 @@ def test_shared_rules_match_the_workers_copies():
     w = _worker()
     for key in ("1-05.take0.abc", "x", "chapter 4"):
         assert w.seed_for(key) == gen.seed_for(key)
+    engines = {"ai_finish": {"model": "small", "width": 832, "fps": 16},
+               "ai_finish_720": {"model": "big", "width": 1280},
+               "refs": {"steps": 50}, "refs_fp16": {"steps": 50, "dtype": "fp16"}, "Wan 2.2 14B": {"fps": 16}}
+    assert w.VARIANT_BASES == gen.VARIANT_BASES
+    for name in engines:
+        assert w.engine_settings(engines, name) == gen.engine_settings(engines, name), name
+    assert gen.engine_settings(engines, "ai_finish_720") == {"model": "big", "width": 1280, "fps": 16}
+    assert gen.engine_settings(engines, "Wan 2.2 14B") == {"fps": 16}
+
+
+def test_the_worker_builds_a_variant_from_its_base_settings():
+    w = _worker()
+    engines = {"ai_finish": {"model": "small", "width": 64, "height": 36, "fps": 8, "max_frames": 17},
+               "ai_finish_720": {"model": "big", "width": 128, "height": 72}}
+    stub = w.build_engine("ai_finish_720", [{"kind": "finish"}], engines, "stub")
+    assert isinstance(stub, w.StubFinish) and stub.cfg == {"model": "big", "width": 128, "height": 72,
+                                                           "fps": 8, "max_frames": 17}
+    with pytest.raises(KeyError, match="no settings"):
+        w.build_engine("ai_finish_480", [{"kind": "finish"}], engines, "stub")
 
 
 def test_kaggle_never_takes_a_stage_its_t4s_cannot_run(tmp_path):

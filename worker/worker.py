@@ -172,8 +172,9 @@ def find_gguf(repo: str, subdir: str, prefer: list[str], max_gb: float | None = 
     if choice is None and fits:
         choice = max(fits, key=fits.get)
     if choice is None:
-        log(f"no GGUF in {repo}/{subdir} fits {max_gb:.1f} GB; sizes: "
-            + ", ".join(f"{Path(p).name} {gb:.1f}" for p, gb in sorted(files.items(), key=lambda x: x[1])))
+        log(f"no GGUF in {repo}/{subdir}" + (f" fits {max_gb:.1f} GB" if max_gb is not None else "") + "; sizes: "
+            + (", ".join(f"{Path(p).name} {gb:.1f}" for p, gb in sorted(files.items(), key=lambda x: x[1]))
+               or "none"))
         return None
     log(f"using {repo}/{choice} ({files[choice]:.1f} GB" + (f", room {max_gb:.1f} GB)" if max_gb else ")"))
     return hf_hub_download(repo, choice)
@@ -499,27 +500,73 @@ class WanVideo:
                 "height": c["height"], "seed": seed_for(job["key"])}
 
 
+def make_scheduler(base: dict, cfg: dict):
+    """The sampler a Wan engine asks for: UniPC (Wan's own) with its flow_shift (Wan: 3.0 at 480p, 5.0 at
+    720p) and any scheduler_args, or Euler ("scheduler": "euler"). A step-distilled model is sampled as it
+    was trained: UniPC at 4 steps and flow_shift 5 visits the distillation's own steps (1000, 750, 500,
+    250), and solver_order 1 without the corrector makes each step a plain Euler step. None: keep the model's."""
+    from diffusers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler  # noqa: PLC0415
+    args = dict(cfg.get("scheduler_args") or {})
+    if cfg.get("scheduler") == "euler":
+        return FlowMatchEulerDiscreteScheduler.from_config(base, shift=float(cfg.get("flow_shift", 5.0)), **args)
+    if cfg.get("flow_shift") or args:
+        if cfg.get("flow_shift"):
+            args["flow_shift"] = float(cfg["flow_shift"])
+        return UniPCMultistepScheduler.from_config(base, **args)
+    return None
+
+
+def vace_gguf(g: dict, local: str, dtype, room: float | None):
+    """A Wan VACE transformer from a GGUF: the first repo of `repo` and `fallback_repos` that has one
+    that fits in `room` GB (None: any), built around the diffusers repo's transformer config."""
+    from diffusers import GGUFQuantizationConfig, WanVACETransformer3DModel  # noqa: PLC0415
+    repos = [g["repo"], *g.get("fallback_repos", [])]
+    path = next((f for r in repos if (f := find_gguf(r, g.get("subdir", ""), g.get("prefer", []), room))), None)
+    if not path:
+        raise RuntimeError(f"no GGUF in {', '.join(repos)}" + (f" fits {room:.1f} GB" if room else ""))
+    return WanVACETransformer3DModel.from_single_file(
+        path, quantization_config=GGUFQuantizationConfig(compute_dtype=dtype), config=local,
+        subfolder="transformer", torch_dtype=dtype)
+
+
 class WanFinish:
     """The AI finish: repaints a shot's 3D render in the look of its reference stills, guided by the
     render's depth or lines (Wan VACE, video-to-video). The guide keeps the camera, staging, timing and
     lip sync exactly; the reference stills give faces, costumes and painting.
 
+    A model too big for the GPU (the 14B on a 16 GB T4) comes as a GGUF (transformer_gguf), the first of
+    `repo` and `fallback_repos` that has one. With offload "group" it waits in the machine's memory and
+    goes to the GPU a block at a time: at 720p the activations alone fill most of a T4.
+
     Not yet run on a GPU: the first Kaggle or Colab run is its test (AGENTS.md: one shot first)."""
 
     def __init__(self, cfg: dict, dtype_name: str, prompts: list[str], negative: str):
         import torch  # noqa: PLC0415
-        from diffusers import AutoencoderKLWan, UniPCMultistepScheduler, WanVACEPipeline  # noqa: PLC0415
+        from diffusers import AutoencoderKLWan, WanVACEPipeline  # noqa: PLC0415
         self.cfg, self.torch = cfg, torch
         dtype = pick_dtype(dtype_name)
-        local = snapshot(cfg["model"], skip=[])
+        g = cfg.get("transformer_gguf")
+        group = cfg.get("offload") == "group" and torch.cuda.is_available()
+        local = snapshot(cfg["model"], skip=["transformer"] if g else [])
         self.embeds = encode_prompts_on_cpu(local, prompts + [negative])
-        vae = AutoencoderKLWan.from_pretrained(local, subfolder="vae", torch_dtype=torch.float32)
-        self.pipe = WanVACEPipeline.from_pretrained(local, vae=vae, text_encoder=None, tokenizer=None,
-                                                    torch_dtype=dtype)
-        if cfg.get("flow_shift"):                    # Wan's advice: 3.0 at 480p, 5.0 at 720p
-            self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config,
-                                                                      flow_shift=float(cfg["flow_shift"]))
-        self.pipe.enable_model_cpu_offload()
+        kwargs = {"vae": AutoencoderKLWan.from_pretrained(local, subfolder="vae", torch_dtype=torch.float32),
+                  "text_encoder": None, "tokenizer": None, "torch_dtype": dtype}
+        if g:
+            room = g.get("max_gb") if group else gpu_room_gb(float(cfg.get("vram_headroom_gb", 6.0)))
+            kwargs["transformer"] = vace_gguf(g, local, dtype, room)
+        self.pipe = WanVACEPipeline.from_pretrained(local, **kwargs)
+        sched = make_scheduler(self.pipe.scheduler.config, cfg)
+        if sched is not None:
+            self.pipe.scheduler = sched
+        if group:
+            gpu = torch.device("cuda")
+            self.pipe.transformer.enable_group_offload(onload_device=gpu, offload_device=torch.device("cpu"),
+                                                       offload_type="block_level",
+                                                       num_blocks_per_group=int(cfg.get("blocks_per_group", 1)))
+            self.pipe.vae.to(gpu)
+            log(f"finish: {cfg['model']} offloaded by groups of {cfg.get('blocks_per_group', 1)} block(s)")
+        else:
+            self.pipe.enable_model_cpu_offload()
         try:
             self.pipe.vae.enable_tiling()
         except Exception:  # noqa: BLE001 - tiling is an optimisation only
@@ -744,12 +791,25 @@ GENERATORS = {"refs": (_refs, StubImage), "keyframe": (_keyframe, StubImage), "v
               "upscale": (_upscale, StubUpscale), "ai_finish": (_finish, StubFinish)}
 
 
+VARIANT_BASES = ("refs", "ai_finish")      # engines with variants: refs_fp16, ai_finish_720 (as engine/generators.py)
+
+
+def engine_settings(engines: dict, name: str) -> dict:
+    """An engine's settings. A variant (ai_finish_720) lists only what it changes from its base
+    (ai_finish): the base's settings with the variant's on top. The same as engine/generators.py."""
+    base = next((b for b in VARIANT_BASES if name.startswith(b + "_")), None)
+    own = dict(engines.get(name) or {})
+    return {**engines[base], **own} if base and isinstance(engines.get(base), dict) else own
+
+
 def generator_for(name: str, jobs: list[dict]) -> str:
-    """Which generator makes a group: by its name, or "video" for a group of takes. Anything else
-    is an error, never a guess: a wrong generator would spend GPU time on the wrong model."""
-    if name == "refs" or name.startswith("refs_"):
-        return "refs"
-    if name in ("keyframe", "upscale", "ai_finish"):
+    """Which generator makes a group: by its name (or its base's, for a variant), or "video" for a group
+    of takes. Anything else is an error, never a guess: a wrong generator would spend GPU time on the
+    wrong model."""
+    for base in VARIANT_BASES:
+        if name == base or name.startswith(base + "_"):
+            return base
+    if name in ("keyframe", "upscale"):
         return name
     if jobs and all(j["kind"] == "take" for j in jobs):
         return "video"
@@ -758,9 +818,11 @@ def generator_for(name: str, jobs: list[dict]) -> str:
 
 # ---------------------------------------------------------------- the run
 def build_engine(name: str, jobs: list[dict], engines: dict, engine_set: str):
-    dtype = (engines.get(name) or {}).get("dtype") or engines.get("dtype", "auto")
+    if name not in engines:
+        raise KeyError(f"the manifest has no settings for the engine {name!r}")
+    cfg = engine_settings(engines, name)
+    dtype = cfg.get("dtype") or engines.get("dtype", "auto")
     real, stand_in = GENERATORS[generator_for(name, jobs)]
-    cfg = engines[name]
     return stand_in(cfg) if engine_set == "stub" else real(cfg, dtype, jobs, engines)
 
 

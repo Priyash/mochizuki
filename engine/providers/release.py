@@ -41,10 +41,11 @@ def names(batch_id: str, prefix: str = "mac") -> dict[str, str]:
 
 
 class Release:
-    """The `batches` release, through the gh CLI (uploads, deletes) and plain HTTPS (downloads)."""
+    """The `batches` release (or another, `tag`), through the gh CLI (uploads, deletes) and plain HTTPS
+    (downloads)."""
 
-    def __init__(self, repo: str, gh=None, fetch=None):
-        self.repo = repo
+    def __init__(self, repo: str, gh=None, fetch=None, tag: str = RELEASE):
+        self.repo, self.tag = repo, tag
         self._gh = gh or self._gh_cli
         self._fetch = fetch or self._urllib
 
@@ -61,7 +62,7 @@ class Release:
         tmp.replace(dest)
 
     def assets(self) -> dict[str, dict]:
-        code, out = self._gh(["api", f"repos/{self.repo}/releases/tags/{RELEASE}"])
+        code, out = self._gh(["api", f"repos/{self.repo}/releases/tags/{self.tag}"])
         if code != 0:
             return {}
         try:
@@ -69,21 +70,25 @@ class Release:
         except ValueError:
             return {}
 
-    def ensure(self) -> None:
-        code, _ = self._gh(["release", "view", RELEASE, "-R", self.repo, "--json", "tagName"])
+    def ensure(self, notes: str = "Inputs and results of off-Kaggle batches, deleted after each batch.") -> None:
+        code, _ = self._gh(["release", "view", self.tag, "-R", self.repo, "--json", "tagName"])
         if code != 0:
-            code, out = self._gh(["release", "create", RELEASE, "-R", self.repo, "--prerelease", "--title", RELEASE,
-                                  "--notes", "Inputs and results of off-Kaggle batches, deleted after each batch."])
+            code, out = self._gh(["release", "create", self.tag, "-R", self.repo, "--prerelease", "--title", self.tag,
+                                  "--notes", notes])
             if code != 0 and "already exists" not in out:
-                raise RuntimeError(f"could not create release {RELEASE}: {out.strip()[-300:]}")
+                raise RuntimeError(f"could not create release {self.tag}: {out.strip()[-300:]}")
 
     def upload(self, path: Path) -> None:
-        code, out = self._gh(["release", "upload", RELEASE, str(path), "-R", self.repo, "--clobber"])
+        code, out = self._gh(["release", "upload", self.tag, str(path), "-R", self.repo, "--clobber"])
         if code != 0:
             raise RuntimeError(f"upload of {Path(path).name} failed: {out.strip()[-300:]}")
 
     def delete(self, name: str) -> None:
-        self._gh(["release", "delete-asset", RELEASE, name, "-R", self.repo, "-y"])
+        self._gh(["release", "delete-asset", self.tag, name, "-R", self.repo, "-y"])
+
+    def url(self, name: str) -> str:
+        """Where anyone can download a file of a public repository's release, with no sign-in."""
+        return f"https://github.com/{self.repo}/releases/download/{self.tag}/{name}"
 
     def download(self, asset: dict, dest: Path) -> None:
         dest.parent.mkdir(parents=True, exist_ok=True)
