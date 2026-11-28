@@ -8,7 +8,7 @@ A batch waits as <name>-<id>.tar.gz until a worker claims it, sends heartbeats a
   <name>-<id>.progress.json     heartbeat every few minutes: jobs done / total
   <name>-<id>.results.tar.gz    out/results.json and the outputs, written by the worker
 
-Shared by engine.mac and engine.colab_backend.
+Shared by the Colab provider (engine/providers/colab) and the Mac's (engine/providers/mac.py).
 """
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ import time
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+
+from .base import Provider, Status
 
 RELEASE = "batches"
 
@@ -88,22 +90,16 @@ class Release:
         self._fetch(asset["browser_download_url"], dest)
 
 
-class ReleaseBackend:
-    """Producer side of a release-based backend: the batch waits in the release until a worker
-    elsewhere claims it. Subclasses set `name` and pass their settings as `cfg`."""
-    name = "mac"
-    accelerator = ""
-    take_over = False
+class ReleaseProvider(Provider):
+    """A provider whose batches wait in the `batches` release until a worker elsewhere claims them
+    (the Colab runner, the Mac). Subclasses set `name` and pass their settings as `cfg`."""
 
-    def __init__(self, p, repo: str, gh=None, fetch=None, now=time.time, cfg: dict | None = None):
-        if cfg is None:
-            from .mac.config import settings  # noqa: PLC0415 - the Mac's settings are the default
-            cfg = settings(p)
+    def __init__(self, p, repo: str, gh=None, fetch=None, now=time.time, *, cfg: dict):
+        super().__init__()
         self.cfg = cfg
         self.rel = Release(repo, gh, fetch)
         self.now = now
         self.stages = tuple(self.cfg["stages"]) if self.cfg.get("stages") else None
-        self.log: list[str] = []
 
     def budget(self, p, led) -> tuple[float, float]:
         return float(self.cfg["batch_hours"]) * 3600, float(self.cfg["setup_minutes"]) * 60
@@ -131,25 +127,25 @@ class ReleaseBackend:
     def status(self, ref: str, handle: str | None = None) -> str:
         n, a = names(handle or "", self.name), self.rel.assets()
         if not a:
-            return "unknown"                             # GitHub unreachable: ask again next run
+            return Status.UNKNOWN                        # GitHub unreachable: ask again next run
         if n["results"] in a:
-            return "complete"
+            return Status.COMPLETE
         if n["inputs"] not in a:
             self.log.append(f"{n['inputs']} is gone")
-            return "error"
+            return Status.ERROR
         if n["claim"] in a:
             beat = max(iso_time(a[n["claim"]].get("updated_at")),
                        iso_time((a.get(n["progress"]) or {}).get("updated_at")))
             if self.now() - beat > float(self.cfg["stale_minutes"]) * 60:
                 self.log.append(f"the {self.name} worker on {handle} went quiet "
                                 f"{(self.now() - beat) / 60:.0f} min ago; giving up on it")
-                return "error"
-            return "running"
+                return Status.ERROR
+            return Status.RUNNING
         waited = self.now() - iso_time(a[n["inputs"]].get("created_at"))
         if waited > float(self.cfg["max_wait_hours"]) * 3600:
             self.log.append(f"no {self.name} worker took {handle} in {waited / 3600:.0f} h; its jobs are freed")
-            return "error"
-        return "queued"
+            return Status.ERROR
+        return Status.QUEUED
 
     def output(self, ref: str, dest: Path, handle: str | None = None) -> None:
         """Download and unpack the results, then delete the batch's files from the release. If the

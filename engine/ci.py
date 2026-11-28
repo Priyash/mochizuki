@@ -14,10 +14,11 @@ import shutil
 from pathlib import Path
 
 from . import assemble as asm
-from . import kaggle as kg
-from . import review, steps
+from . import review, scheduler, steps
 from .ledger import Ledger
 from .project import Project, ref_shot
+from .providers.base import Status
+from .scheduler import Action
 
 DONE = ("take_passed", "ready_for_editor")
 
@@ -32,20 +33,17 @@ def step(p: Project, led: Ledger, chapter: int, state: Path, backend, engine_set
     backends = [b for b in (backend if isinstance(backend, list) else [backend]) if b is not None]
     out: dict = {"chapter": chapter, "actions": []}
     out["reviews"] = review.apply(led, state / "reviews")
-    backend = next((b for b in backends if isinstance(b, kg.KaggleCLI)), None)
-    if isinstance(backend, kg.KaggleCLI):          # can we sign in, and how much GPU time is left?
-        code, text = backend._run(["quota", "-v"])
-        out["kaggle_check"] = {"ok": code == 0, "output": text.strip()[-600:]}
-        for args in (["datasets", "list", "--mine"], ["kernels", "list", "--mine"], ["config", "view"]):
-            code, text = backend._run(args)
-            out["kaggle_check"][" ".join(args)] = f"{code}: {text.strip()[-500:]}"
+    for b in backends:                             # can we sign in, and how much GPU time is left?
+        check = b.account_check()
+        if check is not None:
+            out[f"{b.name}_check"] = check
     if not backends:
-        out["actions"].append({"action": "skipped", "reason": "no Kaggle credentials"})
+        out["actions"].append({"action": Action.SKIPPED, "reason": "no Kaggle credentials"})
     else:
-        out["actions"] = kg.tick_all(p, led, backends, chapter, engine_set=engine_set)
+        out["actions"] = scheduler.tick_all(p, led, backends, chapter, engine_set=engine_set)
     for b in backends:
         if getattr(b, "log", None):
-            out[f"{getattr(b, 'name', 'kaggle')}_log"] = b.log[-10:]
+            out[f"{b.name}_log"] = b.log[-10:]
     if p.store is not None:
         out["uploaded"] = p.store.push(p)
     out["review"] = review.export(p, led, chapter, state / "review" / f"ch{chapter}")
@@ -84,10 +82,10 @@ def notice(p: Project, led: Ledger, chapter: int, state: Path, out: dict) -> dic
     shots = p.chapter(chapter)
     st = {s.id: steps.state(p, led, s) for s in shots}
     acts = out["actions"]
-    if acts and acts[-1].get("action") == "skipped":
+    if acts and acts[-1].get("action") == Action.SKIPPED:
         return {"kind": "setup", "text": f"{at}Add the KAGGLE_API_TOKEN and KAGGLE_USERNAME repository secrets "
                                          "(Settings → Secrets and variables → Actions) so the producer can run."}
-    errors = [a for a in acts if a.get("action") == "error"]
+    errors = [a for a in acts if a.get("action") == Action.ERROR]
     running = list(led.active_batches())
     if errors and not running:
         e = errors[-1]
@@ -97,10 +95,10 @@ def notice(p: Project, led: Ledger, chapter: int, state: Path, out: dict) -> dic
         parts = [f"{b['backend'].title()} batch {b['id']} ({b['stage']}) is {b['status']}" for b in running]
         tail = "".join(f" {e.get('backend', '').title()} hit a problem: {e['error'][:200]}" for e in errors)
         tail += "".join(f" {a.get('backend', '').title()} batch {a['batch']}: {a['error'][:200]}"
-                        for a in acts if a.get("status") == "collecting")
+                        for a in acts if a.get("status") == Status.COLLECTING)
         tail += "".join(f" {a.get('backend', '').title()} batch {a['batch']} was handed over, but its queued run "
                         "could not be cancelled there and may still start."
-                        for a in acts if a.get("action") == "handed_over" and not a.get("cancelled"))
+                        for a in acts if a.get("action") == Action.HANDED_OVER and not a.get("cancelled"))
         return {"kind": "running", "text": f"Chapter {chapter}: " + "; ".join(parts) + "." + tail}
     rs = {r["name"]: steps.ref_state(p, led, r) for r in p.refs_missing(chapter)
           if steps.ref_state(p, led, r) != "waiting_source"}

@@ -93,7 +93,6 @@ def wan_segments(seconds: float, fps: int, max_frames: int) -> list[int]:
     so it shares one frame with it. Total new frames >= the shot's length.
     """
     need = max(1, math.ceil(seconds * fps))
-    cap = ((max_frames - 1) // 4) * 4 + 1
     first = wan_frames(seconds, fps, max_frames)
     segs, have = [first], first
     while have < need:

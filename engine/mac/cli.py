@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 
 from ..log import set_file
-from ..release import Release
+from ..providers.release import Release
 from .common import WORK, log
 from .config import settings, with_engine_set
 from .engines import build

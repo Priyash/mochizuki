@@ -3,14 +3,11 @@ framing the face the builder will make. The Blender side runs in test_cgi.py's r
 from __future__ import annotations
 
 import math
-import shutil
-from pathlib import Path
 
 import pytest
 
 from engine.cgi import figure
 from engine.cgi import plan as planner
-from engine.project import Project
 
 
 

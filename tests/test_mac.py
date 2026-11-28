@@ -7,8 +7,15 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from engine import kaggle as kg
-from engine import mac_backend as mb
+from engine import scheduler as sched
+from engine.mac.config import settings as mac_settings
+from engine.mac.engines import StubImageEngine
+from engine.mac.models import resolve_cmd
+from engine.mac.selftest import self_test
+from engine.mac.worker import worker_loop
+from engine.providers.kaggle import LocalKaggle
+from engine.providers.mac import MacProvider
+from engine.providers.release import Release
 from engine import steps
 
 from test_pipeline import copy_project
@@ -50,54 +57,54 @@ def _setup(tmp_path):
     for f in (proj.root / "style_bible" / "refs").glob("*.png"):
         f.unlink()                                       # chapter 1 needs its reference stills
     fr = FakeRelease(tmp_path / "release")
-    mac = mb.MacBackend(proj, "o/r", gh=fr.gh)
+    mac = MacProvider(proj, "o/r", gh=fr.gh)
     return proj, steps.open_ledger(proj), fr, mac
 
 
 def test_batch_goes_to_the_mac_and_comes_back(tmp_path):
     proj, led, fr, mac = _setup(tmp_path)
-    r = kg.tick(proj, led, mac, 1, engine_set="stub")
+    r = sched.tick(proj, led, mac, 1, engine_set="stub")
     assert r["action"] == "built_and_submitted" and r["stage"] == "refs", r
     b = led.active_batch("mac")
     assert fr.names() == [f"mac-{b['id']}.tar.gz"]
-    assert kg.tick(proj, led, mac, 1, engine_set="stub")["status"] == "queued"
+    assert sched.tick(proj, led, mac, 1, engine_set="stub")["status"] == "queued"
 
-    worker_rel = mb.Release("o/r", gh=fr.gh)
-    cfg = mb.settings(proj)
-    assert mb.worker_loop(worker_rel, tmp_path / "mac", mb.StubEngine(), cfg, once=True) == 1
+    worker_rel = Release("o/r", gh=fr.gh)
+    cfg = mac_settings(proj)
+    assert worker_loop(worker_rel, tmp_path / "mac", StubImageEngine(), cfg, once=True) == 1
     assert f"mac-{b['id']}.results.tar.gz" in fr.names() and f"mac-{b['id']}.claim.json" in fr.names()
 
-    r = kg.tick(proj, led, mac, 1, engine_set="stub")
+    r = sched.tick(proj, led, mac, 1, engine_set="stub")
     assert r["action"] == "collected" and r["made"] > 0 and r["failed"] == 0, r
     assert fr.names() == []                               # every file of the batch is cleaned up
 
 
 def test_a_silent_mac_or_no_mac_frees_the_jobs(tmp_path):
     proj, led, fr, mac = _setup(tmp_path)
-    kg.tick(proj, led, mac, 1, engine_set="stub")
+    sched.tick(proj, led, mac, 1, engine_set="stub")
     b = led.active_batch("mac")
-    later = mb.MacBackend(proj, "o/r", gh=fr.gh, now=lambda: time.time() + 80 * 3600)
+    later = MacProvider(proj, "o/r", gh=fr.gh, now=lambda: time.time() + 80 * 3600)
     assert later.status("", b["id"]) == "error" and "no mac worker took" in later.log[-1]
     claim = tmp_path / f"mac-{b['id']}.claim.json"
     claim.write_text("{}")
     fr.gh(["release", "upload", "batches", str(claim)])
-    soon = mb.MacBackend(proj, "o/r", gh=fr.gh, now=lambda: time.time() + 3600)
+    soon = MacProvider(proj, "o/r", gh=fr.gh, now=lambda: time.time() + 3600)
     assert soon.status("", b["id"]) == "error" and "went quiet" in soon.log[-1]
     assert mac.status("", b["id"]) == "running"
 
 
 def test_kaggle_leaves_refs_to_the_mac(tmp_path):
     proj, led, fr, mac = _setup(tmp_path)
-    k = kg.LocalKaggle(proj.media)
+    k = LocalKaggle(proj.media)
     k.stages = ("video",)
-    out = kg.tick_all(proj, led, [k, mac], 1, engine_set="stub")
+    out = sched.tick_all(proj, led, [k, mac], 1, engine_set="stub")
     assert out[0]["action"] == "idle" and "only takes video" in out[0]["reason"]
     assert out[1]["action"] == "built_and_submitted" and out[1]["backend"] == "mac"
 
 
 def test_self_test_writes_one_still(tmp_path):
     proj, led, fr, mac = _setup(tmp_path)
-    r = mb.self_test(proj, mb.StubEngine(), tmp_path / "s.png")
+    r = self_test(proj, StubImageEngine(), tmp_path / "s.png")
     assert Path(r["still"]["file"]).exists() and Path(r["edit"]["file"]).exists()
 
 
@@ -118,11 +125,11 @@ def _fake_repo(tmp_path, folder="q4", parts=("transformer", "text_encoder", "vae
 def test_model_folder_is_downloaded_once_and_put_in_the_command(tmp_path):
     files, calls, download = _fake_repo(tmp_path)
     e = {"cmd": ["mflux-generate-qwen-edit", "--model", "{model_dir}"], "download": {"repo": "a/b", "folder": "q4"}}
-    cmd = mb.resolve_cmd(e, tmp_path, download, lambda repo: files)
+    cmd = resolve_cmd(e, tmp_path, download, lambda repo: files)
     assert cmd[-1] == str(tmp_path / "a--b" / "q4")
     assert calls == [("a/b", ["q4/text_encoder/w.safetensors", "q4/tokenizer/vocab.json",
                               "q4/transformer/w.safetensors", "q4/vae/w.safetensors"])]
-    mb.resolve_cmd(e, tmp_path, download, lambda repo: files)
+    resolve_cmd(e, tmp_path, download, lambda repo: files)
     assert len(calls) == 1                                # not downloaded twice
 
 
@@ -130,7 +137,7 @@ def test_an_empty_model_download_is_an_error_not_complete(tmp_path):
     files, calls, _ = _fake_repo(tmp_path)
     e = {"cmd": ["x", "--model", "{model_dir}"], "download": {"repo": "a/b", "folder": "q4"}}
     try:
-        mb.resolve_cmd(e, tmp_path, lambda repo, local_dir, allow_patterns: None, lambda repo: files)
+        resolve_cmd(e, tmp_path, lambda repo, local_dir, allow_patterns: None, lambda repo: files)
         raise AssertionError("should have failed")
     except RuntimeError as err:
         assert "has no transformer" in str(err)
@@ -141,7 +148,7 @@ def test_a_missing_folder_names_what_the_repo_has(tmp_path):
     files, _, download = _fake_repo(tmp_path)
     e = {"cmd": ["x", "--model", "{model_dir}"], "download": {"repo": "a/b", "folder": "gone"}}
     try:
-        mb.resolve_cmd(e, tmp_path, download, lambda repo: files)
+        resolve_cmd(e, tmp_path, download, lambda repo: files)
         raise AssertionError("should have failed")
     except RuntimeError as err:
         assert "no folder 'gone'" in str(err) and "q4" in str(err)
@@ -153,7 +160,7 @@ def test_a_folder_marked_complete_but_empty_is_fetched_again(tmp_path):
     t.mkdir(parents=True)
     (t / ".complete").write_text("ok")                    # what the old version left on the Mac
     e = {"cmd": ["x", "--model", "{model_dir}"], "download": {"repo": "a/b", "folder": "q4"}}
-    mb.resolve_cmd(e, tmp_path, download, lambda repo: files)
+    resolve_cmd(e, tmp_path, download, lambda repo: files)
     assert len(calls) == 1 and (t / "vae" / "w.safetensors").exists()
 
 
@@ -173,6 +180,6 @@ def test_a_missing_tokenizer_is_taken_from_the_base_model(tmp_path):
             f.write_bytes(b"w")
     e = {"cmd": ["x", "--model", "{model_dir}"],
          "download": {"repo": "a/b", "folder": "q4", "tokenizer_from": "base/model"}}
-    mb.resolve_cmd(e, tmp_path, download, lambda repo: files)
+    resolve_cmd(e, tmp_path, download, lambda repo: files)
     assert calls == ["a/b", "base/model"]
     assert (tmp_path / "a--b" / "q4" / "tokenizer" / "vocab.json").exists()

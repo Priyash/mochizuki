@@ -14,7 +14,7 @@ import threading
 import time
 from pathlib import Path
 
-from ..release import Release, names
+from ..providers.release import Release, names
 from .common import log
 from .config import NAME
 
