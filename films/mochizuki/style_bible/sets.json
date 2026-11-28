@@ -1,5 +1,5 @@
 {
-  "_note": "Sets for the 3D pipeline, by scene (scenes.json names). Every shot of a scene is built from the same set, so place, props and marks never drift between shots. Metres, Z up; the front of the set is -Y (front_yaw 0). A mark is where a character stands or kneels and the way they face (yaw 0 faces -Y, 90 faces +X). props are where things sit when a shot does not move them. Pieces and props are drawn by engine/cgi/blender/props.py; anything it does not know is skipped with a warning.",
+  "_note": "Sets for the 3D pipeline, by scene (scenes.json names). Every shot of a scene is built from the same set, so place, props and marks never drift between shots. Metres, Z up; the front of the set is -Y (front_yaw 0). A mark is where a character stands or kneels and the way they face (yaw 0 faces -Y, 90 faces +X). props are where things sit when a shot does not move them. Pieces and props are drawn by engine/cgi/render/blender/props.py; anything it does not know is skipped with a warning.",
   "sets": {
     "1A": {
       "_what": "The farmhouse porch on Tsukimi night: wooden boards, the stone mortar, a paper lantern under the eaves, the sea and the moon beyond.",

@@ -41,6 +41,14 @@ def _four_k(p: Project, led: Ledger, shot_id: str, source_key: str) -> str | Non
     return None
 
 
+CUTS_DIR = "animatic"       # media/animatic/: every chapter cut, the animatic and the 4K
+
+
+def cut_path(p: Project, chapter: int, four_k: bool = False) -> Path:
+    """Where a chapter's cut is written: chapter_N.mp4 (the animatic), chapter_N_4k.mp4 (the 4K picture)."""
+    return p.media / CUTS_DIR / f"chapter_{chapter}{'_4k' if four_k else ''}.mp4"
+
+
 def cgi_clip(p: Project, shot_id: str, four_k: bool) -> str | None:
     """The shot's 3D render (engine/cgi), when config cgi.use_in_cut is on: the final render for the
     4K cut; the preview, else the final, for the animatic."""
@@ -58,7 +66,7 @@ def cgi_clip(p: Project, shot_id: str, four_k: bool) -> str | None:
 def assemble(p: Project, led: Ledger, chapter: int, four_k: bool = False) -> dict:
     w, h, crf = (3840, 2160, 14) if four_k else (640, 360, 23)
     tag = "4k" if four_k else "animatic"
-    work = p.media / "animatic" / f"chapter_{chapter}_{tag}_parts"
+    work = p.media / CUTS_DIR / f"chapter_{chapter}_{tag}_parts"
     work.mkdir(parents=True, exist_ok=True)
     used = {"cgi": 0, "take": 0, "keyframe": 0, "card": 0, "4k": 0}
     parts = []
@@ -92,7 +100,7 @@ def assemble(p: Project, led: Ledger, chapter: int, four_k: bool = False) -> dic
         parts.append(seg)
     listing = work / "list.txt"
     listing.write_text("".join(f"file '{x.name}'\n" for x in parts), encoding="utf-8")
-    out = p.media / "animatic" / f"chapter_{chapter}{'_4k' if four_k else ''}.mp4"
+    out = cut_path(p, chapter, four_k)
     _ff(["-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", str(out)])
     extra = dialogue_tracks(p, chapter, out) if used["cgi"] else {}
     return {"file": str(out), "size": f"{w}x{h}", "shots": len(parts), "from": used,
@@ -102,12 +110,12 @@ def assemble(p: Project, led: Ledger, chapter: int, four_k: bool = False) -> dic
 def dialogue_tracks(p: Project, chapter: int, video: Path) -> dict:
     """The automated dialogue under the cut: the primary language as the main audio, the others as extra
     tracks (YouTube can carry several), plus an .srt per language next to the file."""
-    from .cgi import dialogue  # noqa: PLC0415 - only for the 3D pipeline
+    from .audio import dialogue, mix, subtitles  # noqa: PLC0415 - only when the film has dialogue
     script = dialogue.load(p)
     langs = script.get("languages", ["en"])
     primary = script.get("primary", langs[0])
     order = [primary] + [x for x in langs if x != primary]
-    tracks = [(x, dialogue.chapter_audio(p, chapter, x)) for x in order]
+    tracks = [(x, mix.chapter_dialogue(p, chapter, x)) for x in order]
     tracks = [(x, t) for x, t in tracks if t]
     if not tracks:
         return {}
@@ -119,7 +127,7 @@ def dialogue_tracks(p: Project, chapter: int, video: Path) -> dict:
     tmp = video.with_suffix(".tmp.mp4")
     _ff([*args, *maps, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", *meta, "-shortest", str(tmp)])
     tmp.replace(video)
-    subs = {x: str(dialogue.subtitles(p, chapter, x)) for x in order}
+    subs = {x: str(subtitles.write_srt(p, chapter, x)) for x in order}
     for x, f in subs.items():
         Path(f).replace(video.with_suffix(f".{x}.srt"))
         subs[x] = str(video.with_suffix(f".{x}.srt"))

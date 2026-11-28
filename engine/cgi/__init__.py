@@ -7,21 +7,15 @@ Emotion is directed, not hoped for: each shot carries an acting sheet (beats, ga
 restraint, timing) that drives the faces, and a captured human performance can replace
 or enrich it. See docs/cgi-pipeline.md.
 
-Modules, in the order a shot flows through them (all plain Python, no Blender needed):
-
-    direction   the acting sheet of a shot: camera, beats, timing; drafted from shots.csv
-                and style_bible/acting.json, then approved by the owner
-    layout      where the camera goes: framing, lens, angle and moves, in metres
-    timing      anime timing: key poses (pose-to-pose), on twos/threes, holds, impacts, blinks
-    capture     a face performance from the iPhone (Live Link Face CSV) or a video (MediaPipe)
-    retarget    ARKit's 52 face shapes -> the character's shapes, plus the anime layer
-                (restraint, wet eyes, blush) driven by the acting sheet
-    palette     the light rig of a scene or chapter (style_bible/lights.json)
+Sub-components, in the order a shot flows through them (all plain Python, no Blender needed
+except render/blender):
+    acting/     how the characters perform: direction (the acting sheet), timing, capture, retarget
+    staging/    what the camera sees: layout (camera), palette (lights), figure (characters from code)
     plan        everything above folded into one JSON file per shot: the only thing Blender reads
-    render      runs Blender on a plan, checks the frames, encodes the shot
+    render/     runner (runs Blender on a plan, checks the frames, encodes the shot) and blender/, which
+                runs inside Blender and only executes a plan: props, sets, characters, lights, camera,
+                toon shading, outlines. Every decision is made before it, where it can be tested.
+    auto        a chapter, unattended: voices (engine/audio), renders, board, cut, review sheet
     cli         python -m engine cgi ...
-
-The Blender side lives in cgi/blender/ and runs inside Blender (or a Python with the bpy
-module). It only executes a plan: props, sets, characters, lights, camera, toon shading,
-outlines, render. Every decision is made here, where it can be tested.
+    config      settings: the engine's defaults, overridden by the film's config.json -> cgi
 """

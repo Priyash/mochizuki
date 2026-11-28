@@ -21,10 +21,10 @@ import time
 from pathlib import Path
 
 from ..log import log as _log
-from . import dialogue
-from . import direction as dirn
+from ..audio import dialogue
 from . import plan as planner
-from . import render as rnd
+from .acting import direction as dirn
+from .render import runner as rnd
 from .config import settings, work_dir
 
 

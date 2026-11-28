@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 import json
 
-from ..project import LIGHTS_FILE
+from ...project import LIGHTS_FILE
 
 DEFAULT_RIG = {
     "key": {"type": "SUN", "color": [1.0, 0.96, 0.9], "energy": 3.0, "azimuth": -35, "elevation": 40},

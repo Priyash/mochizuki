@@ -89,6 +89,7 @@ class KaggleProvider(Provider):
     name = NAME
     hands_over_when_queued = True    # a batch that sits in Kaggle's queue may go to another provider
     deadline_margin_s = 900          # Kaggle's session ends hard: the worker stops 15 min early
+    capabilities = frozenset()       # T4s: fp16 only, so no Qwen stills or keyframes (they come out blank)
     LICENSES = ("unknown", "other", "copyright-authors")      # all keep every right with the owner
 
     def __init__(self, p=None, runner=None):

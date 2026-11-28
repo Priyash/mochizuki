@@ -20,6 +20,7 @@ DEFAULTS = {
 }
 SESSION_PREFIX = "mochi-"               # every Colab VM session this engine opens is named so
 RUNNER_WORKFLOW = "colab-run.yml"       # the GitHub workflow that runs a waiting batch on a VM
+BF16_GPUS = frozenset({"A100", "L4", "H100", "G4"})   # Colab GPUs with bfloat16 (not the T4)
 
 
 def settings(p) -> dict:

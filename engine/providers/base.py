@@ -58,6 +58,7 @@ class Provider(ABC):
     take_over: bool = False                  # takes any stage while Kaggle's queue is stuck
     hands_over_when_queued: bool = False     # a batch stuck in its queue may go to another provider
     deadline_margin_s: float = 300           # the worker stops this long before the run's hard end
+    capabilities: frozenset[str] = frozenset()   # what its GPUs have (engine.generators: BF16)
     accelerator: str = ""
 
     def __init__(self) -> None:

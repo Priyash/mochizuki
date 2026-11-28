@@ -1,7 +1,7 @@
 """Build one shot from its plan, save the .blend, render its frames. Runs inside Blender:
 
-    blender -b --python engine/cgi/blender/build.py -- --plan media/cgi/1-02/plan.json [--no-render]
-    python engine/cgi/blender/build.py --plan ...          (a Python with the bpy module)
+    blender -b --python engine/cgi/render/blender/build.py -- --plan media/cgi/1-02/plan.json [--no-render]
+    python engine/cgi/render/blender/build.py --plan ...          (a Python with the bpy module)
 
 It decides nothing: every number comes from the plan (engine/cgi/plan.py). The saved .blend
 is the shot, ready to open in Blender and adjust by hand.
@@ -24,7 +24,7 @@ from blender import character, props, toon  # noqa: E402
 
 
 def say(event: str, msg: str = "", **kw) -> None:
-    """One line the runner (engine/cgi/render.py) turns into a structured log event."""
+    """One line the runner (engine/cgi/render/runner.py) turns into a structured log event."""
     print("CGI " + json.dumps({"event": event, "msg": msg, **kw}), flush=True)
 
 

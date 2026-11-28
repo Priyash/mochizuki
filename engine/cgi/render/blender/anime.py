@@ -1,6 +1,6 @@
 """Procedural anime characters: bodies, faces and hair made from code, no modelling. Runs inside Blender.
 
-The plan gives a skeleton (engine/cgi/figure.py: joints for the character's age and posture)
+The plan gives a skeleton (engine/cgi/staging/figure.py: joints for the character's age and posture)
 and a look (age, hair style, colours). This builds, on those joints:
 
   * a body of clothes from the Skin modifier (a jacket with sleeves, work trousers, a sash, a

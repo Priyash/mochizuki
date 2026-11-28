@@ -10,9 +10,11 @@ from enum import Enum
 
 from .. import steps
 from ..errors import BudgetUsedUp
+from ..generators import needs_for
 from ..ledger import NOT_A_FAILURE, Ledger, not_a_failure
 from ..project import REPO, Project
 from ..providers.base import IN_FLIGHT, Provider, Status
+from ..stages import next_gpu_stage
 from .batches import build, cancel_run, collect, discard, packed_here, submit
 
 STEPS_PER_RUN = 4          # collect, then start the next, in the same run
@@ -42,21 +44,8 @@ def stuck_note(name: str) -> str:
 
 
 def next_stage(p: Project, led: Ledger, chapter: int) -> str | None:
-    """What the chapter needs next from the GPU, or None if it is waiting on a person."""
-    missing = p.refs_missing(chapter)
-    if any(steps.ref_state(p, led, r) in ("todo", "needs_candidates") for r in missing):
-        return "refs"
-    if missing:
-        return None                      # gate 1: the reference stills are not approved yet
-    states = [steps.state(p, led, s) for s in p.chapter(chapter)]
-    if any(s in ("todo", "needs_keyframes") for s in states):
-        return "keyframes"
-    if led.approved(chapter, "board") and any(s in ("needs_take", "needs_variants") for s in states):
-        return "video"
-    if led.approved(chapter, "animatic") and any(
-            steps.upscale_state(p, led, s) == "needed" for s in p.chapter(chapter)):
-        return "upscale"
-    return None
+    """What the chapter needs next from the GPU, or None if it is waiting on a person (engine/stages)."""
+    return next_gpu_stage(p, led, chapter)
 
 
 def tick(p: Project, led: Ledger, provider: Provider, chapter: int, engine_set: str = "gpu",
@@ -94,6 +83,10 @@ def tick(p: Project, led: Ledger, provider: Provider, chapter: int, engine_set: 
     if stage and allowed and stage not in allowed and not (provider.take_over and queue_stuck(led)):
         return {"action": Action.IDLE, "backend": name,
                 "reason": f"{stage} is not run on {name}: config {name}.stages only takes {', '.join(allowed)}"}
+    missing = needs_for(stage) - provider.capabilities if stage else frozenset()
+    if missing:
+        return {"action": Action.IDLE, "backend": name,
+                "reason": f"{stage} needs {', '.join(sorted(missing))}, which {name}'s GPUs do not have"}
     if stage is None:
         queue = steps.review_queue(p, led, chapter)
         return {"action": Action.IDLE, "reason": "waiting for a person", "to_review": len(queue),
@@ -152,6 +145,8 @@ def someone_else_can_take(p: Project, led: Ledger, providers: list[Provider], me
         if other is me:
             continue
         if other.stages and stage not in other.stages and not other.take_over:
+            continue
+        if needs_for(stage) - other.capabilities:
             continue
         try:
             other.budget(p, led)

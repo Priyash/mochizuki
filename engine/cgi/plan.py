@@ -9,17 +9,18 @@ and the whole decision can be read, diffed and tested without Blender.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 from pathlib import Path
 
+from ..generators import seed_for
 from ..project import SETS_FILE
 
-from . import dialogue
-from . import direction as dirn
-from . import figure, layout, palette, retarget, timing
-from .capture import Track, resample, smooth
+from ..audio import dialogue
+from .acting import direction as dirn
+from .acting import retarget, timing
+from .acting.capture import Track, resample, smooth
+from .staging import figure, layout, palette
 from .config import by_chapter, settings, work_dir
 
 POSTURE_HEAD = {"standing": 0.9, "walking": 0.9, "kneeling": 0.54, "seiza": 0.52}   # eye height / body height
@@ -30,10 +31,6 @@ PROP_FRAME = {"mortar": 1.1, "bowl": 0.2, "lantern": 0.5, "rice": 0.45, "cushion
               "dumplings": 0.38, "pampas": 1.2, "mallet": 0.9, "hearth": 1.2}   # an insert shows the whole thing
 CAMERA_HOME = (0.0, -3.2, 1.0)          # where a camera stands to look at something far away (the moon)
 CROWD_SPACING = 0.9
-
-
-def seed_for(key: str) -> int:
-    return int(hashlib.sha1(key.encode()).hexdigest()[:8], 16)
 
 
 def load_sets(p) -> dict:
@@ -54,7 +51,7 @@ def _add(a, b, k=1.0):
 # ---------------------------------------------------------------- characters
 def character_entries(p, cfg: dict, d, chapter: int, the_set: dict) -> list[dict]:
     """Who is in the shot, where, in what posture, and as what: a model file if there is one, else a
-    procedural anime figure (engine/cgi/figure.py) whose joints the camera and eyelines use."""
+    procedural anime figure (engine/cgi/staging/figure.py) whose joints the camera and eyelines use."""
     out = []
     for i, name in enumerate(d.characters):
         spec = cfg["characters"].get(name, {})

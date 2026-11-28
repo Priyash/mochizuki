@@ -15,11 +15,12 @@ from pathlib import Path
 
 import pytest
 
-from engine.cgi import capture as cap
-from engine.cgi import direction as dirn
-from engine.cgi import layout, retarget, timing
+from engine.cgi.acting import capture as cap
+from engine.cgi.acting import direction as dirn
+from engine.cgi.acting import retarget, timing
+from engine.cgi.staging import layout
 from engine.cgi import plan as planner
-from engine.cgi import render as rnd
+from engine.cgi.render import runner as rnd
 from engine.project import Project, Shot
 
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")

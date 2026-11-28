@@ -22,6 +22,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .generators import wan_frames, wan_segments  # noqa: F401 - re-exported: engine.project.wan_frames
+
 REPO = Path(__file__).resolve().parents[1]
 FILMS = REPO / "films"
 FILM_ENV = "FILM"                      # environment variable naming the film's folder
@@ -76,30 +78,6 @@ class Shot:
     model: str
     takes: int
     sound: str
-
-
-def wan_frames(seconds: float, fps: int, max_frames: int) -> int:
-    """Wan needs 4k+1 frames. Smallest such count covering the shot, capped by the model."""
-    need = max(1, math.ceil(seconds * fps))
-    frames = ((need - 1 + 3) // 4) * 4 + 1
-    cap = ((max_frames - 1) // 4) * 4 + 1
-    return max(5, min(frames, cap))
-
-
-def wan_segments(seconds: float, fps: int, max_frames: int) -> list[int]:
-    """Frame counts of the clips that cover a shot. Each is 4k+1 frames and at most max_frames.
-
-    Long shots are chained: each next clip starts from the previous clip's last frame,
-    so it shares one frame with it. Total new frames >= the shot's length.
-    """
-    need = max(1, math.ceil(seconds * fps))
-    first = wan_frames(seconds, fps, max_frames)
-    segs, have = [first], first
-    while have < need:
-        nxt = wan_frames((need - have + 1) / fps, fps, max_frames)
-        segs.append(nxt)
-        have += nxt - 1
-    return segs
 
 
 class Project:
