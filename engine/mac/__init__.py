@@ -11,12 +11,11 @@ Modules, each with one job:
   worker     claim a batch from the `batches` release, render it, upload results
   selftest   the checks you run before real work (still, keyframe, video)
   train      LoRA training with mflux-train (the film's look, the characters)
-  backend    producer side: the Mac as a backend the pipeline sends batches to
   cli        the `mac-worker` command
 
-The producer and the Mac talk only through the `batches` release (engine/release.py).
+The producer and the Mac talk only through the `batches` release (engine/providers/release.py); the
+producer side, the Mac as a provider, is engine/providers/mac.py.
 """
-from .backend import MacBackend, from_env
 from .config import DEFAULTS, NAME, settings, with_engine_set
 
-__all__ = ["DEFAULTS", "NAME", "MacBackend", "from_env", "settings", "with_engine_set"]
+__all__ = ["DEFAULTS", "NAME", "settings", "with_engine_set"]

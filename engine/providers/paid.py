@@ -2,7 +2,7 @@
 
 mock: free placeholder files made with ffmpeg, for testing the whole loop on any laptop.
 fal:  paid fallback for hero shots. NOT run against the live service; see README.
-Kaggle is not here: it runs jobs in batches, see engine/kaggle.py.
+The GPU providers that run batches (Kaggle, Colab, the Mac) are the rest of this package.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import subprocess
 import urllib.request
 from pathlib import Path
 
-from .project import Project
+from ..project import Project
 
 COLORS = {"ref": "0x744210", "keyframe": "0x4a5568", "variant": "0x2c7a7b", "take": "0x6b46c1", "upscale": "0x2f855a"}
 

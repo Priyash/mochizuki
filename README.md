@@ -203,7 +203,9 @@ The engine holds no film. Each film is a folder in `films/`, so the same engine 
 (see [films/README.md](films/README.md)).
 
 ```
-engine/                  the engine (python -m engine): producer, ledger, batches, backends, cut
+engine/                  the engine (python -m engine): film, ledger, review, cut
+engine/scheduler/        the producer loop, and one batch's life: build, submit, collect
+engine/providers/        where GPU work runs, behind one interface: kaggle/, colab/ (cloud), mac.py (offline)
 engine/cgi/              the 3D CG pipeline
 engine/mac/              the Mac worker (offline)
 worker/worker.py         runs on Kaggle and Colab: stills, keyframes, Wan takes, 4K upscale

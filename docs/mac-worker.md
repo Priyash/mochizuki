@@ -140,4 +140,4 @@ send that file when something fails. `MOCHI_RAW=1` shows the tools' own output i
 | `backend.py` | the producer's side of the Mac backend |
 | `cli.py` | the `mac-worker` command |
 
-The producer and the Mac talk only through the `batches` release (`engine/release.py`).
+The producer and the Mac talk only through the `batches` release (`engine/providers/release.py`).

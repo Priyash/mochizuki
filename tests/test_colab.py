@@ -10,9 +10,11 @@ import tarfile
 import time
 from pathlib import Path
 
-from engine import colab_backend as cb
-from engine import kaggle as kg
-from engine import mac_backend as mb
+from engine import scheduler as sched
+from engine.providers import colab as cb
+from engine.providers.base import WORKER
+from engine.providers.kaggle import LocalKaggle
+from engine.providers.release import Release
 from engine import steps
 
 from test_mac import FakeRelease
@@ -101,30 +103,30 @@ def _setup(tmp_path, **cfg):
     for f in (proj.root / "style_bible" / "refs").glob("*.png"):
         f.unlink()                                       # chapter 1 needs its reference stills
     fr = FakeRelease(tmp_path / "release")
-    return proj, steps.open_ledger(proj), fr, cb.ColabBackend(proj, "o/r", gh=fr.gh)
+    return proj, steps.open_ledger(proj), fr, cb.ColabProvider(proj, "o/r", gh=fr.gh)
 
 
 def test_batch_runs_on_colab_and_comes_back(tmp_path):
     proj, led, fr, colab = _setup(tmp_path)
-    r = kg.tick(proj, led, colab, 1, engine_set="stub")
+    r = sched.tick(proj, led, colab, 1, engine_set="stub")
     assert r["action"] == "built_and_submitted" and r["stage"] == "refs", r
     bid = led.active_batch("colab")["id"]
     assert fr.names() == [f"colab-{bid}.tar.gz"]
     fake = FakeColab(tmp_path / "vms", grant=("L4",))
     fake.orphans = [{"endpoint": "old-vm", "accelerator": "A100"}]
-    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", fake, cb.settings(proj), []) == bid
+    assert cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", fake, cb.settings(proj), []) == bid
     assert fake.vms == {} and fake.orphans == []        # its VM and a leftover one are both stopped
     assert ["new", "-s", f"mochi-{bid[-11:]}", "--gpu", "A100"] in fake.calls   # A100 asked first, L4 granted
-    r = kg.tick(proj, led, colab, 1, engine_set="stub")
+    r = sched.tick(proj, led, colab, 1, engine_set="stub")
     assert r["action"] == "collected" and r["made"] > 0 and r["failed"] == 0, r
     assert fr.names() == []
 
 
 def test_low_balance_or_no_gpu_never_bills_a_shot(tmp_path):
     proj, led, fr, colab = _setup(tmp_path)
-    kg.tick(proj, led, colab, 1, engine_set="stub")
+    sched.tick(proj, led, colab, 1, engine_set="stub")
     bid = led.active_batch("colab")["id"]
-    rel = mb.Release("o/r", gh=fr.gh)
+    rel = Release("o/r", gh=fr.gh)
     poor = FakeColab(tmp_path / "vms", balance=1.0)
     assert cb.take_one(rel, tmp_path / "w", poor, cb.settings(proj), []) is None
     assert not any(c[0] == "new" for c in poor.calls)    # no VM below the minimum balance
@@ -134,7 +136,7 @@ def test_low_balance_or_no_gpu_never_bills_a_shot(tmp_path):
     assert colab.status(None, bid) == "queued"            # the next run tries again; nothing was billed
     ok = FakeColab(tmp_path / "vms3")
     assert cb.take_one(rel, tmp_path / "w3", ok, cb.settings(proj), []) == bid
-    r = kg.tick(proj, led, colab, 1, engine_set="stub")
+    r = sched.tick(proj, led, colab, 1, engine_set="stub")
     assert r["action"] == "collected" and r["made"] > 0, r
     assert led.failures("ref-style", "ref") == 0
 
@@ -151,11 +153,11 @@ def test_waiting_in_the_queue_costs_nothing_against_the_cap(tmp_path):
 
 def test_vm_time_and_units_come_back_with_the_results(tmp_path):
     proj, led, fr, colab = _setup(tmp_path)
-    kg.tick(proj, led, colab, 1, engine_set="stub")
+    sched.tick(proj, led, colab, 1, engine_set="stub")
     bid = led.active_batch("colab")["id"]
     fc = FakeColab(tmp_path / "vms")
-    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", fc, cb.settings(proj), []) == bid
-    kg.tick(proj, led, colab, 1, engine_set="stub")
+    assert cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", fc, cb.settings(proj), []) == bid
+    sched.tick(proj, led, colab, 1, engine_set="stub")
     row = led.db.execute("SELECT gpu_seconds FROM batches WHERE id=?", (bid,)).fetchone()
     assert row["gpu_seconds"] is not None and row["gpu_seconds"] < 3600
 
@@ -164,7 +166,7 @@ def test_the_agreed_cap_stops_new_batches(tmp_path):
     proj, led, fr, colab = _setup(tmp_path, total_cap_units=10)
     led.create_batch("b-old", "refs", 1, 3600, backend="colab")
     led.set_batch("b-old", status="done", submitted_at=time.time() - 2 * 3600, finished_at=time.time())
-    r = kg.tick(proj, led, colab, 1, engine_set="stub")   # 2 h at the A100 rate is past 10 units
+    r = sched.tick(proj, led, colab, 1, engine_set="stub")   # 2 h at the A100 rate is past 10 units
     assert r["action"] == "resting" and "Colab cap is used up" in r["reason"], r
     assert fr.names() == []
 
@@ -183,19 +185,19 @@ def test_a_stuck_kaggle_batch_moves_to_colab_only_when_colab_can_take_it(tmp_pat
     for f in (proj.root / "style_bible" / "refs").glob("*.png"):
         f.unlink()
     led = steps.open_ledger(proj)
-    k = kg.LocalKaggle(proj.media)
+    k = LocalKaggle(proj.media)
     k.status = lambda ref, handle=None: "queued"            # Kaggle never starts it
     fr = FakeRelease(tmp_path / "release")
-    colab = cb.ColabBackend(proj, "o/r", gh=fr.gh)
-    assert kg.tick(proj, led, k, 1, engine_set="stub")["action"] == "built_and_submitted"
+    colab = cb.ColabProvider(proj, "o/r", gh=fr.gh)
+    assert sched.tick(proj, led, k, 1, engine_set="stub")["action"] == "built_and_submitted"
     b = led.active_batch("kaggle")
     led.set_batch(b["id"], submitted_at=time.time() - 5 * 3600)
     led.create_batch("b-spent", "refs", 1, 3600, backend="colab")   # the Colab cap is used up
     led.set_batch("b-spent", status="done", submitted_at=time.time() - 2 * 3600, finished_at=time.time())
-    out = kg.tick_all(proj, led, [k, colab], 1, engine_set="stub")
+    out = sched.tick_all(proj, led, [k, colab], 1, engine_set="stub")
     assert out[0]["action"] == "waiting" and led.active_batch("kaggle")["id"] == b["id"], out
     led.set_batch("b-spent", submitted_at=time.time() - 60)      # now there is room again
-    out = kg.tick_all(proj, led, [k, colab], 1, engine_set="stub")
+    out = sched.tick_all(proj, led, [k, colab], 1, engine_set="stub")
     assert out[0]["action"] == "handed_over", out
 
 
@@ -213,7 +215,7 @@ def test_logs_never_show_the_account_address():
 
 def test_blank_stills_stop_the_batch_after_two(tmp_path, monkeypatch):
     import importlib.util
-    spec = importlib.util.spec_from_file_location("mochi_worker", kg.WORKER)
+    spec = importlib.util.spec_from_file_location("mochi_worker", WORKER)
     w = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(w)
     calls = []
@@ -237,19 +239,19 @@ def test_blank_stills_stop_the_batch_after_two(tmp_path, monkeypatch):
 
 def test_a_small_balance_shrinks_the_batch_instead_of_running_dry(tmp_path):
     proj, led, fr, colab = _setup(tmp_path)
-    kg.tick(proj, led, colab, 1, engine_set="stub")
+    sched.tick(proj, led, colab, 1, engine_set="stub")
     fc = FakeColab(tmp_path / "vms", balance=8.0)       # 7 spare units at 5.4/h is about 1.3 h
-    cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", fc, cb.settings(proj), [])
+    cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", fc, cb.settings(proj), [])
     man = json.loads(next((tmp_path / "w").rglob("in/manifest.json")).read_text())
     assert man["deadline_seconds"] < 1.3 * 3600 - 900
 
 
 def test_a_gpu_vm_left_on_colab_is_stopped_before_anything_else(tmp_path):
     proj, led, fr, colab = _setup(tmp_path)
-    kg.tick(proj, led, colab, 1, engine_set="stub")
+    sched.tick(proj, led, colab, 1, engine_set="stub")
     fc = FakeColab(tmp_path / "vms")
     fc.orphans = [{"endpoint": "gpu-a100-xyz", "accelerator": "A100"}, {"endpoint": "cpu-1", "accelerator": "NONE"}]
-    cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", fc, cb.settings(proj), [])
+    cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", fc, cb.settings(proj), [])
     assert ["unassign", "gpu-a100-xyz"] in fc.calls      # billing GPU VM stopped
     assert ["unassign", "cpu-1"] not in fc.calls          # free CPU VM left alone
 
@@ -287,8 +289,8 @@ class _Late(FakeColab):
 
 def test_a_late_gpu_is_reported_as_run_not_as_nothing_billed(tmp_path, capsys):
     proj, led, fr, colab = _setup(tmp_path)
-    kg.tick(proj, led, colab, 1, engine_set="stub")
-    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", _Late(tmp_path / "vms"), cb.settings(proj), []) is None
+    sched.tick(proj, led, colab, 1, engine_set="stub")
+    assert cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", _Late(tmp_path / "vms"), cb.settings(proj), []) is None
     said = capsys.readouterr().out
     assert "gpu.late" in said and "1.0 units used" in said and "nothing billed" not in said
     assert not any(n.endswith(".claim.json") for n in fr.names())    # the batch waits for the next run
@@ -296,8 +298,8 @@ def test_a_late_gpu_is_reported_as_run_not_as_nothing_billed(tmp_path, capsys):
 
 def test_no_gpu_and_no_late_vm_is_reported_as_nothing_billed(tmp_path, capsys):
     proj, led, fr, colab = _setup(tmp_path)
-    kg.tick(proj, led, colab, 1, engine_set="stub")
-    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", FakeColab(tmp_path / "vms", grant=()),
+    sched.tick(proj, led, colab, 1, engine_set="stub")
+    assert cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", FakeColab(tmp_path / "vms", grant=()),
                        cb.settings(proj), []) is None
     said = capsys.readouterr().out
     assert "gpu.none" in said and "no VM came up, nothing billed" in said
@@ -305,10 +307,10 @@ def test_no_gpu_and_no_late_vm_is_reported_as_nothing_billed(tmp_path, capsys):
 
 def test_unlisted_vms_are_never_reported_as_nothing_billed(tmp_path, capsys):
     proj, led, fr, colab = _setup(tmp_path)
-    kg.tick(proj, led, colab, 1, engine_set="stub")
+    sched.tick(proj, led, colab, 1, engine_set="stub")
     blind = FakeColab(tmp_path / "vms", grant=())
     blind.assignments = lambda: None                    # the CLI could not list the account's VMs
-    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", blind, cb.settings(proj), []) is None
+    assert cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", blind, cb.settings(proj), []) is None
     said = capsys.readouterr().out
     assert "gpu.unchecked" in said and "nothing billed" not in said
 
@@ -317,13 +319,13 @@ def test_a_leftover_vm_is_stopped_even_when_no_batch_waits(tmp_path):
     proj, led, fr, colab = _setup(tmp_path)
     fake = FakeColab(tmp_path / "vms")
     fake.orphans = [{"endpoint": "dead-run-a100", "accelerator": "A100"}]
-    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", fake, cb.settings(proj), []) is None
+    assert cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", fake, cb.settings(proj), []) is None
     assert ["unassign", "dead-run-a100"] in fake.calls
 
 
 def test_a_gpu_granted_late_while_another_runs_is_stopped_after_the_batch(tmp_path):
     proj, led, fr, colab = _setup(tmp_path)
-    kg.tick(proj, led, colab, 1, engine_set="stub")
+    sched.tick(proj, led, colab, 1, engine_set="stub")
 
     class LateA100(FakeColab):                           # A100 times out but comes up; L4 is granted
         def run(self, args, timeout=None):
@@ -334,39 +336,39 @@ def test_a_gpu_granted_late_while_another_runs_is_stopped_after_the_batch(tmp_pa
                 self.orphans.append({"endpoint": "late-A100", "accelerator": "A100"})
             return super().run(args, timeout)
     fake = LateA100(tmp_path / "vms", grant=("L4",))
-    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", fake, cb.settings(proj), [])
+    assert cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", fake, cb.settings(proj), [])
     assert ["unassign", "late-A100"] in fake.calls and fake.orphans == []
 
 
 def test_a_run_that_does_not_finish_keeps_what_it_made(tmp_path):
     proj, led, fr, colab = _setup(tmp_path)
-    kg.tick(proj, led, colab, 1, engine_set="stub")
+    sched.tick(proj, led, colab, 1, engine_set="stub")
     bid = led.active_batch("colab")["id"]
 
     class Dropped(FakeColab):                            # the stream drops before MOCHI-DONE; the job had
         def stream(self, args, deadline, on_line=None):  # packed its outputs as it went
             code, tail = super().stream(args, deadline, on_line)
             return 255, tail.replace("[job] MOCHI-DONE", "connection went stale")
-    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", Dropped(tmp_path / "vms"), cb.settings(proj), []) == bid
-    r = kg.tick(proj, led, colab, 1, engine_set="stub")
+    assert cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", Dropped(tmp_path / "vms"), cb.settings(proj), []) == bid
+    r = sched.tick(proj, led, colab, 1, engine_set="stub")
     assert r["action"] == "collected" and r["made"] > 0 and not r["stale"], r   # "stale" in the log drops nothing
 
 
 def test_a_failed_results_download_keeps_them_in_the_release(tmp_path):
     proj, led, fr, colab = _setup(tmp_path)
-    kg.tick(proj, led, colab, 1, engine_set="stub")
+    sched.tick(proj, led, colab, 1, engine_set="stub")
     bid = led.active_batch("colab")["id"]
-    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", FakeColab(tmp_path / "vms"), cb.settings(proj), []) == bid
+    assert cb.take_one(Release("o/r", gh=fr.gh), tmp_path / "w", FakeColab(tmp_path / "vms"), cb.settings(proj), []) == bid
     fails = {"n": 1}
     def flaky(url, dest):
         if fails["n"]:
             fails["n"] -= 1
             raise OSError("connection reset")
-        mb.Release._urllib(url, dest)
-    colab = cb.ColabBackend(proj, "o/r", gh=fr.gh, fetch=flaky)
-    r = kg.tick(proj, led, colab, 1, engine_set="stub")
+        Release._urllib(url, dest)
+    colab = cb.ColabProvider(proj, "o/r", gh=fr.gh, fetch=flaky)
+    r = sched.tick(proj, led, colab, 1, engine_set="stub")
     assert r["action"] == "waiting" and r["status"] == "collecting", r
     assert f"colab-{bid}.results.tar.gz" in fr.names()            # nothing deleted after a failed download
-    r = kg.tick(proj, led, colab, 1, engine_set="stub")
+    r = sched.tick(proj, led, colab, 1, engine_set="stub")
     assert r["action"] == "collected" and r["made"] > 0, r
     assert fr.names() == []
