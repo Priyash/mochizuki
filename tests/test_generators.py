@@ -75,4 +75,4 @@ def test_which_providers_have_bf16(tmp_path):
 def test_stage_needs_come_from_the_catalog():
     assert gen.needs_for("refs") == {gen.BF16} and gen.needs_for("keyframes") == {gen.BF16}
     assert gen.needs_for("video") == frozenset() and gen.needs_for("upscale") == frozenset()
-    assert gen.needs_for("finish") == frozenset()                                # not built: needs nothing yet
+    assert gen.needs_for("ai_finish") == frozenset()                             # not built: needs nothing yet

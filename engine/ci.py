@@ -68,7 +68,7 @@ def _cut(p: Project, led: Ledger, chapter: int, state: Path, four_k: bool) -> st
     marker = state / f"{tag}_ch{chapter}.txt"
     fp = _fingerprint(led, p, chapter, "upscale" if four_k else "take")
     made = asm.assemble(p, led, chapter, four_k=four_k) if not (marker.exists() and marker.read_text() == fp) else None
-    f = p.media / "animatic" / f"chapter_{chapter}{'_4k' if four_k else ''}.mp4"
+    f = asm.cut_path(p, chapter, four_k)
     if made and p.store is not None:
         p.store.upload(p, f, clobber=True)
     marker.write_text(fp)

@@ -86,17 +86,17 @@ in minutes.
 
 | Part | Module | State |
 | --- | --- | --- |
-| Acting sheets: rules that draft all 138 shots, hand-written chapter 1, validation | `direction.py` | Tested. Every shot's sheet validates |
-| Camera layout: framing, lens, angle, push/pull/pan/tilt/track/drift, cheating props | `layout.py`, `plan.py` | Tested |
-| Anime timing: key poses, twos/threes/mixed, hit stops, emotion curves, blinks | `timing.py` | Tested |
-| Face capture: Live Link Face CSV, MediaPipe video, One Euro, resampling | `capture.py` | CSV path tested. MediaPipe path written, to be run on the Mac |
-| Retarget: ARKit → VRoid shapes, restraint, anime layer, learned per-character mapping, Akari's light | `retarget.py` | Tested |
+| Acting sheets: rules that draft all 138 shots, hand-written chapter 1, validation | `acting/direction.py` | Tested. Every shot's sheet validates |
+| Camera layout: framing, lens, angle, push/pull/pan/tilt/track/drift, cheating props | `staging/layout.py`, `plan.py` | Tested |
+| Anime timing: key poses, twos/threes/mixed, hit stops, emotion curves, blinks | `acting/timing.py` | Tested |
+| Face capture: Live Link Face CSV, MediaPipe video, One Euro, resampling | `acting/capture.py` | CSV path tested. MediaPipe path written, to be run on the Mac |
+| Retarget: ARKit → VRoid shapes, restraint, anime layer, learned per-character mapping, Akari's light | `acting/retarget.py` | Tested |
 | Shot plans for the whole film | `plan.py` | Tested on all 138 shots |
 | Blender builder: toon shading that keeps light colour, ink lines at constant screen width, sets and props from code, stand-in actors whose faces act, VRM models posed (arms down, kneeling) and driven by the plan | `blender/` | Run in Blender 5.3 here, including a real VRM model through the VRM add-on |
-| Runner: Blender or a bpy Python, structured logs, frame checks, H.264 or ProRes, storyboard | `render.py`, `cli.py` | Tested, plus one real-Blender test |
+| Runner: Blender or a bpy Python, structured logs, frame checks, H.264 or ProRes, storyboard | `render/runner.py`, `cli.py` | Tested, plus one real-Blender test |
 | The cut uses CG renders when `cgi.use_in_cut` is on | `assemble.py` | Tested |
-| Characters made from code: anime bodies, faces and hair for each age (Tsumugi at 7, 27 and 87, Sayo, the child), playing the same face channels as a VRoid model | `figure.py`, `blender/anime.py` | Tested, and rendered in Blender 5.3 here |
-| Dialogue: the script in English and Japanese, voices (Kokoro-82M, or any engine by command), lines fitted into their shot, lip sync, one track per language, subtitles | `dialogue.py`, `voice.py`, `lipsync.py` | Tested with the stub voice. Kokoro runs on the GitHub runners |
+| Characters made from code: anime bodies, faces and hair for each age (Tsumugi at 7, 27 and 87, Sayo, the child), playing the same face channels as a VRoid model | `staging/figure.py`, `render/blender/anime.py` | Tested, and rendered in Blender 5.3 here |
+| Dialogue: the script in English and Japanese, voices (Kokoro-82M, or any engine by command), lines fitted into their shot, lip sync, one track per language, subtitles | `engine/audio/` (`dialogue.py`, `voice.py`, `lipsync.py`, `subtitles.py`, `mix.py`) | Tested with the stub voice. Kokoro runs on the GitHub runners |
 | The chapter unattended: voices, sharded renders that skip unchanged shots, board, cut, review sheet | `auto.py`, `.github/workflows/cgi.yml` | Tested |
 
 Sets exist for scenes 1A (porch, Tsukimi night), 1B (snow) and 1C (the hearth). Any other scene renders on a plain
@@ -107,7 +107,7 @@ floor until its set is written.
 No modelling is needed either. Without a model file, each character is built from code in every shot, so it is the same
 character everywhere:
 
-* **The body** (`figure.py`, pure Python) has anime proportions for the character's age. A child of 7 is about 4.7 heads
+* **The body** (`staging/figure.py`, pure Python) has anime proportions for the character's age. A child of 7 is about 4.7 heads
   tall, with her eyes low in a round face. An adult woman is about 6.6 heads. At 80 and over the body is shorter and
   rounder, with a bowed back. The joints are worked out for the posture: standing, or kneeling in seiza on the heels
   with the hands on the lap. For a shot of the hands, the hands are held in front. The shot plan reads the eyes and hands

@@ -14,6 +14,7 @@ from ..generators import needs_for
 from ..ledger import NOT_A_FAILURE, Ledger, not_a_failure
 from ..project import REPO, Project
 from ..providers.base import IN_FLIGHT, Provider, Status
+from ..stages import next_gpu_stage
 from .batches import build, cancel_run, collect, discard, packed_here, submit
 
 STEPS_PER_RUN = 4          # collect, then start the next, in the same run
@@ -43,21 +44,8 @@ def stuck_note(name: str) -> str:
 
 
 def next_stage(p: Project, led: Ledger, chapter: int) -> str | None:
-    """What the chapter needs next from the GPU, or None if it is waiting on a person."""
-    missing = p.refs_missing(chapter)
-    if any(steps.ref_state(p, led, r) in ("todo", "needs_candidates") for r in missing):
-        return "refs"
-    if missing:
-        return None                      # gate 1: the reference stills are not approved yet
-    states = [steps.state(p, led, s) for s in p.chapter(chapter)]
-    if any(s in ("todo", "needs_keyframes") for s in states):
-        return "keyframes"
-    if led.approved(chapter, "board") and any(s in ("needs_take", "needs_variants") for s in states):
-        return "video"
-    if led.approved(chapter, "animatic") and any(
-            steps.upscale_state(p, led, s) == "needed" for s in p.chapter(chapter)):
-        return "upscale"
-    return None
+    """What the chapter needs next from the GPU, or None if it is waiting on a person (engine/stages)."""
+    return next_gpu_stage(p, led, chapter)
 
 
 def tick(p: Project, led: Ledger, provider: Provider, chapter: int, engine_set: str = "gpu",

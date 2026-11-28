@@ -11,7 +11,7 @@ from pathlib import Path
 from . import assemble as asm
 from . import ci
 from . import plan as planner
-from . import providers, scheduler, steps
+from . import providers, scheduler, stages, steps
 from .cgi import config as cgi_config
 from .errors import EngineError
 from .ledger import BudgetExceeded
@@ -119,6 +119,8 @@ def main(argv=None) -> int:
     a.add_argument("--no-store", action="store_true", help="keep media on this machine (testing)")
     a = sub.add_parser("gate", help="run the owner's command from an issue comment (COMMENT_BODY)")
     a.add_argument("--state", default="state")
+    a = sub.add_parser("chain", help="where the film stands, stage by stage (one chapter, or every chapter)")
+    chap(a, False)
     a = sub.add_parser("where", help="print one of the film's paths, for scripts and workflows")
     a.add_argument("what", nargs="?", default="film", choices=sorted(WHERE))
 
@@ -182,6 +184,9 @@ def main(argv=None) -> int:
         print(json.dumps(r, indent=1, default=str))
         return 0 if any(j.get("ok") for j in r["jobs"].values()) else 3
     led = steps.open_ledger(p)
+    if args.cmd == "chain":
+        print(stages.report(p, led, [args.chapter] if args.chapter else sorted({s.chapter for s in p.shots})))
+        return 0
     if args.cmd == "ci-step":
         from .store import ReleaseStore  # noqa: PLC0415
         state = Path(args.state)

@@ -62,7 +62,7 @@ CATALOG: dict[str, Generator] = {g.name: g for g in (
     Generator("lipsync", LIPSYNC, "voices", "(none)", (CPU,), setup="nothing", code="engine/audio/lipsync.py"),
     Generator("subtitles", SUBTITLES, "cut", "style_bible/dialogue.json -> languages", (CPU,),
               setup="nothing", code="engine/audio/subtitles.py"),
-    Generator("finish", VIDEO, "finish", "engines.finish", (GPU,), built=False,
+    Generator("ai_finish", VIDEO, "ai_finish", "engines.ai_finish", (GPU,), built=False,
               setup="a video-to-video model guided by the render's depth, lines and masks", code="(not built)"),
     Generator("music", MUSIC, "music", "engines.music", (GPU, CPU), built=False,
               setup="a music model whose licence allows a published film", code="(not built)"),

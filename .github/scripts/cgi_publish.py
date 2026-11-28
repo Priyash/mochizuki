@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from engine.assemble import CUTS_DIR, cut_path  # noqa: E402
 from engine.project import Project, find_film  # noqa: E402
 
 FILM = find_film()                 # $FILM, else the only film in films/
@@ -26,8 +27,8 @@ def review(chapter: int) -> dict:
 
 
 def files(chapter: int) -> list[Path]:
-    cgi, cut = MEDIA / "cgi", MEDIA / "animatic"
-    out = [cgi / f"board-ch{chapter}.png", cut / f"chapter_{chapter}.mp4", cgi / f"review-ch{chapter}.json"]
+    cgi, cut = MEDIA / "cgi", MEDIA / CUTS_DIR
+    out = [cgi / f"board-ch{chapter}.png", cut_path(Project(FILM), chapter), cgi / f"review-ch{chapter}.json"]
     out += sorted(cut.glob(f"chapter_{chapter}.*.srt"))
     frames = [FILM / f for s in review(chapter)["shots"] for f in s.get("frames", [])]
     if frames:

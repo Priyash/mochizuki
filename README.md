@@ -53,6 +53,19 @@ Every model is licensed for publishing the film: Wan 2.2 and Qwen-Image-Edit (Ap
 
 ---
 
+## The chain
+
+Every stage of making the film, in one place (`engine/stages/chain.py`): what it consumes, what it produces, the approval it waits for, who runs it, and how it skips work that has not changed. See where the film stands:
+
+```bash
+python -m engine chain               # every chapter, stage by stage
+python -m engine chain --chapter 1   # one chapter
+```
+
+Planned stages (the AI finish, music) are listed and marked not built.
+
+---
+
 ## Where each stage runs
 
 | Stage | Where | Notes |
@@ -170,7 +183,7 @@ If an engine fails, the reason is in `media/batches/<id>/download/out/results.js
 | AI finish on hero shots (phase 3) | Not built |
 | The `fal` paid fallback | Written, never run; endpoint ids are placeholders |
 
-`python -m pytest -q` runs 146 tests in about 2 minutes, with no GPU or network. They need ffmpeg, plus Pillow for the blank-frame check.
+`python -m pytest -q` runs 164 tests in about 2 minutes, with no GPU or network. They need ffmpeg, plus Pillow for the blank-frame check.
 
 ---
 
@@ -204,9 +217,12 @@ The engine holds no film. Each film is a folder in `films/`, so the same engine 
 
 ```
 engine/                  the engine (python -m engine): film, ledger, review, cut
+engine/stages/           the chain: every stage, what it consumes and produces, its gate
+engine/generators.py     every AI model and tool: what it makes, where it is configured, what it needs
 engine/scheduler/        the producer loop, and one batch's life: build, submit, collect
 engine/providers/        where GPU work runs, behind one interface: kaggle/, colab/ (cloud), mac.py (offline)
-engine/cgi/              the 3D CG pipeline
+engine/cgi/              the 3D CG pipeline: acting/, staging/, plan, render/
+engine/audio/            sound: voice, dialogue, lip sync, subtitles, mix
 engine/mac/              the Mac worker (offline)
 worker/worker.py         runs on Kaggle and Colab: stills, keyframes, Wan takes, 4K upscale
 films/mochizuki/         this film
