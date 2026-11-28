@@ -151,6 +151,25 @@
       "negative_prompt": "photorealistic photo, live action, flat sketch, text, watermark, logo, signature, extra fingers, deformed hands, blurry, lowres",
       "_note": "Qwen-Image-2512, Apache 2.0, 50 steps with CFG for quality. The first GGUF in `prefer` that fits the GPU is used (A100 40 GB: Q8_0; L4: Q6_K). Needs bf16: Ampere or newer, or Apple Silicon (mac backend).",
       "vram_headroom_gb": 2.5
+    },
+    "ai_finish": {
+      "_note": "The AI finish (worker WanFinish): repaints a shot's 3D render in the reference stills' look, guided by the render's depth (or lines), with Wan VACE. Render the shot first with guides: `python -m engine cgi render 1-05 --size 832x480 --guides`. This first setting is the cheap test: Wan2.1-VACE-1.3B at 832x480 (the 1.3B model is trained for 480p). For 720p use Wan-AI/Wan2.1-VACE-14B-diffusers, 1280x720, flow_shift 5.0: far heavier, best on a Colab A100. auto: false keeps it out of the producer's loop until the owner has looked at a first shot; use_in_cut: false keeps finished shots out of the cut until approved. gpu_seconds_per_output_second is a guess until the first run measures it.",
+      "model": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
+      "control": "depth",
+      "width": 832,
+      "height": 480,
+      "fps": 16,
+      "max_frames": 81,
+      "steps": 30,
+      "guidance_scale": 5.0,
+      "conditioning_scale": 1.0,
+      "flow_shift": 3.0,
+      "max_refs": 2,
+      "crf": 10,
+      "shots": "Hero",
+      "auto": false,
+      "use_in_cut": false,
+      "gpu_seconds_per_output_second": 400
     }
   },
   "providers": {

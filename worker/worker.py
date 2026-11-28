@@ -400,6 +400,30 @@ class QwenStills:
                 "steps": self.steps, "seconds": round(time.time() - t0, 1)}
 
 
+def encode_prompts_on_cpu(local: str, texts: list[str]) -> dict:
+    """Wan's UMT5 prompt embeddings, made on the CPU in bf16 (on an fp16 GPU the encoder overflows),
+    then the encoder is freed, so it never sits in memory beside the video model. The same as
+    diffusers' Wan _get_t5_prompt_embeds."""
+    import torch  # noqa: PLC0415
+    from diffusers.pipelines.wan.pipeline_wan import prompt_clean  # noqa: PLC0415
+    from transformers import AutoTokenizer, UMT5EncoderModel  # noqa: PLC0415
+    tok = AutoTokenizer.from_pretrained(local, subfolder="tokenizer")
+    enc = UMT5EncoderModel.from_pretrained(local, subfolder="text_encoder", torch_dtype=torch.bfloat16)
+    out = {}
+    for text in dict.fromkeys(texts):
+        t = tok([prompt_clean(text)], padding="max_length", max_length=512, truncation=True,
+                add_special_tokens=True, return_attention_mask=True, return_tensors="pt")
+        with torch.inference_mode():
+            h = enc(t.input_ids, t.attention_mask).last_hidden_state
+        n = int(t.attention_mask.gt(0).sum())
+        e = torch.zeros_like(h)
+        e[:, :n] = h[:, :n]
+        out[text] = e
+    del enc
+    gc.collect()
+    return out
+
+
 class WanVideo:
     """Wan 2.2 image-to-video. Prompts are encoded first on the CPU, then the encoder is freed,
     so the text encoder and both 14B experts never sit in RAM together."""
@@ -412,7 +436,6 @@ class WanVideo:
             WanImageToVideoPipeline,
             WanTransformer3DModel,
         )
-        from transformers import AutoTokenizer, UMT5EncoderModel  # noqa: PLC0415
         self.cfg, self.torch = cfg, torch
         dtype = pick_dtype(dtype_name)
         g = cfg.get("transformer_gguf")
@@ -420,13 +443,7 @@ class WanVideo:
         local = snapshot(cfg["model"], skip=skip)
 
         # 1. text encoding on the CPU in bf16 (T5-class encoders overflow in fp16)
-        tok = AutoTokenizer.from_pretrained(local, subfolder="tokenizer")
-        enc = UMT5EncoderModel.from_pretrained(local, subfolder="text_encoder", torch_dtype=torch.bfloat16)
-        self.embeds = {}
-        for text in list(dict.fromkeys(prompts + [negative])):
-            self.embeds[text] = self._encode(tok, enc, text)
-        del enc
-        gc.collect()
+        self.embeds = encode_prompts_on_cpu(local, prompts + [negative])
 
         # 2. the video pipeline without a text encoder
         kwargs = {"torch_dtype": dtype, "text_encoder": None, "tokenizer": None,
@@ -451,19 +468,6 @@ class WanVideo:
             pass
         self.pipe.set_progress_bar_config(disable=True)
         self.negative = negative
-
-    def _encode(self, tok, enc, text: str):
-        """Same as diffusers' Wan _get_t5_prompt_embeds, on the CPU."""
-        torch = self.torch
-        from diffusers.pipelines.wan.pipeline_wan import prompt_clean  # noqa: PLC0415
-        t = tok([prompt_clean(text)], padding="max_length", max_length=512, truncation=True,
-                add_special_tokens=True, return_attention_mask=True, return_tensors="pt")
-        with torch.inference_mode():
-            h = enc(t.input_ids, t.attention_mask).last_hidden_state
-        n = int(t.attention_mask.gt(0).sum())
-        e = torch.zeros_like(h)
-        e[:, :n] = h[:, :n]
-        return e
 
     def run(self, job: dict, inputs: Path, out: Path) -> dict:
         import numpy as np  # noqa: PLC0415
@@ -493,6 +497,112 @@ class WanVideo:
         write_video(full, out, c["fps"], crf=10)
         return {"frames": int(full.shape[0]), "segments": segs, "fps": c["fps"], "width": c["width"],
                 "height": c["height"], "seed": seed_for(job["key"])}
+
+
+class WanFinish:
+    """The AI finish: repaints a shot's 3D render in the look of its reference stills, guided by the
+    render's depth or lines (Wan VACE, video-to-video). The guide keeps the camera, staging, timing and
+    lip sync exactly; the reference stills give faces, costumes and painting.
+
+    Not yet run on a GPU: the first Kaggle or Colab run is its test (AGENTS.md: one shot first)."""
+
+    def __init__(self, cfg: dict, dtype_name: str, prompts: list[str], negative: str):
+        import torch  # noqa: PLC0415
+        from diffusers import AutoencoderKLWan, UniPCMultistepScheduler, WanVACEPipeline  # noqa: PLC0415
+        self.cfg, self.torch = cfg, torch
+        dtype = pick_dtype(dtype_name)
+        local = snapshot(cfg["model"], skip=[])
+        self.embeds = encode_prompts_on_cpu(local, prompts + [negative])
+        vae = AutoencoderKLWan.from_pretrained(local, subfolder="vae", torch_dtype=torch.float32)
+        self.pipe = WanVACEPipeline.from_pretrained(local, vae=vae, text_encoder=None, tokenizer=None,
+                                                    torch_dtype=dtype)
+        if cfg.get("flow_shift"):                    # Wan's advice: 3.0 at 480p, 5.0 at 720p
+            self.pipe.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config,
+                                                                      flow_shift=float(cfg["flow_shift"]))
+        self.pipe.enable_model_cpu_offload()
+        try:
+            self.pipe.vae.enable_tiling()
+        except Exception:  # noqa: BLE001 - tiling is an optimisation only
+            pass
+        self.pipe.set_progress_bar_config(disable=True)
+        self.negative = negative
+
+    def run(self, job: dict, inputs: Path, out: Path) -> dict:
+        import numpy as np  # noqa: PLC0415
+        torch, c = self.torch, self.cfg
+        w, h, fps = c["width"], c["height"], c["fps"]
+        segs = wan_segments(job["seconds"], fps, c["max_frames"])
+        guide = guide_frames(inputs / job["control"], sum(segs) - (len(segs) - 1), w, h, fps)
+        refs = [letterbox(inputs / r, w, h) for r in job.get("refs", [])[: int(c.get("max_refs", 2))]]
+        clips, start, last = [], 0, None
+        for n, frames in enumerate(segs):
+            extra = [last] if last is not None else []   # a chained clip also sees where the last one ended
+            with torch.inference_mode():
+                video = self.pipe(video=guide[start:start + frames], reference_images=(refs + extra) or None,
+                                  prompt_embeds=self.embeds[job["prompt"]],
+                                  negative_prompt_embeds=self.embeds[self.negative],
+                                  height=h, width=w, num_frames=frames,
+                                  num_inference_steps=c.get("steps", 30), guidance_scale=c.get("guidance_scale", 5.0),
+                                  conditioning_scale=c.get("conditioning_scale", 1.0),
+                                  generator=torch.Generator("cpu").manual_seed(seed_for(job["key"]) + n),
+                                  output_type="np").frames[0]
+            check_not_blank(video, "finish")
+            video = (np.clip(video, 0, 1) * 255).round().astype("uint8")
+            clips.append(video if n == 0 else video[1:])
+            last = _image(video[-1])
+            start += frames - 1
+        full = np.concatenate(clips, axis=0)
+        write_video(full, out, fps, crf=c.get("crf", 10))
+        return {"frames": int(full.shape[0]), "segments": segs, "fps": fps, "width": w, "height": h,
+                "seed": seed_for(job["key"]), "refs": len(refs)}
+
+
+def _image(arr):
+    from PIL import Image  # noqa: PLC0415
+    return Image.fromarray(arr)
+
+
+def guide_frames(clip: Path, count: int, w: int, h: int, fps: int) -> list:
+    """A guide clip as `count` frames of w x h at `fps` (resampled and cover-cropped by ffmpeg); the
+    last frame repeats if the clip is short."""
+    import tempfile  # noqa: PLC0415
+
+    from PIL import Image  # noqa: PLC0415
+    with tempfile.TemporaryDirectory(prefix="guide-") as tmp:
+        subprocess.run([ffmpeg_exe(), "-loglevel", "error", "-y", "-i", str(clip), "-vf",
+                        f"fps={fps},scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}",
+                        "-frames:v", str(count), str(Path(tmp) / "%04d.png")], check=True)
+        frames = [Image.open(f).convert("RGB") for f in sorted(Path(tmp).glob("*.png"))]
+    if not frames:
+        raise RuntimeError(f"no frames in the guide clip {clip.name}")
+    return frames + [frames[-1]] * (count - len(frames))
+
+
+def letterbox(path: Path, w: int, h: int):
+    """A reference still fitted into w x h on white, whole (a crop could cut a face in half)."""
+    from PIL import Image  # noqa: PLC0415
+    img = Image.open(path).convert("RGB")
+    scale = min(w / img.width, h / img.height)
+    img = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), Image.LANCZOS)
+    canvas = Image.new("RGB", (w, h), (255, 255, 255))
+    canvas.paste(img, ((w - img.width) // 2, (h - img.height) // 2))
+    return canvas
+
+
+class StubFinish:
+    """The finish's stand-in: the guide clip itself, at the finish's size, length and frame rate."""
+
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+
+    def run(self, job: dict, inputs: Path, out: Path) -> dict:
+        c = self.cfg
+        segs = wan_segments(job["seconds"], c["fps"], c["max_frames"])
+        frames = sum(segs) - (len(segs) - 1)
+        subprocess.run([ffmpeg_exe(), "-loglevel", "error", "-y", "-i", str(inputs / job["control"]),
+                        "-vf", f"fps={c['fps']},scale={c['width']}:{c['height']},format=yuv420p",
+                        "-frames:v", str(frames), str(out)], check=True)
+        return {"frames": frames, "segments": segs, "fps": c["fps"], "width": c["width"], "height": c["height"]}
 
 
 def write_video(frames, out: Path, fps: int, crf: int) -> None:
@@ -625,8 +735,13 @@ def _upscale(cfg: dict, dtype: str, jobs: list[dict], engines: dict):
     return Upscale4K(cfg, dtype)
 
 
+def _finish(cfg: dict, dtype: str, jobs: list[dict], engines: dict):
+    negative = cfg.get("negative_prompt") or engines.get("negative_prompt", "")
+    return WanFinish(cfg, dtype, [j["prompt"] for j in jobs], negative)
+
+
 GENERATORS = {"refs": (_refs, StubImage), "keyframe": (_keyframe, StubImage), "video": (_video, StubVideo),
-              "upscale": (_upscale, StubUpscale)}
+              "upscale": (_upscale, StubUpscale), "ai_finish": (_finish, StubFinish)}
 
 
 def generator_for(name: str, jobs: list[dict]) -> str:
@@ -634,7 +749,7 @@ def generator_for(name: str, jobs: list[dict]) -> str:
     is an error, never a guess: a wrong generator would spend GPU time on the wrong model."""
     if name == "refs" or name.startswith("refs_"):
         return "refs"
-    if name in ("keyframe", "upscale"):
+    if name in ("keyframe", "upscale", "ai_finish"):
         return name
     if jobs and all(j["kind"] == "take" for j in jobs):
         return "video"

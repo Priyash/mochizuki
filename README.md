@@ -62,7 +62,7 @@ python -m engine chain               # every chapter, stage by stage
 python -m engine chain --chapter 1   # one chapter
 ```
 
-Planned stages (the AI finish, music) are listed and marked not built.
+Planned stages (music) are listed and marked not built.
 
 ---
 
@@ -169,6 +169,32 @@ If an engine fails, the reason is in `media/batches/<id>/download/out/results.js
 
 ---
 
+## The AI finish
+
+The finish repaints a shot's 3D render in the look of the approved reference stills, guided by the render's
+depth (or its lines) so the camera, staging, timing and lip sync stay exactly as rendered. It uses Wan VACE,
+configured in the film's `config.json` under `engines.ai_finish`. It never runs on its own until you set
+`auto` there, and finished shots go into the cut only when you set `use_in_cut`.
+
+The first test, one shot (1-05, the laugh):
+
+```bash
+# 0. approve the reference stills first (comment /approve refs): the finish takes its look from them
+# 1. on your Mac: render the shot at the finish's size, with its guide passes (Blender 5)
+python -m engine cgi render 1-05 --size 832x480 --guides
+# 2. one batch, one shot, on Kaggle; collect until it reports done
+python -m engine batch --chapter 1 --stage ai_finish --shot 1-05
+python -m engine submit
+python -m engine collect
+```
+
+The finished shot lands in `films/mochizuki/media/finished/1-05/`, and the run's `results.json` holds the
+`gpu_seconds` it took: that number prices the whole film. The setting it ships with is the cheap one
+(Wan2.1-VACE-1.3B at 832×480). For 720p, switch `engines.ai_finish` to the 14B model, as its `_note`
+says; that is far heavier, and best run on a Colab A100.
+
+---
+
 ## What is tested
 
 | Part | State |
@@ -181,7 +207,7 @@ If an engine fails, the reason is in `media/batches/<id>/download/out/results.js
 | 3D pipeline: sheets, plans, dialogue, renders | Tested, and rendered in Blender 5.3 |
 | **Wan 14B, Wan 5B and the upscalers on a real T4** | **Not run yet.** The first Kaggle run is the test |
 | GPU-time estimates in `config.json` | Estimates, until real runs replace them |
-| AI finish on hero shots (phase 3) | Not built |
+| AI finish on hero shots | Built and tested with stand-ins; **not run on a GPU yet** (the 1-05 test is next) |
 | The `fal` paid fallback | Written, never run; endpoint ids are placeholders |
 
 `pip install -e ".[dev]"` installs the checks CI runs on every pull request (Python 3.11 and 3.12):
@@ -189,7 +215,7 @@ If an engine fails, the reason is in `media/batches/<id>/download/out/results.js
 ```bash
 ruff check .          # lint
 mypy                  # types (the Blender scripts, which run inside Blender, are left out)
-python -m pytest -q   # 172 tests in about 2 minutes, no GPU or network; they need ffmpeg
+python -m pytest -q   # 186 tests in about 2 minutes, no GPU or network; they need ffmpeg
 ```
 
 ---

@@ -27,6 +27,9 @@ CPU = "cpu"              # anywhere: a GitHub runner, the Mac, this machine
 # What a GPU must have
 BF16 = "bf16"            # bfloat16: Ampere or newer (A100, L4), or Apple Silicon. Not Kaggle's T4s.
 CAPABILITIES = frozenset({BF16})
+# The 3D render's guide passes for the AI finish (engine/cgi/render/blender/guides.py renders them)
+GUIDES = ("depth", "lines")
+FINISH_KEYS = ("model", "width", "height", "fps", "max_frames")    # what engines.ai_finish must say
 
 
 @dataclass(frozen=True)
@@ -62,8 +65,9 @@ CATALOG: dict[str, Generator] = {g.name: g for g in (
     Generator("lipsync", LIPSYNC, "voices", "(none)", (CPU,), setup="nothing", code="engine/audio/lipsync.py"),
     Generator("subtitles", SUBTITLES, "cut", "style_bible/dialogue.json -> languages", (CPU,),
               setup="nothing", code="engine/audio/subtitles.py"),
-    Generator("ai_finish", VIDEO, "ai_finish", "engines.ai_finish", (GPU,), built=False,
-              setup="a video-to-video model guided by the render's depth, lines and masks", code="(not built)"),
+    Generator("ai_finish", VIDEO, "ai_finish", "engines.ai_finish", (GPU,),
+              setup="the worker's GPU packages; a Wan VACE model (video-to-video, guided) from Hugging Face",
+              code="worker/worker.py WanFinish; guides: engine/cgi/render/blender/guides.py"),
     Generator("music", MUSIC, "music", "engines.music", (GPU, CPU), built=False,
               setup="a music model whose licence allows a published film", code="(not built)"),
 )}

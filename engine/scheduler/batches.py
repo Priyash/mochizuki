@@ -95,7 +95,7 @@ def pack(p: Project, specs: list[dict], work: Path, head: dict) -> list[dict]:
         job = dict(spec)
         if spec.get("refs"):
             job["refs"] = [ship(r) for r in spec["refs"]]
-        for field in ("image", "source"):
+        for field in ("image", "source", "control"):     # control: the AI finish's guide clip
             if spec.get(field):
                 job[field] = ship(spec[field])
         jobs.append(job)

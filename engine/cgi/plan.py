@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from ..audio import dialogue
-from ..generators import seed_for
+from ..generators import GUIDES, seed_for
 from ..project import SETS_FILE
 from .acting import direction as dirn
 from .acting import retarget, timing
@@ -25,6 +25,7 @@ from .staging import figure, layout, palette
 
 POSTURE_HEAD = {"standing": 0.9, "walking": 0.9, "kneeling": 0.54, "seiza": 0.52}   # eye height / body height
 POSTURE_HANDS = {"standing": 0.55, "walking": 0.55, "kneeling": 0.36, "seiza": 0.34}
+
 PROP_CENTRE = {"mortar": 0.4, "mallet": 0.0, "bowl": 0.03, "lantern": 0.0, "rice": 0.04, "cushion": 0.04,
                "tray": 0.03, "dumplings": 0.12, "pampas": 0.5}
 PROP_FRAME = {"mortar": 1.1, "bowl": 0.2, "lantern": 0.5, "rice": 0.45, "cushion": 0.7, "tray": 0.45,
@@ -485,7 +486,10 @@ def cheat_props(props: dict, cam: dict, d, chars: dict | None = None) -> list[st
 
 # ---------------------------------------------------------------- the plan
 def build(p, shot_id: str, preview: bool = False, frames_only: tuple[int, int] | None = None,
-          size: tuple[int, int] | None = None) -> dict:
+          size: tuple[int, int] | None = None, guides: tuple[str, ...] = ()) -> dict:
+    unknown = set(guides) - set(GUIDES)
+    if unknown:
+        raise ValueError(f"no guide pass called {', '.join(sorted(unknown))}; there are {', '.join(GUIDES)}")
     cfg = settings(p)
     s = next((x for x in p.shots if x.id == shot_id), None)
     if s is None:
@@ -532,7 +536,9 @@ def build(p, shot_id: str, preview: bool = False, frames_only: tuple[int, int] |
         "camera": cam, "timing": d.timing, "notes": d.notes, "cheated_out": hidden,
         "audio": (spoken or {}).get("audio", {}),
         "output": {"dir": str(shot_dir), "frames": str(shot_dir / f"frames-{tag}-{res[0]}x{res[1]}"),
-                   "blend": str(shot_dir / f"{shot_id}.blend")},
+                   "blend": str(shot_dir / f"{shot_id}.blend"),
+                   "guides": {g: str(shot_dir / f"guide-{tag}-{res[0]}x{res[1]}-{g}") for g in guides}},
+        "guides": list(guides),
     }
 
 
