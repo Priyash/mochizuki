@@ -69,7 +69,7 @@ jobs:
             libgbm1 libxkbcommon0 libsm6 libxi6 libxxf86vm1 libxfixes3 libxrender1
       - name: The shot's render and guides from an earlier test (the same shot, size and sheets)
         id: render-cache
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: |
             ${{ env.CGI }}/${{ inputs.shot }}/${{ inputs.shot }}.mp4
@@ -105,6 +105,15 @@ jobs:
           export BLENDER="$(which python)"
           python -m engine cgi render "$SHOT" --size "$SIZE" --guides "${{ inputs.controls }}"
           ls -la "$CGI/$SHOT"
+      - name: Keep the render for the next test now, not when this one ends (a test may wait hours on its GPU)
+        if: steps.render-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ env.CGI }}/${{ inputs.shot }}/${{ inputs.shot }}.mp4
+            ${{ env.CGI }}/${{ inputs.shot }}/${{ inputs.shot }}.depth.mp4
+            ${{ env.CGI }}/${{ inputs.shot }}/${{ inputs.shot }}.lines.mp4
+          key: ${{ steps.render-cache.outputs.cache-primary-key }}
       - name: The ledger (read here only, to find the chosen stills if they are not approved yet)
         run: if [ -f "state/$(basename "$LEDGER")" ]; then cp "state/$(basename "$LEDGER")" "$LEDGER"; fi
       - name: Finish on ${{ inputs.backend }}

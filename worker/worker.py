@@ -401,28 +401,42 @@ class QwenStills:
                 "steps": self.steps, "seconds": round(time.time() - t0, 1)}
 
 
-def encode_prompts_on_cpu(local: str, texts: list[str]) -> dict:
-    """Wan's UMT5 prompt embeddings, made on the CPU in bf16 (on an fp16 GPU the encoder overflows),
-    then the encoder is freed, so it never sits in memory beside the video model. The same as
-    diffusers' Wan _get_t5_prompt_embeds."""
+def encode_prompts(local: str, texts: list[str], device: str = "cpu") -> dict:
+    """Wan's UMT5 prompt embeddings in bf16 (in fp16 the encoder overflows), returned on the CPU; then
+    the encoder is freed, so it never sits in memory beside the video model. On the CPU unless `device`
+    is a bf16 GPU with room for it (big_gpu): seconds there instead of minutes. The same as diffusers'
+    Wan _get_t5_prompt_embeds."""
     import torch  # noqa: PLC0415
     from diffusers.pipelines.wan.pipeline_wan import prompt_clean  # noqa: PLC0415
     from transformers import AutoTokenizer, UMT5EncoderModel  # noqa: PLC0415
+    t0 = time.time()
     tok = AutoTokenizer.from_pretrained(local, subfolder="tokenizer")
-    enc = UMT5EncoderModel.from_pretrained(local, subfolder="text_encoder", torch_dtype=torch.bfloat16)
+    enc = UMT5EncoderModel.from_pretrained(local, subfolder="text_encoder", torch_dtype=torch.bfloat16).to(device)
     out = {}
     for text in dict.fromkeys(texts):
         t = tok([prompt_clean(text)], padding="max_length", max_length=512, truncation=True,
                 add_special_tokens=True, return_attention_mask=True, return_tensors="pt")
         with torch.inference_mode():
-            h = enc(t.input_ids, t.attention_mask).last_hidden_state
+            h = enc(t.input_ids.to(device), t.attention_mask.to(device)).last_hidden_state.cpu()
         n = int(t.attention_mask.gt(0).sum())
         e = torch.zeros_like(h)
         e[:, :n] = h[:, :n]
         out[text] = e
     del enc
     gc.collect()
+    if device != "cpu":
+        torch.cuda.empty_cache()
+    log(f"{len(out)} prompt(s) encoded on the {device} in {time.time() - t0:.0f} s")
     return out
+
+
+def big_gpu(cfg: dict) -> bool:
+    """A bf16 GPU with at least whole_on_gpu_gb (default 30) of memory, A100 and up: the whole pipeline,
+    and the text encoder before it, fit on it with no offloading."""
+    import torch  # noqa: PLC0415
+    if not torch.cuda.is_available() or not torch.cuda.is_bf16_supported():
+        return False
+    return torch.cuda.get_device_properties(0).total_memory / 2**30 >= float(cfg.get("whole_on_gpu_gb", 30))
 
 
 class WanVideo:
@@ -444,7 +458,7 @@ class WanVideo:
         local = snapshot(cfg["model"], skip=skip)
 
         # 1. text encoding on the CPU in bf16 (T5-class encoders overflow in fp16)
-        self.embeds = encode_prompts_on_cpu(local, prompts + [negative])
+        self.embeds = encode_prompts(local, prompts + [negative])
 
         # 2. the video pipeline without a text encoder
         kwargs = {"torch_dtype": dtype, "text_encoder": None, "tokenizer": None,
@@ -535,8 +549,12 @@ class WanFinish:
     lip sync exactly; the reference stills give faces, costumes and painting.
 
     A model too big for the GPU (the 14B on a 16 GB T4) comes as a GGUF (transformer_gguf), the first of
-    `repo` and `fallback_repos` that has one. With offload "group" it waits in the machine's memory and
-    goes to the GPU a block at a time: at 720p the activations alone fill most of a T4.
+    `repo` and `fallback_repos` that has one. Where it goes:
+      - a bf16 GPU of 30 GB and more (A100 and up; big_gpu): the whole pipeline on the GPU, no offloading,
+        and the prompts encoded there first: the stills engine's way, proven on Colab's A100s;
+      - offload "group" (the 14B on a T4 or an L4): the model waits in the machine's memory and goes to
+        the GPU a block at a time: at 720p the activations alone fill most of a T4;
+      - else: each model to the GPU while it works (model CPU offload).
 
     Not yet run on a GPU: the first Kaggle or Colab run is its test (AGENTS.md: one shot first)."""
 
@@ -546,33 +564,41 @@ class WanFinish:
         self.cfg, self.torch = cfg, torch
         dtype = pick_dtype(dtype_name)
         g = cfg.get("transformer_gguf")
-        group = cfg.get("offload") == "group" and torch.cuda.is_available()
+        whole = big_gpu(cfg)
+        group = not whole and cfg.get("offload") == "group" and torch.cuda.is_available()
         local = snapshot(cfg["model"], skip=["transformer"] if g else [])
-        self.embeds = encode_prompts_on_cpu(local, prompts + [negative])
+        self.embeds = encode_prompts(local, prompts + [negative], "cuda" if whole else "cpu")
         kwargs = {"vae": AutoencoderKLWan.from_pretrained(local, subfolder="vae", torch_dtype=torch.float32),
                   "text_encoder": None, "tokenizer": None, "torch_dtype": dtype}
         if g:
-            room = g.get("max_gb") if group else gpu_room_gb(float(cfg.get("vram_headroom_gb", 6.0)))
+            room = g.get("max_gb") if group or whole else gpu_room_gb(float(cfg.get("vram_headroom_gb", 6.0)))
             kwargs["transformer"] = vace_gguf(g, local, dtype, room)
         self.pipe = WanVACEPipeline.from_pretrained(local, **kwargs)
         sched = make_scheduler(self.pipe.scheduler.config, cfg)
         if sched is not None:
             self.pipe.scheduler = sched
-        if group:
+        if whole:
+            self.pipe.to("cuda")
+            placed = "whole on the GPU"
+        elif group:
             gpu = torch.device("cuda")
             self.pipe.transformer.enable_group_offload(onload_device=gpu, offload_device=torch.device("cpu"),
                                                        offload_type="block_level",
                                                        num_blocks_per_group=int(cfg.get("blocks_per_group", 1)))
             self.pipe.vae.to(gpu)
-            log(f"finish: {cfg['model']} offloaded by groups of {cfg.get('blocks_per_group', 1)} block(s)")
+            placed = f"offloaded by groups of {cfg.get('blocks_per_group', 1)} block(s)"
         else:
             self.pipe.enable_model_cpu_offload()
+            placed = "offloaded model by model"
         try:
             self.pipe.vae.enable_tiling()
         except Exception:  # noqa: BLE001 - tiling is an optimisation only
             pass
         self.pipe.set_progress_bar_config(disable=True)
         self.negative = negative
+        used = torch.cuda.memory_allocated() / 2**30 if torch.cuda.is_available() else 0.0
+        log(f"finish engine: {cfg['model']} {dtype}, {placed}, {cfg.get('steps', 30)} steps, "
+            f"{cfg['width']}x{cfg['height']}; GPU memory in use {used:.1f} GB")
 
     def run(self, job: dict, inputs: Path, out: Path) -> dict:
         import numpy as np  # noqa: PLC0415
@@ -584,10 +610,11 @@ class WanFinish:
         clips, start, last = [], 0, None
         for n, frames in enumerate(segs):
             extra = [last] if last is not None else []   # a chained clip also sees where the last one ended
+            dev = self.pipe._execution_device          # the pipeline moves given embeddings in dtype only
             with torch.inference_mode():
                 video = self.pipe(video=guide[start:start + frames], reference_images=(refs + extra) or None,
-                                  prompt_embeds=self.embeds[job["prompt"]],
-                                  negative_prompt_embeds=self.embeds[self.negative],
+                                  prompt_embeds=self.embeds[job["prompt"]].to(dev),
+                                  negative_prompt_embeds=self.embeds[self.negative].to(dev),
                                   height=h, width=w, num_frames=frames,
                                   num_inference_steps=c.get("steps", 30), guidance_scale=c.get("guidance_scale", 5.0),
                                   conditioning_scale=c.get("conditioning_scale", 1.0),
