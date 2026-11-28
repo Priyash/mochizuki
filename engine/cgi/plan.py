@@ -17,9 +17,10 @@ from ..generators import seed_for
 from ..project import SETS_FILE
 
 from ..audio import dialogue
-from . import direction as dirn
-from . import figure, layout, palette, retarget, timing
-from .capture import Track, resample, smooth
+from .acting import direction as dirn
+from .acting import retarget, timing
+from .acting.capture import Track, resample, smooth
+from .staging import figure, layout, palette
 from .config import by_chapter, settings, work_dir
 
 POSTURE_HEAD = {"standing": 0.9, "walking": 0.9, "kneeling": 0.54, "seiza": 0.52}   # eye height / body height
@@ -50,7 +51,7 @@ def _add(a, b, k=1.0):
 # ---------------------------------------------------------------- characters
 def character_entries(p, cfg: dict, d, chapter: int, the_set: dict) -> list[dict]:
     """Who is in the shot, where, in what posture, and as what: a model file if there is one, else a
-    procedural anime figure (engine/cgi/figure.py) whose joints the camera and eyelines use."""
+    procedural anime figure (engine/cgi/staging/figure.py) whose joints the camera and eyelines use."""
     out = []
     for i, name in enumerate(d.characters):
         spec = cfg["characters"].get(name, {})

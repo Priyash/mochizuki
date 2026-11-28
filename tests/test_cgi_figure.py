@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from engine.cgi import figure
+from engine.cgi.staging import figure
 from engine.cgi import plan as planner
 
 

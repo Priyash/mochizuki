@@ -1,5 +1,5 @@
 {
-  "_note": "Hand-written acting sheets (engine/cgi/direction.py). Each entry changes only the fields it names in the sheet drafted from shots.csv. Beats: t (seconds), who, emotion (neutral joy sorrow tenderness wonder fear resolve curiosity surprise anger bittersweet), intensity 0-1, restraint 0-1 (how much the feeling is held in: the mouth and brows move less, the eyes do more), gaze, action (for whoever acts the shot), hold (seconds). performance: capture = act it on the iPhone (docs/cgi-pipeline.md), procedural = the beats alone. These are Claude's drafts for chapter 1: every one stays 'draft' until the owner changes it to 'approved'.",
+  "_note": "Hand-written acting sheets (engine/cgi/acting/direction.py). Each entry changes only the fields it names in the sheet drafted from shots.csv. Beats: t (seconds), who, emotion (neutral joy sorrow tenderness wonder fear resolve curiosity surprise anger bittersweet), intensity 0-1, restraint 0-1 (how much the feeling is held in: the mouth and brows move less, the eyes do more), gaze, action (for whoever acts the shot), hold (seconds). performance: capture = act it on the iPhone (docs/cgi-pipeline.md), procedural = the beats alone. These are Claude's drafts for chapter 1: every one stays 'draft' until the owner changes it to 'approved'.",
   "shots": {
     "1-01": {
       "blackout": true,

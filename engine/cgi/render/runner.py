@@ -15,9 +15,9 @@ import subprocess
 import time
 from pathlib import Path
 
-from ..log import log as _log
-from . import plan as planner
-from .config import settings
+from ...log import log as _log
+from .. import plan as planner
+from ..config import settings
 
 BUILD = Path(__file__).parent / "blender" / "build.py"
 MAC_BLENDER = "/Applications/Blender.app/Contents/MacOS/Blender"

@@ -19,10 +19,10 @@ import sys
 from pathlib import Path
 
 from ..log import set_file
-from . import capture as cap
-from . import direction as dirn
 from . import plan as planner
-from . import render as rnd
+from .acting import capture as cap
+from .acting import direction as dirn
+from .render import runner as rnd
 from .config import by_chapter, settings, work_dir
 
 

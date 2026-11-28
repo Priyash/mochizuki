@@ -1,5 +1,5 @@
 {
-  "_note": "Light rigs for the 3D pipeline (engine/cgi/palette.py). A chapter's rig applies to all its shots; a scene's rig (scenes.json names) changes only what it names, and a shot id can change it again. Colours are linear RGB 0..1. azimuth/elevation are degrees: azimuth 0 lights the set from -Y (where the camera usually is), 90 from +X. toon.bands are the two thresholds between shadow, mid and lit; shadow_tint is what the shadow band multiplies the base colour by.",
+  "_note": "Light rigs for the 3D pipeline (engine/cgi/staging/palette.py). A chapter's rig applies to all its shots; a scene's rig (scenes.json names) changes only what it names, and a shot id can change it again. Colours are linear RGB 0..1. azimuth/elevation are degrees: azimuth 0 lights the set from -Y (where the camera usually is), 90 from +X. toon.bands are the two thresholds between shadow, mid and lit; shadow_tint is what the shadow band multiplies the base colour by.",
   "rigs": {
     "1": {
       "_what": "Rural Noto coast, autumn to first snow: warm amber lantern light against deep indigo moonlight.",

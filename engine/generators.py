@@ -56,7 +56,7 @@ CATALOG: dict[str, Generator] = {g.name: g for g in (
               setup="the worker's GPU packages; Real-ESRGAN and Real-CUGAN weights",
               code="worker/worker.py Upscale4K"),
     Generator("render", RENDER, "render", "cgi", (CPU,),
-              setup="Blender 5, or a Python with the bpy module", code="engine/cgi/render.py"),
+              setup="Blender 5, or a Python with the bpy module", code="engine/cgi/render/runner.py"),
     Generator("voice", VOICE, "voices", "style_bible/dialogue.json -> voices", (CPU,),
               setup="Kokoro-82M (engine/audio/tts/requirements.txt), or any command", code="engine/audio/voice.py"),
     Generator("lipsync", LIPSYNC, "voices", "(none)", (CPU,), setup="nothing", code="engine/audio/lipsync.py"),

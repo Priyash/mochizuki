@@ -6,7 +6,7 @@ This is the new direction for making Mochizuki: a real 3D CG anime pipeline that
 It replaces "generate every shot with a video model" as the way the film's moving picture is made.
 The generative models stay, but in the jobs they are good at.
 
-It is written in `engine/cgi/` (plain Python, tested) and `engine/cgi/blender/` (runs inside Blender).
+It is written in `engine/cgi/` (plain Python, tested) and `engine/cgi/render/blender/` (runs inside Blender).
 
 ## Why change direction
 

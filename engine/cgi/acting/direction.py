@@ -24,7 +24,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from ..project import ACTING_FILE, SCENES_FILE
+from ...project import ACTING_FILE, SCENES_FILE
 
 EMOTIONS = ("neutral", "joy", "sorrow", "tenderness", "wonder", "fear", "resolve", "curiosity",
             "surprise", "anger", "bittersweet")
