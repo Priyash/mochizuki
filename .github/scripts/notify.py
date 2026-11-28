@@ -28,9 +28,11 @@ def gh(*args):
 
 issue = state / "issue.txt"
 if not issue.exists():
-    url = gh("issue", "create", "--title", "Mochizuki production",
+    film = Path(os.environ.get("FILM") or "film").name.replace("-", " ").title()   # set by the workflow
+    url = gh("issue", "create", "--title", f"{film} production",
              "--body", "The producer posts here when something is needed. Commands (owner only): "
-                       "`/approve board N`, `/approve animatic N`, `/chapter N`, `/status`.")
+                       "`/approve refs`, `/reject <name>`, `/approve board N`, `/approve animatic N`, "
+                       "`/chapter N`, `/status`.")
     issue.write_text(url.rstrip("/").rsplit("/", 1)[-1])
 gh("issue", "comment", issue.read_text().strip(), "--body", text)
 last_f.write_text(json.dumps({"kind": kind, "text": text}), encoding="utf-8")
