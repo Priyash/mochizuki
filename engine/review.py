@@ -98,15 +98,18 @@ def export(p: Project, led: Ledger, chapter: int, outdir: Path) -> dict:
 
 
 def _sheet(paths: list[Path], out: Path, cols: int, w: int, h: int) -> None:
+    """Tile `paths` into one picture, `cols` to a row. Every tile is made exactly w x h first: when the
+    size changes partway through a sequence (a square still among wide ones), ffmpeg restarts its filters
+    and the tile drops everything before it, which left the 28 Nov reference sheet with two pictures."""
     work = out.parent / "_sheet"
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
     for n, f in enumerate(paths):
-        _still(f, work / f"{n:03d}.jpg", width=w)
+        _ff(["-i", str(f), "-vf", f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
+             f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2", "-frames:v", "1", "-q:v", "3", str(work / f"{n:03d}.jpg")])
     rows = (len(paths) + cols - 1) // cols
-    _ff(["-framerate", "1", "-i", str(work / "%03d.jpg"), "-vf",
-         f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"
-         f"tile={cols}x{rows}:padding=4", "-frames:v", "1", "-q:v", "3", str(out)])
+    _ff(["-framerate", "1", "-i", str(work / "%03d.jpg"), "-vf", f"tile={cols}x{rows}:padding=4",
+         "-frames:v", "1", "-q:v", "3", str(out)])
     shutil.rmtree(work, ignore_errors=True)
 
 

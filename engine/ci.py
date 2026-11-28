@@ -144,6 +144,27 @@ COMMAND = re.compile(r"^/(approve)\s+(board|animatic)\s+([1-5])\b|^/(chapter)\s+
                      r"|^/approve\s+(refs)\b|^/reject\s+([a-z0-9_]+)", re.I | re.M)
 
 
+def copy_chosen_refs(p: Project, led: Ledger) -> tuple[list[str], list[str], list[str]]:
+    """Copy each planned reference still that has a chosen candidate into style_bible/refs: what
+    `/approve refs` does. Returns the names copied, those with no candidate chosen yet, and those whose
+    chosen file could not be fetched (on GitHub it is a release file: set p.store)."""
+    done, waiting, lost = [], [], []
+    for r in p.refs_missing():
+        sel = led.selected(ref_shot(r["name"]).id)
+        if not sel:
+            waiting.append(r["name"])
+            continue
+        src = p.fetch(sel["path"])
+        if not src.exists():
+            lost.append(r["name"])
+            continue
+        dest = p.ref_path(r["name"])
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dest)
+        done.append(r["name"])
+    return done, waiting, lost
+
+
 def command(p: Project, led: Ledger, state: Path, body: str, author: str, owner: str) -> str:
     """Run the owner's command from an issue comment. Anyone else is refused."""
     if not owner or author != owner:
@@ -153,20 +174,15 @@ def command(p: Project, led: Ledger, state: Path, body: str, author: str, owner:
         return ("Commands: `/approve refs`, `/reject <ref name>`, `/approve board N`, `/approve animatic N`, "
                 "`/chapter N`, `/status`.")
     if m.group(7):
-        done, waiting = [], []
-        for r in p.refs_missing():
-            sel = led.selected(ref_shot(r["name"]).id)
-            if not sel:
-                waiting.append(r["name"])
-                continue
-            dest = p.ref_path(r["name"])
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(p.fetch(sel["path"]), dest)
-            done.append(r["name"])
+        done, waiting, lost = copy_chosen_refs(p, led)
+        lost_note = (f" Could not fetch the chosen still of {', '.join(lost)} from the media store: "
+                     "nothing of it was approved; comment `/approve refs` again to retry." if lost else "")
         if not done:
-            return "Nothing to approve: no reference still has been selected yet."
-        tail = f" Still waiting: {', '.join(waiting)}." if waiting else " Keyframes start on the next producer run."
-        return f"Approved and added to style_bible/refs: {', '.join(done)}.{tail}"
+            return ("Nothing approved." + lost_note) if lost else \
+                "Nothing to approve: no reference still has been selected yet."
+        tail = f" Still waiting: {', '.join(waiting)}." if waiting else \
+            ("" if lost else " Keyframes start on the next producer run.")
+        return f"Approved and added to style_bible/refs: {', '.join(done)}.{tail}{lost_note}"
     if m.group(8):
         name = m.group(8).lower()
         sel = led.selected(ref_shot(name).id)

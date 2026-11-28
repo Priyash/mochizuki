@@ -436,6 +436,46 @@ def test_real_blender_builds_and_renders_a_frame(proj, monkeypatch):
     subprocess.run([BPY, "-c", "import bpy"], check=True)
 
 
+@pytest.mark.skipif(not BPY, reason="set MOCHI_BPY_PYTHON to a Python with the bpy module to run real Blender")
+def test_guides_render_sharp_on_black_and_put_the_scene_back(tmp_path):
+    blender_dir = Path(rnd.__file__).parent / "blender"
+    script = tmp_path / "guides.py"
+    script.write_text(textwrap.dedent(f'''
+        import json, sys
+        sys.path.insert(0, {str(blender_dir)!r})
+        import bpy
+        import guides
+        sc = bpy.context.scene
+        cam = bpy.data.cameras.new("shot")
+        ob = bpy.data.objects.new("shot", cam)
+        sc.collection.objects.link(ob)
+        sc.camera = ob
+        cam.dof.use_dof = True
+        lamp = bpy.data.objects.new("key", bpy.data.lights.new("key", "SUN"))
+        sc.collection.objects.link(lamp)
+        sky = sc.world
+        seen = []
+
+        def frames(out, first, last, say, name):
+            bg = [n for n in sc.world.node_tree.nodes if n.type == "BACKGROUND"]
+            seen.append({{"guide": name, "dof": cam.dof.use_dof, "lamp": lamp.hide_render,
+                          "view": sc.view_settings.view_transform,
+                          "sky": [n.inputs["Strength"].default_value for n in bg]}})
+        guides._render_frames = frames
+        plan = {{"guides": ["depth", "lines"], "frame_range": [1, 1],
+                 "output": {{"guides": {{"depth": {str(tmp_path / "d")!r}, "lines": {str(tmp_path / "l")!r}}}}}}}
+        guides.render_guides(plan, lambda *a, **k: None)
+        print(json.dumps({{"seen": seen, "dof": cam.dof.use_dof, "lamp": lamp.hide_render,
+                           "world_back": sc.world == sky, "view": sc.view_settings.view_transform}}))
+    '''))
+    out = subprocess.run([BPY, str(script)], capture_output=True, text=True, check=True).stdout
+    r = json.loads(out.strip().splitlines()[-1])
+    depth, lines = r["seen"]
+    assert depth == {"guide": "depth", "dof": False, "lamp": True, "view": "Raw", "sky": [0.0]}   # disparity as is
+    assert lines == {"guide": "lines", "dof": False, "lamp": True, "view": "Standard", "sky": [0.0]}
+    assert r["dof"] is True and r["lamp"] is False and r["world_back"] and r["view"] != "Raw"
+
+
 @needs_ffmpeg
 def test_the_cut_uses_cg_renders_when_switched_on(proj):
     from engine import assemble as asm
