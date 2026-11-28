@@ -12,6 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ...generators import CAPABILITIES
 from ..base import Provider, Status
 from .provider import NAME, KaggleError, KaggleProvider, session_budget
 
@@ -25,6 +26,8 @@ def _no_cli(args: list[str]) -> tuple[int, str]:
 
 
 class LocalKaggle(KaggleProvider):
+    capabilities = CAPABILITIES      # stand-in engines run anything
+
     def __init__(self, root: Path, name: str = NAME):
         super().__init__(runner=_no_cli)
         self.name = name

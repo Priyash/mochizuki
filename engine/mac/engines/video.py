@@ -6,36 +6,18 @@ frame, and the clips are joined without repeating that frame.
 """
 from __future__ import annotations
 
-import math
 import shutil
 import subprocess
 import tempfile
 import time
 from pathlib import Path
 
+from ...generators import wan_frames as frames_for  # noqa: F401 - engine.mac.engines exports it
+from ...generators import wan_segments as segments
 from ..common import MODELS, ffmpeg_exe, log, seed_for
 from ..models import resolve_cmd
 from ..process import run_streaming
 from .base import check_video
-
-
-def frames_for(seconds: float, fps: int, max_frames: int) -> int:
-    """Wan needs 4k+1 frames: the smallest such count covering `seconds`, capped by the model."""
-    need = max(1, math.ceil(seconds * fps))
-    cap = ((max_frames - 1) // 4) * 4 + 1
-    return max(5, min(((need - 1 + 3) // 4) * 4 + 1, cap))
-
-
-def segments(seconds: float, fps: int, max_frames: int) -> list[int]:
-    """Frame counts of the chained clips covering a shot (each next clip shares one frame)."""
-    need = max(1, math.ceil(seconds * fps))
-    segs = [frames_for(seconds, fps, max_frames)]
-    have = segs[0]
-    while have < need:
-        nxt = frames_for((need - have + 1) / fps, fps, max_frames)
-        segs.append(nxt)
-        have += nxt - 1
-    return segs
 
 
 class MlxVideoEngine:

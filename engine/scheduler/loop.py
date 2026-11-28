@@ -10,6 +10,7 @@ from enum import Enum
 
 from .. import steps
 from ..errors import BudgetUsedUp
+from ..generators import needs_for
 from ..ledger import NOT_A_FAILURE, Ledger, not_a_failure
 from ..project import REPO, Project
 from ..providers.base import IN_FLIGHT, Provider, Status
@@ -94,6 +95,10 @@ def tick(p: Project, led: Ledger, provider: Provider, chapter: int, engine_set: 
     if stage and allowed and stage not in allowed and not (provider.take_over and queue_stuck(led)):
         return {"action": Action.IDLE, "backend": name,
                 "reason": f"{stage} is not run on {name}: config {name}.stages only takes {', '.join(allowed)}"}
+    missing = needs_for(stage) - provider.capabilities if stage else frozenset()
+    if missing:
+        return {"action": Action.IDLE, "backend": name,
+                "reason": f"{stage} needs {', '.join(sorted(missing))}, which {name}'s GPUs do not have"}
     if stage is None:
         queue = steps.review_queue(p, led, chapter)
         return {"action": Action.IDLE, "reason": "waiting for a person", "to_review": len(queue),
@@ -152,6 +157,8 @@ def someone_else_can_take(p: Project, led: Ledger, providers: list[Provider], me
         if other is me:
             continue
         if other.stages and stage not in other.stages and not other.take_over:
+            continue
+        if needs_for(stage) - other.capabilities:
             continue
         try:
             other.budget(p, led)

@@ -9,11 +9,11 @@ and the whole decision can be read, diffed and tested without Blender.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 from pathlib import Path
 
+from ..generators import seed_for
 from ..project import SETS_FILE
 
 from ..audio import dialogue
@@ -30,10 +30,6 @@ PROP_FRAME = {"mortar": 1.1, "bowl": 0.2, "lantern": 0.5, "rice": 0.45, "cushion
               "dumplings": 0.38, "pampas": 1.2, "mallet": 0.9, "hearth": 1.2}   # an insert shows the whole thing
 CAMERA_HOME = (0.0, -3.2, 1.0)          # where a camera stands to look at something far away (the moon)
 CROWD_SPACING = 0.9
-
-
-def seed_for(key: str) -> int:
-    return int(hashlib.sha1(key.encode()).hexdigest()[:8], 16)
 
 
 def load_sets(p) -> dict:

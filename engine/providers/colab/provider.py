@@ -7,9 +7,10 @@ import time
 from pathlib import Path
 
 from ...errors import BudgetUsedUp
+from ...generators import BF16
 from ..base import CLOUD
 from ..release import ReleaseProvider
-from .config import NAME, RUNNER_WORKFLOW, settings
+from .config import BF16_GPUS, NAME, RUNNER_WORKFLOW, settings
 
 
 class ColabProvider(ReleaseProvider):
@@ -20,6 +21,11 @@ class ColabProvider(ReleaseProvider):
 
     def __init__(self, p, repo: str, gh=None, fetch=None, now=time.time):
         super().__init__(p, repo, gh, fetch, now, cfg=settings(p))
+
+    @property
+    def capabilities(self) -> frozenset[str]:
+        """bf16 only if every GPU it may be given has it: a stage must run on whichever comes up."""
+        return frozenset({BF16}) if set(self.cfg["gpus"]) <= BF16_GPUS else frozenset()
 
     def rate(self) -> float:
         """Units per hour of the dearest GPU we may get: the conservative rate for the cap."""

@@ -595,25 +595,48 @@ class Upscale4K:
         return {"width": tw, "height": th, "frames": n, "fps": fps}
 
 
+# ---------------------------------------------------------------- generators
+# What makes each group of jobs. A group is named after its engine in the manifest ("refs",
+# "keyframe", "upscale") or, for takes, after the shot's video model ("Wan 2.2 14B"). Each generator
+# is (the real one, its stand-in with no model).
+def _refs(cfg: dict, dtype: str, jobs: list[dict], engines: dict):
+    return QwenStills(cfg, dtype, [j["prompt"] for j in jobs], cfg.get("negative_prompt", " "))
+
+
+def _keyframe(cfg: dict, dtype: str, jobs: list[dict], engines: dict):
+    return QwenKeyframes(cfg, dtype)
+
+
+def _video(cfg: dict, dtype: str, jobs: list[dict], engines: dict):
+    return WanVideo(cfg, dtype, [j["prompt"] for j in jobs], engines.get("negative_prompt", ""))
+
+
+def _upscale(cfg: dict, dtype: str, jobs: list[dict], engines: dict):
+    return Upscale4K(cfg, dtype)
+
+
+GENERATORS = {"refs": (_refs, StubImage), "keyframe": (_keyframe, StubImage), "video": (_video, StubVideo),
+              "upscale": (_upscale, StubUpscale)}
+
+
+def generator_for(name: str, jobs: list[dict]) -> str:
+    """Which generator makes a group: by its name, or "video" for a group of takes. Anything else
+    is an error, never a guess: a wrong generator would spend GPU time on the wrong model."""
+    if name == "refs" or name.startswith("refs_"):
+        return "refs"
+    if name in ("keyframe", "upscale"):
+        return name
+    if jobs and all(j["kind"] == "take" for j in jobs):
+        return "video"
+    raise ValueError(f"no generator makes the {name!r} group ({', '.join(sorted({j['kind'] for j in jobs}))} jobs)")
+
+
 # ---------------------------------------------------------------- the run
 def build_engine(name: str, jobs: list[dict], engines: dict, engine_set: str):
     dtype = (engines.get(name) or {}).get("dtype") or engines.get("dtype", "auto")
-    if name == "refs" or name.startswith("refs_"):
-        cfg = engines[name]
-        if engine_set == "stub":
-            return StubImage(cfg)
-        neg = cfg.get("negative_prompt", " ")
-        return QwenStills(cfg, dtype, [j["prompt"] for j in jobs], neg)
-    if name == "keyframe":
-        cfg = engines["keyframe"]
-        return StubImage(cfg) if engine_set == "stub" else QwenKeyframes(cfg, dtype)
-    if name == "upscale":
-        cfg = engines["upscale"]
-        return StubUpscale(cfg) if engine_set == "stub" else Upscale4K(cfg, dtype)
+    real, stand_in = GENERATORS[generator_for(name, jobs)]
     cfg = engines[name]
-    if engine_set == "stub":
-        return StubVideo(cfg)
-    return WanVideo(cfg, dtype, [j["prompt"] for j in jobs], engines.get("negative_prompt", ""))
+    return stand_in(cfg) if engine_set == "stub" else real(cfg, dtype, jobs, engines)
 
 
 def free_engine(engine) -> None:

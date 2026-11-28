@@ -1,12 +1,12 @@
 """Small helpers every Mac module uses: the structured log, seeds, a stand-in PNG, ffmpeg."""
 from __future__ import annotations
 
-import hashlib
 import shutil
 import struct
 import zlib
 from pathlib import Path
 
+from ..generators import seed_for  # noqa: F401 - the engines import it from here
 from ..log import log as _structured_log
 
 WORK = Path.home() / "mochizuki-mac"            # pictures, logs, models, training runs, LoRAs
@@ -17,11 +17,6 @@ LORAS = WORK / "loras"
 def log(msg: str, event: str = "note", level: str = "info", comp: str = "mac", **fields) -> None:
     """One structured line (engine/log.py): time, level, component, event, message, key=value."""
     _structured_log(comp, event, msg, level, **fields)
-
-
-def seed_for(key: str) -> int:
-    """A stable seed per job key, so a rerun of the same job draws the same picture."""
-    return int(hashlib.sha1(key.encode()).hexdigest()[:8], 16)
 
 
 def write_png(path: Path, w: int, h: int) -> None:
