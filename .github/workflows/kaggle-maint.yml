@@ -8,17 +8,25 @@ on:
         type: choice
         options: [status, delete-stuck-worker, delete-queued-probe]
 concurrency:
-  group: mochizuki-state
+  group: state-branch            # the producer and Kaggle maintenance never overlap
   cancel-in-progress: false
 jobs:
   maint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: pip install -q "kaggle>=1.7" six
+      - name: Which notebooks (the film's worker and probe, by the names the engine gives them)
+        run: |
+          echo "WORKER=$(python -m engine where kaggle-worker)" >> "$GITHUB_ENV"
+          echo "PROBE=$(python -m engine where kaggle-probe)" >> "$GITHUB_ENV"
+          user="$(python -m engine where kaggle-worker | cut -d/ -f1)"
+          film="$(basename "$(python -m engine where)")"
+          echo "TEST_CPU=$user/$film-test-cpu" >> "$GITHUB_ENV"        # made by kaggle-test
       - name: Run
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
@@ -27,18 +35,18 @@ jobs:
         run: |
           set +e
           kaggle kernels list --mine
-          kaggle kernels status $KAGGLE_USERNAME/mochizuki-worker
-          kaggle kernels status $KAGGLE_USERNAME/mochizuki-probe
+          kaggle kernels status "$WORKER"
+          kaggle kernels status "$PROBE"
           if [ "$ACTION" = "delete-queued-probe" ]; then
-            if kaggle kernels status $KAGGLE_USERNAME/mochizuki-probe | grep -qi queued; then
-              kaggle kernels delete $KAGGLE_USERNAME/mochizuki-probe -y && echo "probe deleted (it was queued)"
+            if kaggle kernels status "$PROBE" | grep -qi queued; then
+              kaggle kernels delete "$PROBE" -y && echo "probe deleted (it was queued)"
             else
               echo "probe is not queued; left alone"
             fi
           fi
           if [ "$ACTION" = "delete-stuck-worker" ]; then
-            kaggle kernels delete $KAGGLE_USERNAME/mochizuki-worker -y
-            kaggle kernels delete $KAGGLE_USERNAME/mochizuki-test-cpu -y
+            kaggle kernels delete "$WORKER" -y
+            kaggle kernels delete "$TEST_CPU" -y
             sleep 5
             kaggle kernels list --mine
           fi

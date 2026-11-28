@@ -1,0 +1,8 @@
+# A monthly pull request when a newer version of an action used by the workflows comes out.
+# It only proposes: CI runs on the PR, and nothing changes until it is merged.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

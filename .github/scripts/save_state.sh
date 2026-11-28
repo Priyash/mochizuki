@@ -4,7 +4,7 @@ set -euo pipefail
 LEDGER="${LEDGER:-$(python -m engine where ledger)}"     # the film's ledger (set by the workflow)
 [ -f "$LEDGER" ] && cp "$LEDGER" "state/$(basename "$LEDGER")"
 cd state
-git config user.name "mochizuki-producer"
+git config user.name "film-engine"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 git add -A
 git diff --cached --quiet && exit 0

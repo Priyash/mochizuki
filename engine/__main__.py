@@ -20,6 +20,7 @@ from .project import CONFIG_FILE, REPO, Project, find_film
 from .providers.base import WORKER_PACKAGES
 from .providers.kaggle import settings as kaggle_settings
 from .providers.kaggle import week_start
+from .providers.kaggle.probe import notebook_ref as kaggle_probe_ref
 from .providers.release import Release
 from .providers.release import names as release_names
 from .scheduler import Action
@@ -31,6 +32,8 @@ WHERE = {
     "refs": lambda p: p.refs_dir,
     "media": lambda p: p.media,
     "cgi": lambda p: cgi_config.work_dir(p, cgi_config.settings(p), ""),
+    "kaggle-worker": lambda p: providers.KaggleProvider().refs(p)[1],     # <user>/<the film's worker notebook>
+    "kaggle-probe": lambda p: kaggle_probe_ref(p),                         # <user>/<film>-probe
 }
 
 
@@ -142,7 +145,7 @@ def main(argv=None) -> int:
     sub.add_parser("check", help="check the film's config.json and shots.csv; every problem at once")
     a = sub.add_parser("chain", help="where the film stands, stage by stage (one chapter, or every chapter)")
     chap(a, False)
-    a = sub.add_parser("where", help="print one of the film's paths, for scripts and workflows")
+    a = sub.add_parser("where", help="print one of the film's paths or Kaggle notebooks, for scripts and workflows")
     a.add_argument("what", nargs="?", default="film", choices=sorted(WHERE))
 
     args = ap.parse_args(argv)
@@ -167,8 +170,8 @@ def main(argv=None) -> int:
         return 0
 
     if args.cmd == "where":
-        path = WHERE[args.what](p)
-        print(path.relative_to(REPO) if path.is_relative_to(REPO) else path)
+        found = WHERE[args.what](p)
+        print(found.relative_to(REPO) if isinstance(found, Path) and found.is_relative_to(REPO) else found)
         return 0
 
     if args.cmd == "plan":
