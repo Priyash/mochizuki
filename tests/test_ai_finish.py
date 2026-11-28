@@ -203,13 +203,19 @@ def test_a_variant_finish_is_its_own_job_at_its_own_size(tmp_path):
     assert steps.finish_spec(proj, s, 0, lines, control="lines")["key"] != base["key"]   # each guide its own job
 
 
-def _fake_gpu_stack(calls: dict):
-    """Stand-ins for torch and diffusers that record what the finish engine asks of them."""
+def _fake_gpu_stack(calls: dict, gpu_gb: float = 15.0, capability=(7, 5)):
+    """Stand-ins for torch and diffusers that record what the finish engine asks of them (a T4 by default)."""
     import types
     torch = types.ModuleType("torch")
     torch.float16, torch.float32, torch.bfloat16 = "fp16", "fp32", "bf16"
-    torch.cuda = types.SimpleNamespace(is_available=lambda: True, get_device_capability=lambda *a: (7, 5))
+    torch.cuda = types.SimpleNamespace(
+        is_available=lambda: True, get_device_capability=lambda *a: capability,
+        is_bf16_supported=lambda: capability[0] >= 8, memory_allocated=lambda *a: 0,
+        get_device_properties=lambda i: types.SimpleNamespace(total_memory=gpu_gb * 2**30))
     torch.device = lambda name: f"device:{name}"
+    torch.Generator = lambda dev: types.SimpleNamespace(manual_seed=lambda seed: ("generator", dev, seed))
+    import contextlib
+    torch.inference_mode = contextlib.nullcontext
     d = types.ModuleType("diffusers")
 
     class Module:
@@ -227,10 +233,23 @@ def _fake_gpu_stack(calls: dict):
             calls["group_offload"] = kw
 
     class Pipe:
+        _execution_device = "cuda:0"
+
         def __init__(self, local, **kw):
             calls["pipeline"] = (local, kw)
             self.transformer = kw.get("transformer") or Module("transformer")
             self.vae, self.scheduler = kw["vae"], types.SimpleNamespace(config={"use_flow_sigmas": True})
+
+        def __call__(self, **kw):
+            import numpy as np
+            calls.setdefault("calls", []).append(kw)
+            n, h, w = kw["num_frames"], kw["height"], kw["width"]
+            frames = np.linspace(0, 1, n * h * w * 3, dtype="float32").reshape(n, h, w, 3)
+            return types.SimpleNamespace(frames=[frames])
+
+        def to(self, dev):
+            calls["pipeline_to"] = dev
+            return self
 
         def enable_model_cpu_offload(self):
             calls["model_offload"] = True
@@ -250,43 +269,67 @@ def _fake_gpu_stack(calls: dict):
     return torch, d
 
 
-def _finish_engine(monkeypatch, cfg: dict, gguf_in: str = "lym00"):
+def _finish_engine(monkeypatch, cfg: dict, gguf_in: str = "QuantStack", gpu_gb: float = 15.0, capability=(7, 5)):
     import sys
     w, calls = _worker(), {}
-    torch, diffusers = _fake_gpu_stack(calls)
+    torch, diffusers = _fake_gpu_stack(calls, gpu_gb, capability)
     monkeypatch.setitem(sys.modules, "torch", torch)
     monkeypatch.setitem(sys.modules, "diffusers", diffusers)
     monkeypatch.setattr(w, "snapshot", lambda model, skip: calls.__setitem__("snapshot", (model, skip)) or "/hf")
-    monkeypatch.setattr(w, "encode_prompts_on_cpu", lambda local, texts: {t: t for t in texts})
-    monkeypatch.setattr(w, "gpu_room_gb", lambda headroom: 15.0 - headroom)
+    class Embeds:
+        def __init__(self, text):
+            self.text = text
+
+        def to(self, dev):
+            return (self.text, dev)
+    monkeypatch.setattr(w, "encode_prompts", lambda local, texts, device="cpu": calls.__setitem__(
+        "encoded_on", device) or {t: Embeds(t) for t in texts})
+    monkeypatch.setattr(w, "gpu_room_gb", lambda headroom: gpu_gb - headroom)
     monkeypatch.setattr(w, "find_gguf", lambda repo, sub, prefer, room: calls.setdefault("gguf", []).append(
         (repo, room)) or (f"/{repo}.gguf" if gguf_in in repo else None))
-    w.WanFinish(cfg, "auto", ["a prompt"], "a negative")
+    calls["engine"] = w.WanFinish(cfg, "auto", ["a prompt"], "a negative")
     return calls
 
 
-def test_the_14b_finish_comes_as_a_gguf_and_goes_to_the_gpu_a_block_at_a_time(tmp_path, monkeypatch):
+def test_the_14b_finish_comes_as_a_gguf_and_goes_to_a_t4_a_block_at_a_time(tmp_path, monkeypatch):
     proj = copy_project(tmp_path)
     calls = _finish_engine(monkeypatch, steps.finish_config(proj, "ai_finish_720"))
     assert calls["snapshot"] == ("Wan-AI/Wan2.1-VACE-14B-diffusers", ["transformer"])   # the GGUF replaces it
-    assert [r for r, _ in calls["gguf"]] == ["QuantStack/Wan2.1_T2V_14B_LightX2V_StepCfgDistill_VACE-GGUF",
-                                            "lym00/Wan2.1_T2V_14B_LightX2V_StepCfgDistill_VACE-GGUF"]
-    assert all(room == 15 for _, room in calls["gguf"])                     # sized by memory, not by the GPU
+    assert calls["gguf"] == [("QuantStack/Wan2.1_T2V_14B_LightX2V_StepCfgDistill_VACE-GGUF", 15)]  # sized by RAM
     path, kw = calls["single_file"]
-    assert path.startswith("/lym00") and kw["config"] == "/hf" and kw["subfolder"] == "transformer"
+    assert path.startswith("/QuantStack") and kw["config"] == "/hf" and kw["subfolder"] == "transformer"
     assert kw["quantization_config"] == ("gguf", "fp16")                    # a T4 computes in fp16
     assert calls["pipeline"][1]["transformer"].name == "gguf" and calls["pipeline"][1]["text_encoder"] is None
     assert calls["group_offload"]["offload_type"] == "block_level" and "model_offload" not in calls
-    assert ("vae", "device:cuda") in calls["moved"]
+    assert ("vae", "device:cuda") in calls["moved"] and "pipeline_to" not in calls
+    assert calls["encoded_on"] == "cpu"                                     # UMT5 overflows in fp16
     assert calls["scheduler"] == ("unipc", {"solver_order": 1, "disable_corrector": [0, 1, 2, 3], "flow_shift": 5.0})
 
 
-def test_the_small_finish_loads_whole_and_offloads_by_model(tmp_path, monkeypatch):
+def test_on_an_a100_the_whole_finish_sits_on_the_gpu_as_the_stills_engine_does(tmp_path, monkeypatch):
+    proj = copy_project(tmp_path)
+    calls = _finish_engine(monkeypatch, steps.finish_config(proj, "ai_finish_720"), gpu_gb=40.0, capability=(8, 0))
+    assert calls["pipeline_to"] == "cuda" and "group_offload" not in calls and "model_offload" not in calls
+    assert calls["encoded_on"] == "cuda"                                    # seconds instead of minutes
+    assert calls["single_file"][1]["quantization_config"] == ("gguf", "bf16")
+    small = _finish_engine(monkeypatch, steps.finish_config(proj), gpu_gb=40.0, capability=(8, 0))
+    assert small["pipeline_to"] == "cuda" and "gguf" not in small
+
+
+def test_a_missing_gguf_repo_falls_back_to_the_next(tmp_path, monkeypatch):
+    proj = copy_project(tmp_path)
+    calls = _finish_engine(monkeypatch, steps.finish_config(proj, "ai_finish_720"), gguf_in="lym00")
+    assert [r for r, _ in calls["gguf"]] == ["QuantStack/Wan2.1_T2V_14B_LightX2V_StepCfgDistill_VACE-GGUF",
+                                            "lym00/Wan2.1_T2V_14B_LightX2V_StepCfgDistill_VACE-GGUF"]
+    assert calls["single_file"][0].startswith("/lym00")
+
+
+def test_the_small_finish_loads_whole_and_offloads_by_model_on_a_t4(tmp_path, monkeypatch):
     proj = copy_project(tmp_path)
     calls = _finish_engine(monkeypatch, steps.finish_config(proj))
     assert calls["snapshot"] == ("Wan-AI/Wan2.1-VACE-1.3B-diffusers", [])
     assert "gguf" not in calls and "transformer" not in calls["pipeline"][1]
-    assert calls["model_offload"] and "group_offload" not in calls
+    assert calls["model_offload"] and "group_offload" not in calls and calls["encoded_on"] == "cpu"
     assert calls["scheduler"] == ("unipc", {"flow_shift": 3.0})
 
 
@@ -460,3 +503,23 @@ def test_a_finish_test_kaggle_will_not_start_says_why(tmp_path):
                ["depth"], tmp_path / "work", poll=0, sleep=lambda s: None)
     assert "GPU session count" in r["error"] and r["statuses"] == ["not started"]
     assert not r["jobs"]["ai_finish/depth"]["ok"] and f"{r['test']}-summary.json" in fr.names()
+
+
+@needs_ffmpeg
+def test_the_finish_hands_the_pipeline_its_prompt_on_the_pipelines_device(tmp_path, monkeypatch):
+    pytest.importorskip("numpy")
+    pytest.importorskip("PIL")
+    proj = copy_project(tmp_path)
+    clip = _guide(proj)
+    refs = steps.finish_refs(proj, proj.shot(SHOT), steps.finish_config(proj))
+    shutil.copyfile(clip, tmp_path / "guide.mp4")
+    shutil.copyfile(refs[0], tmp_path / "still.png")
+    calls = _finish_engine(monkeypatch, steps.finish_config(proj), gpu_gb=40.0, capability=(8, 0))
+    job = {"key": "k", "seconds": 3, "control": "guide.mp4", "refs": ["still.png"], "prompt": "a prompt"}
+    info = calls["engine"].run(job, tmp_path, tmp_path / "out.mp4")
+    kw = calls["calls"][0]
+    assert kw["prompt_embeds"] == ("a prompt", "cuda:0")                 # given embeddings: moved here, not there
+    assert kw["negative_prompt_embeds"] == ("a negative", "cuda:0")
+    assert len(kw["video"]) == kw["num_frames"] == 49 and len(kw["reference_images"]) == 1
+    assert (kw["width"], kw["height"], kw["num_inference_steps"]) == (832, 480, 30)
+    assert info["frames"] == 49 and (tmp_path / "out.mp4").exists()
