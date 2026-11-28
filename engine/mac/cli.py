@@ -19,12 +19,12 @@ from pathlib import Path
 
 from ..log import set_file
 from ..providers.release import Release
-from .common import WORK, log
+from .runtime.shared import WORK, log
 from .config import settings, with_engine_set
-from .engines import build
-from .selftest import key_art_prompt, self_test, video_test
-from .train import LOCAL_LORAS, train_lora
-from .worker import worker_loop
+from .generators import build
+from .worker.selftest import key_art_prompt, self_test, video_test
+from .training.lora import LOCAL_LORAS, train_lora
+from .worker.loop import worker_loop
 
 
 def add_arguments(a: argparse.ArgumentParser) -> None:

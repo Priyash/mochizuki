@@ -10,11 +10,11 @@ from pathlib import Path
 import pytest
 
 from engine.mac import config as mc
-from engine.mac import train as mt
-from engine.mac.engines import Engines, StubImageEngine, StubVideoEngine, build, lora_args, segments
-from engine.mac.engines import video as mv
-from engine.mac.engines.image import lora_triggers
-from engine.mac.process import run_streaming
+from engine.mac.training import lora as mt
+from engine.mac.generators import Engines, StubImageEngine, StubVideoEngine, build, lora_args, segments
+from engine.mac.generators import video as mv
+from engine.mac.generators.image import lora_triggers
+from engine.mac.runtime.tools import run_streaming
 
 FAKE_WAN = textwrap.dedent('''
     import sys, time, subprocess
@@ -191,7 +191,7 @@ def test_streaming_logs_steps_and_other_output(tmp_path, capsys):
 
 def test_an_old_picture_is_never_taken_for_a_new_one(tmp_path, monkeypatch):
     """mflux saves <name>_2.png when <name>.png exists; the engine must end up with the new picture."""
-    from engine.mac.engines import image as mi
+    from engine.mac.generators import image as mi
     fake = tmp_path / "mflux-generate-z-image-turbo"
     fake.write_text(f"#!{sys.executable}\n" + textwrap.dedent('''
         import sys, shutil

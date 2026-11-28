@@ -12,11 +12,11 @@ import tempfile
 import time
 from pathlib import Path
 
-from ...generators import wan_frames as frames_for  # noqa: F401 - engine.mac.engines exports it
+from ...generators import wan_frames as frames_for  # noqa: F401 - engine.mac.generators exports it
 from ...generators import wan_segments as segments
-from ..common import MODELS, ffmpeg_exe, log, seed_for
-from ..models import resolve_cmd
-from ..process import run_streaming
+from ..runtime.shared import MODELS, ffmpeg_exe, log, seed_for
+from ..runtime.downloads import resolve_cmd
+from ..runtime.tools import run_streaming
 from .base import check_video
 
 

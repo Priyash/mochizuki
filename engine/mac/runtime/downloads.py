@@ -15,8 +15,8 @@ import threading
 import time
 from pathlib import Path
 
-from .common import log
-from .sysinfo import dir_gb
+from .shared import log
+from .health import dir_gb
 
 WEIGHTS = (".safetensors", ".npz", ".gguf")
 QWEN_LAYOUT = ("transformer/", "text_encoder/", "vae/", "tokenizer/")   # what mflux loads from a local folder

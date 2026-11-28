@@ -223,7 +223,7 @@ engine/scheduler/        the producer loop, and one batch's life: build, submit,
 engine/providers/        where GPU work runs, behind one interface: kaggle/, colab/ (cloud), mac.py (offline)
 engine/cgi/              the 3D CG pipeline: acting/, staging/, plan, render/
 engine/audio/            sound: voice, dialogue, lip sync, subtitles, mix
-engine/mac/              the Mac worker (offline)
+engine/mac/              the Mac (offline): generators/, runtime/, worker/, training/
 worker/worker.py         runs on Kaggle and Colab: stills, keyframes, Wan takes, 4K upscale
 films/mochizuki/         this film
   shots.csv              the shot sheet: 138 shots, 600 s

@@ -7,7 +7,7 @@ import subprocess
 from typing import Any
 from pathlib import Path
 
-from .common import log
+from .shared import log
 
 
 def _sh(*args: str) -> str:

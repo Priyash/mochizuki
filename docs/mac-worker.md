@@ -126,18 +126,18 @@ send that file when something fails. `MOCHI_RAW=1` shows the tools' own output i
 
 ## How the code is laid out (`engine/mac/`)
 
-| Module | Its one job |
+| Part | Its one job |
 |---|---|
 | `config.py` | settings and engine sets |
-| `common.py` | structured log, seeds, paths, ffmpeg |
-| `sysinfo.py` | what the Mac has, and how it is coping |
-| `models.py` | model downloads with progress, and checks before use |
-| `process.py` | running a model tool and turning its output into log lines |
-| `engines/` | `image.py` (mflux), `video.py` (mlx-video), `base.py` (checks, stand-ins), router in `__init__.py` |
-| `worker.py` | claim a batch, render it, upload results |
-| `selftest.py` | the checks above |
-| `train.py` | LoRA training |
-| `backend.py` | the producer's side of the Mac backend |
+| `generators/` | `image.py` (mflux), `video.py` (mlx-video), `base.py` (checks, stand-ins), the router in `__init__.py` |
+| `runtime/shared.py` | the workspace folders, structured log, ffmpeg, a stand-in PNG |
+| `runtime/downloads.py` | model downloads with progress, and checks before use |
+| `runtime/tools.py` | running a model tool and turning its output into log lines |
+| `runtime/health.py` | what the Mac has, and how it is coping |
+| `worker/loop.py` | claim a batch, render it, upload results |
+| `worker/selftest.py` | the checks above |
+| `training/lora.py` | LoRA training |
 | `cli.py` | the `mac-worker` command |
 
+The producer's side of the Mac (the Mac as a provider) is `engine/providers/mac.py`.
 The producer and the Mac talk only through the `batches` release (`engine/providers/release.py`).

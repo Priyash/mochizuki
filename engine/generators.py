@@ -6,7 +6,7 @@ best model for a job can change with a config edit; `config` says where. `setup`
 or downloads before it runs, `needs` what a GPU must have, `runs_on` where it can run.
 
 Where the code is: GPU generators live in the worker (worker/worker.py, the one file every cloud
-provider runs; its GENERATORS use these names) and, for the Mac, in engine/mac/engines. The others
+provider runs; its GENERATORS use these names) and, for the Mac, in engine/mac/generators. The others
 run on any CPU: the 3D render (engine/cgi) and sound (engine/audio).
 
 Also here: small rules the generators share, so they are written once (the worker keeps its own
@@ -45,13 +45,13 @@ class Generator:
 CATALOG: dict[str, Generator] = {g.name: g for g in (
     Generator("refs", IMAGE, "refs", "engines.refs", (GPU,), needs=frozenset({BF16}),
               setup="the worker's GPU packages; Qwen-Image (GGUF) from Hugging Face",
-              code="worker/worker.py QwenStills; Mac: engine/mac/engines/image.py"),
+              code="worker/worker.py QwenStills; Mac: engine/mac/generators/image.py"),
     Generator("keyframe", IMAGE, "keyframes", "engines.keyframe", (GPU,), needs=frozenset({BF16}),
               setup="the worker's GPU packages; Qwen-Image-Edit (GGUF) from Hugging Face",
-              code="worker/worker.py QwenKeyframes; Mac: engine/mac/engines/image.py"),
+              code="worker/worker.py QwenKeyframes; Mac: engine/mac/generators/image.py"),
     Generator("video", VIDEO, "video", "engines.<the shot's model in shots.csv>", (GPU,),
               setup="the worker's GPU packages; Wan 2.2 (5B, or 14B as GGUF) from Hugging Face",
-              code="worker/worker.py WanVideo; Mac: engine/mac/engines/video.py"),
+              code="worker/worker.py WanVideo; Mac: engine/mac/generators/video.py"),
     Generator("upscale", UPSCALE, "upscale", "engines.upscale", (GPU,),
               setup="the worker's GPU packages; Real-ESRGAN and Real-CUGAN weights",
               code="worker/worker.py Upscale4K"),

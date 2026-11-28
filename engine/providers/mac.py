@@ -1,7 +1,7 @@
 """The Mac as a provider: your own Apple Silicon machine, offline and free.
 
 A batch for the Mac waits in the `batches` release until `python -m engine mac-worker`, running on the
-Mac, takes it (engine/mac/worker.py). It is used only when the film's config switches mac.enabled on.
+Mac, takes it (engine/mac/worker/loop.py). It is used only when the film's config switches mac.enabled on.
 """
 from __future__ import annotations
 

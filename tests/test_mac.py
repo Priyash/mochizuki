@@ -9,10 +9,10 @@ from pathlib import Path
 
 from engine import scheduler as sched
 from engine.mac.config import settings as mac_settings
-from engine.mac.engines import StubImageEngine
-from engine.mac.models import resolve_cmd
-from engine.mac.selftest import self_test
-from engine.mac.worker import worker_loop
+from engine.mac.generators import StubImageEngine
+from engine.mac.runtime.downloads import resolve_cmd
+from engine.mac.worker.selftest import self_test
+from engine.mac.worker.loop import worker_loop
 from engine.providers.kaggle import LocalKaggle
 from engine.providers.mac import MacProvider
 from engine.providers.release import Release

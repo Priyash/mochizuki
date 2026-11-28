@@ -10,8 +10,8 @@ import time
 from typing import Any
 from pathlib import Path
 
-from .common import log
-from .sysinfo import describe
+from ..runtime.shared import log
+from ..runtime.health import describe
 
 EDIT_PROMPT = ("Low-angle shot from floor level, camera looking up at the two of them; same place, same people, "
                "same clothes, now at dusk.")
