@@ -32,6 +32,9 @@ on:
       - "films/*/style_bible/sets.json"
       - "films/*/style_bible/lights.json"
       - "films/*/style_bible/dialogue.json"
+      - "films/*/style_bible/arc.json"      # drafted shots take their feeling from the arc
+      - "films/*/style_bible/culture.json"  # display rules shape every sheet's beats
+      - "films/*/style_bible/scenes.json"   # which set, light and continuity a shot belongs to
       - "films/*/config.json"           # the cast (cgi.characters) and the 3D settings
       - "films/*/shots.csv"
       - "engine/cgi/**"
