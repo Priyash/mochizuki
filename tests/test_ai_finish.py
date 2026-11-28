@@ -325,13 +325,8 @@ class _KaggleHere:
         shutil.copytree(self.tmp / "working", dest, dirs_exist_ok=True)
 
 
-@needs_ffmpeg
-def test_a_finish_test_runs_one_shot_outside_the_ledger_and_lays_it_beside_the_render(tmp_path):
-    pytest.importorskip("PIL")
-    from test_mac import FakeRelease
-
-    from engine.providers.kaggle import finish_test as ft
-    from engine.providers.release import Release
+def _rendered(tmp_path):
+    """A film with shot 1-05 rendered: its 3D render and both guides."""
     (tmp_path / "film").mkdir()
     proj = copy_project(tmp_path / "film")
     for control in ("depth", "lines"):
@@ -339,24 +334,112 @@ def test_a_finish_test_runs_one_shot_outside_the_ledger_and_lays_it_beside_the_r
     render = cgi_config.work_dir(proj, cgi_config.settings(proj), SHOT) / f"{SHOT}.mp4"   # the 3D render itself
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "smptebars=size=320x180:rate=24",
                     "-t", "3", "-pix_fmt", "yuv420p", str(render)], check=True)
+    return proj
+
+
+@needs_ffmpeg
+def test_a_finish_test_runs_one_shot_outside_the_ledger_and_lays_it_beside_the_render(tmp_path):
+    pytest.importorskip("PIL")
+    from test_mac import FakeRelease
+
+    from engine.providers.kaggle import finish_test as ft
+    from engine.providers.release import Release
+    proj = _rendered(tmp_path)
     fr = FakeRelease(tmp_path / "release")
     kaggle = _KaggleHere(fr.dir, tmp_path / "kaggle")
-    r = ft.run(proj, kaggle, Release("o/r", gh=fr.gh, tag=ft.RELEASE), SHOT, "ai_finish_720", ["depth", "lines"],
+    r = ft.run(proj, kaggle, Release("o/r", gh=fr.gh, tag=ft.RELEASE), SHOT, ["ai_finish_720"], ["depth", "lines"],
                tmp_path / "work", minutes=120, poll=0, sleep=lambda s: None)
-    assert set(r["jobs"]) == {"depth", "lines"} and all(j["ok"] for j in r["jobs"].values()), r
-    assert r["jobs"]["depth"]["size"] == "1280x720" and r["engine"] == "ai_finish_720"
+    assert set(r["jobs"]) == {"ai_finish_720/depth", "ai_finish_720/lines"}, r
+    assert all(j["ok"] for j in r["jobs"].values()), r
+    assert r["jobs"]["ai_finish_720/depth"]["size"] == "1280x720" and r["backend"] == "kaggle"
+    assert r["engines"] == {"ai_finish_720": "Wan-AI/Wan2.1-VACE-14B-diffusers"}
     meta, accelerator, timeout = kaggle.pushed[0]
     assert meta["id"] == "tester/film-finish-test" and meta["enable_internet"] == "true"   # its own notebook
     assert accelerator == "NvidiaTeslaT4" and timeout == 120 * 60
     test = r["test"]
     names = set(fr.names())
-    assert {f"{test}-inputs.tar.gz", f"{test}-depth.mp4", f"{test}-depth-side.mp4", f"{test}-depth-middle.png",
-            f"{test}-lines-middle.png", f"{test}-summary.json", f"{test}-worker.jsonl"} <= names
+    assert {f"{test}-inputs.tar.gz", f"{test}-ai_finish_720-depth.mp4", f"{test}-ai_finish_720-depth-side.mp4",
+            f"{test}-ai_finish_720-depth-middle.png", f"{test}-ai_finish_720-lines-middle.png",
+            f"{test}-summary.json", f"{test}-worker.jsonl"} <= names
     assert all(u.startswith(f"https://github.com/o/r/releases/download/{ft.RELEASE}/") for u in r["files"])
     from PIL import Image
-    middle = Image.open(fr.dir / f"{test}-depth-middle.png")
+    middle = Image.open(fr.dir / f"{test}-ai_finish_720-depth-middle.png")
     assert middle.height == 720 and middle.width > 2 * 1280                         # render, finish, the still
     assert steps.open_ledger(proj).jobs(SHOT, "finish") == []                         # the ledger never knew
+
+
+class _ColabRunnerHere:
+    """The scheduled Colab runner, run here when the test waits: it takes the waiting batch from the
+    batches release, runs the worker with its stand-in engines and uploads the results as the runner does."""
+
+    def __init__(self, rel, tmp, take=True):
+        self.rel, self.tmp, self.take, self.taken = rel, tmp, take, []
+
+    def __call__(self, seconds):
+        import sys
+        import tarfile
+        names = self.rel.names()
+        for name in names:
+            if not (name.startswith("colab-") and name.endswith(".tar.gz")) or name.endswith(".results.tar.gz"):
+                continue
+            bid = name[len("colab-"):-len(".tar.gz")]
+            if not self.take or f"colab-{bid}.results.tar.gz" in names:
+                continue
+            d = self.tmp / bid
+            with tarfile.open(self.rel.dir / name) as t:
+                t.extractall(d / "in", filter="data")
+            assert not (d / "in" / "worker.py").exists()                         # the runner brings its own
+            shutil.copyfile(WORKER, d / "in" / "worker.py")
+            claim = d / f"colab-{bid}.claim.json"
+            claim.write_text("{}")
+            self.rel.gh(["release", "upload", "batches", str(claim)])
+            subprocess.run([sys.executable, str(d / "in" / "worker.py"), "--manifest", str(d / "in" / "manifest.json"),
+                            "--inputs", str(d / "in"), "--out", str(d / "out"), "--engine-set", "stub",
+                            "--expect-batch", bid], check=True)
+            res = json.loads((d / "out" / "results.json").read_text())
+            res.update(vm_seconds=900, gpu="L4", units_used=0.4)
+            (d / "out" / "results.json").write_text(json.dumps(res))
+            results = d / f"colab-{bid}.results.tar.gz"
+            with tarfile.open(results, "w:gz") as t:
+                t.add(d / "out", arcname="out")
+            self.rel.gh(["release", "upload", "batches", str(results)])
+            self.taken.append(bid)
+
+
+@needs_ffmpeg
+def test_a_finish_test_on_colab_waits_for_the_runner_and_tidies_up(tmp_path):
+    pytest.importorskip("PIL")
+    from test_mac import FakeRelease
+
+    from engine.providers.kaggle import finish_test as ft
+    from engine.providers.release import Release
+    proj = _rendered(tmp_path)
+    fr, fb = FakeRelease(tmp_path / "finish-tests"), FakeRelease(tmp_path / "batches")
+    runner = _ColabRunnerHere(fb, tmp_path / "vm")
+    r = ft.run(proj, None, Release("o/r", gh=fr.gh, tag=ft.RELEASE), SHOT, ["ai_finish", "ai_finish_720"], ["depth"],
+               tmp_path / "work", poll=0, sleep=runner, backend="colab", batches=Release("o/r", gh=fb.gh))
+    assert runner.taken == [r["test"]] and r["backend"] == "colab"             # both engines in one VM session
+    assert set(r["jobs"]) == {"ai_finish/depth", "ai_finish_720/depth"} and all(j["ok"] for j in r["jobs"].values())
+    assert r["jobs"]["ai_finish/depth"]["size"] == "832x480" and r["jobs"]["ai_finish_720/depth"]["size"] == "1280x720"
+    assert (r["gpu"], r["units_used"]) == ("L4", 0.4)                           # what the owner's units paid for
+    assert fb.names() == []                                                     # nothing left for a later run
+    assert {f"{r['test']}-ai_finish-depth-middle.png", f"{r['test']}-ai_finish_720-depth-middle.png"} <= set(fr.names())
+
+
+@needs_ffmpeg
+def test_a_colab_test_no_runner_takes_is_taken_down(tmp_path, monkeypatch):
+    from test_mac import FakeRelease
+
+    from engine.providers.kaggle import finish_test as ft
+    from engine.providers.release import Release
+    proj = _rendered(tmp_path)
+    fr, fb = FakeRelease(tmp_path / "finish-tests"), FakeRelease(tmp_path / "batches")
+    monkeypatch.setattr(ft, "COLAB_PICKUP_MINUTES", -1)                         # the wait is over at once
+    r = ft.run(proj, None, Release("o/r", gh=fr.gh, tag=ft.RELEASE), SHOT, ["ai_finish"], ["depth"],
+               tmp_path / "work", poll=0, sleep=_ColabRunnerHere(fb, tmp_path / "vm", take=False),
+               backend="colab", batches=Release("o/r", gh=fb.gh))
+    assert "no Colab runner took the batch" in r["error"] and not r["jobs"]["ai_finish/depth"]["ok"]
+    assert fb.names() == []                                                     # no unit is spent on it later
 
 
 @needs_ffmpeg
@@ -373,7 +456,7 @@ def test_a_finish_test_kaggle_will_not_start_says_why(tmp_path):
     proj = copy_project(tmp_path)
     _guide(proj)
     fr = FakeRelease(tmp_path / "release")
-    r = ft.run(proj, Busy(fr.dir, tmp_path / "k"), Release("o/r", gh=fr.gh, tag=ft.RELEASE), SHOT, "ai_finish",
+    r = ft.run(proj, Busy(fr.dir, tmp_path / "k"), Release("o/r", gh=fr.gh, tag=ft.RELEASE), SHOT, ["ai_finish"],
                ["depth"], tmp_path / "work", poll=0, sleep=lambda s: None)
     assert "GPU session count" in r["error"] and r["statuses"] == ["not started"]
-    assert not r["jobs"]["depth"]["ok"] and f"{r['test']}-summary.json" in fr.names()
+    assert not r["jobs"]["ai_finish/depth"]["ok"] and f"{r['test']}-summary.json" in fr.names()
