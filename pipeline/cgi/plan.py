@@ -14,8 +14,9 @@ import json
 import math
 from pathlib import Path
 
+from . import dialogue
 from . import direction as dirn
-from . import layout, palette, retarget, timing
+from . import figure, layout, palette, retarget, timing
 from .capture import Track, resample, smooth
 from .config import by_chapter, settings, work_dir
 
@@ -50,6 +51,8 @@ def _add(a, b, k=1.0):
 
 # ---------------------------------------------------------------- characters
 def character_entries(p, cfg: dict, d, chapter: int, the_set: dict) -> list[dict]:
+    """Who is in the shot, where, in what posture, and as what: a model file if there is one, else a
+    procedural anime figure (pipeline/cgi/figure.py) whose joints the camera and eyelines use."""
     out = []
     for i, name in enumerate(d.characters):
         spec = cfg["characters"].get(name, {})
@@ -60,13 +63,21 @@ def character_entries(p, cfg: dict, d, chapter: int, the_set: dict) -> list[dict
         height = by_chapter(spec.get("height_m", {}), chapter, 1.5)
         model = by_chapter(spec.get("model", {}), chapter, "") or ""
         model_path = (p.root / model) if model else None
+        has_model = bool(model_path and model_path.exists())
+        look = dict(by_chapter(spec.get("look", {}), chapter, {}) or {})
+        fig = None
+        stand_in = cfg.get("stand_in", "anime")
+        if not spec.get("procedural") and not has_model and stand_in == "anime":
+            arms = "front" if d.camera.subject == f"{name}:hands" and posture in ("standing", "walking") else ""
+            fig = figure.skeleton(height, float(look.get("age", 30)), posture, arms=arms)
         out.append({"name": name, "at": list(mark["at"]), "yaw": float(mark.get("yaw", 0)), "posture": posture,
                     "height": height, "colour": spec.get("colour", [0.5, 0.5, 0.5]),
                     "hair": spec.get("hair", [0.1, 0.1, 0.1]),
                     "procedural": spec.get("procedural", ""),
-                    "model": str(model_path) if model_path and model_path.exists() else "",
+                    "model": str(model_path) if has_model else "",
                     "model_wanted": model, "face_names": spec.get("face_names", {}),
-                    "eye_height_m": spec.get("eye_height_m", {})})
+                    "eye_height_m": spec.get("eye_height_m", {}), "look": look, "figure": fig,
+                    "stand_in": stand_in})
     return out
 
 
@@ -75,12 +86,16 @@ def head_point(c: dict) -> list[float]:
     by posture) win over the anime-proportion defaults."""
     if c.get("procedural") == "lantern":
         return [c["at"][0], c["at"][1], c["at"][2] + 1.1]
+    if c.get("figure"):
+        return figure.to_world(c["figure"]["eyes"], c["at"], c["yaw"])
     eye = (c.get("eye_height_m") or {}).get(c["posture"])
     z = eye if eye else c["height"] * POSTURE_HEAD.get(c["posture"], 0.9)
     return [c["at"][0], c["at"][1], c["at"][2] + z]
 
 
 def hands_point(c: dict) -> list[float]:
+    if c.get("figure"):
+        return figure.to_world(c["figure"]["hands"], c["at"], c["yaw"])
     f = layout.facing_vec(c["yaw"])
     reach = 0.28 * c["height"] / 1.45
     return [c["at"][0] + f[0] * reach, c["at"][1] + f[1] * reach,
@@ -140,7 +155,46 @@ def gaze_curves(d, me: dict, chars: dict, props: dict, cam: list[float], frames:
             "eyes.yaw": eyes_y, "eyes.pitch": eyes_p}
 
 
-def face_track(p, cfg: dict, d, me: dict, frames: int, fps: int, gaze: dict, shot_dir: Path) -> dict:
+MOUTHS = ("Fcl_MTH_A", "Fcl_MTH_I", "Fcl_MTH_U", "Fcl_MTH_E", "Fcl_MTH_O")
+
+
+def talking(manifest: dict | None, who: str, frames: int) -> dict:
+    """This character's lip-sync curves in the shot (from cgi voices), summed over their on-screen lines."""
+    out: dict = {}
+    for ln in (manifest or {}).get("lines", []):
+        if ln["who"] != who or not ln.get("on_screen", True):
+            continue
+        for ch, vals in ln["mouth"].items():
+            row = out.setdefault(ch, [0.0] * frames)
+            for i in range(min(frames, len(vals))):
+                row[i] = max(row[i], vals[i])
+    return out
+
+
+def overlay_talk(channels: dict, talk: dict) -> dict:
+    """The voice drives the mouth while someone speaks; the feeling still shows around it. For Akari
+    the voice is light: its glow pulses as it speaks."""
+    if not talk:
+        return channels
+    voice = talk.get("voice", [])
+    if "akari.glow" in channels:
+        channels["akari.glow"] = [g + 0.6 * (voice[i] if i < len(voice) else 0.0)
+                                  for i, g in enumerate(channels["akari.glow"])]
+        return channels
+    n = len(next(iter(channels.values()))) if channels else len(voice)
+    speaking = [i < len(voice) and voice[i] > 0.18 for i in range(n)]
+    for ch in MOUTHS:
+        base = channels.get(ch, [0.0] * n)
+        flap = talk.get(ch, [0.0] * n)
+        channels[ch] = [flap[i] if speaking[i] else base[i] for i in range(n)]
+    for ch in ("Fcl_MTH_Joy", "Fcl_MTH_Sorrow", "Fcl_MTH_Angry", "Fcl_MTH_Surprised"):
+        if ch in channels:
+            channels[ch] = [v * (0.6 if speaking[i] else 1.0) for i, v in enumerate(channels[ch])]
+    return channels
+
+
+def face_track(p, cfg: dict, d, me: dict, frames: int, fps: int, gaze: dict, shot_dir: Path,
+               talk: dict | None = None) -> dict:
     """Per-frame face channels for one character: a captured performance if there is one
     (media/cgi/<shot>/face-<name>.json, from `cgi capture`), with the anime layer from the
     beats on top; else the beats alone. Returns {channel: [values]}."""
@@ -150,7 +204,7 @@ def face_track(p, cfg: dict, d, me: dict, frames: int, fps: int, gaze: dict, sho
     if me.get("procedural") == "lantern":
         wob = timing.wobble(frames, fps, seed_for(d.shot + "bob"), 0.03)
         tr = retarget.lantern_channels(curves, frames, wob)
-        return {**{n: tr.channel(n) for n in tr.names}, "_source": "beats"}
+        return {**overlay_talk({n: tr.channel(n) for n in tr.names}, talk or {}), "_source": "beats"}
     emo = retarget.emotion_face(curves, blink)
     captured = shot_dir / f"face-{me['name']}.json"
     source = "beats"
@@ -172,9 +226,10 @@ def face_track(p, cfg: dict, d, me: dict, frames: int, fps: int, gaze: dict, sho
         if n.startswith("Fcl_EYE_Close"):
             continue                                       # blinks stay on ones: snappy
         channels[n] = [v[0] for v in timing.timed(vals, {1: "ones", 2: "twos", 3: "threes"}.get(on, "twos"))]
+    channels = overlay_talk(channels, talk or {})
     if me.get("face_names"):
         channels = {me["face_names"].get(n, n): v for n, v in channels.items()}
-    channels["_source"] = source
+    channels["_source"] = source + ("+voice" if talk else "")
     return channels
 
 
@@ -460,9 +515,10 @@ def build(p, shot_id: str, preview: bool = False, frames_only: tuple[int, int] |
                              "posture": mark.get("posture", "standing"),
                              "height": by_chapter(spec.get("height_m", {}), s.chapter, 1.5),
                              "procedural": spec.get("procedural", "")}
+    spoken = dialogue.shot_manifest(p, shot_id)
     for c in chars.values():
         gaze = gaze_curves(d, c, seen_by, props, cam["keys"][0]["loc"], frames, fps)
-        c["face"] = face_track(p, cfg, d, c, frames, fps, gaze, shot_dir)
+        c["face"] = face_track(p, cfg, d, c, frames, fps, gaze, shot_dir, talking(spoken, c["name"], frames))
         if d.camera.framing in ("ECU", "CU", "MCU") and cam["subject"] == c["name"]:
             follow_head(cam, c)
     tag = "preview" if preview else "final"
@@ -475,6 +531,7 @@ def build(p, shot_id: str, preview: bool = False, frames_only: tuple[int, int] |
         "outline_px": cfg["outline_px"], "blackout": d.blackout,
         "rig": rig, "pieces": pieces, "props": list(props.values()), "characters": list(chars.values()),
         "camera": cam, "timing": d.timing, "notes": d.notes, "cheated_out": hidden,
+        "audio": (spoken or {}).get("audio", {}),
         "output": {"dir": str(shot_dir), "frames": str(shot_dir / f"frames-{tag}-{res[0]}x{res[1]}"),
                    "blend": str(shot_dir / f"{shot_id}.blend")},
     }

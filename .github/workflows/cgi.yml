@@ -1,0 +1,199 @@
+# The 3D CG pipeline, unattended (docs/cgi-pipeline.md):
+#   voices  every line voiced with Kokoro-82M on a CPU, fitted into its shot and lip-synced
+#   render  the chapter's shots built and rendered with Blender (the bpy module; EEVEE on Mesa's software
+#           OpenGL), split across eight runners; a shot whose plan has not changed is not rendered again
+#   finish  the storyboard, the cut with its dialogue tracks and subtitles, and the review sheet,
+#           uploaded to the release cgi-chN for Claude's review and the owner
+# Runs when acting sheets, sets, lights, dialogue or the CG code change on main, or by hand.
+name: cgi
+on:
+  workflow_dispatch:
+    inputs:
+      chapter:
+        description: "Chapter (1-5)"
+        default: "1"
+      size:
+        description: "Render size, WxH"
+        default: "640x360"
+      engine:
+        description: "Voice engine for every line (blank: as in dialogue.json; stub: a test tone, no model)"
+        default: ""
+      shots:
+        description: "Only these shots, comma-separated (blank: the whole chapter)"
+        default: ""
+      force:
+        description: "Render every shot again, changed or not"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - "style_bible/acting.json"
+      - "style_bible/sets.json"
+      - "style_bible/lights.json"
+      - "style_bible/dialogue.json"
+      - "pipeline/cgi/**"
+      - ".github/workflows/cgi.yml"
+concurrency:
+  group: cgi-ch${{ inputs.chapter || '1' }}
+  cancel-in-progress: true
+permissions:
+  contents: write
+env:
+  CHAPTER: ${{ inputs.chapter || '1' }}
+  SIZE: ${{ inputs.size || '640x360' }}
+  ENGINE: ${{ inputs.engine }}
+  SHOTS: ${{ inputs.shots }}
+  FORCE: ${{ inputs.force && '--force' || '' }}
+  SHARDS: "8"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  voices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg espeak-ng
+      - name: Kokoro (CPU)
+        if: env.ENGINE != 'stub'
+        run: |
+          pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -q -r pipeline/cgi/tts/requirements.txt
+      - name: The Japanese dictionary (cached)
+        if: env.ENGINE != 'stub'
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.pythonLocation }}/lib/python3.12/site-packages/unidic/dicdir
+          key: unidic-dicdir-v1
+      - name: Fetch the dictionary if it is not cached
+        if: env.ENGINE != 'stub'
+        run: |
+          python -c "import os, sys, unidic; sys.exit(0 if os.path.exists(os.path.join(unidic.DICDIR, 'mecabrc')) else 1)" \
+            || python -m unidic download
+      - name: Voiced lines and the Kokoro model (cached; only changed lines are voiced again)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface
+            media/cgi/voices
+          key: cgi-voices-${{ hashFiles('style_bible/dialogue.json', 'pipeline/cgi/voice.py', 'pipeline/cgi/tts/*') }}
+          restore-keys: cgi-voices-
+      - name: Voice the chapter
+        run: |
+          python -m pipeline cgi auto --chapter "$CHAPTER" --stage voices \
+            ${ENGINE:+--engine "$ENGINE"} ${SHOTS:+--shots "$SHOTS"}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voices
+          path: |
+            media/cgi/*/dialogue.json
+            media/cgi/*/audio-*.wav
+          if-no-files-found: ignore
+          retention-days: 7
+
+  render:
+    needs: voices
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pipeline/cgi/blender/requirements.txt
+      - name: Blender (bpy) and software OpenGL
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ffmpeg libegl1 libegl-mesa0 libgl1 libgl1-mesa-dri libglx-mesa0 libgbm1 \
+            libxkbcommon0 libsm6 libxi6 libxxf86vm1 libxfixes3 libxrender1
+          pip install -q -r pipeline/cgi/blender/requirements.txt
+          python -c "import bpy; print('bpy', bpy.app.version_string)"
+      - name: Earlier renders of this shard (unchanged shots are skipped)
+        uses: actions/cache@v4
+        with:
+          path: |
+            media/cgi/[0-9]-*
+            !media/cgi/**/*.blend
+            !media/cgi/**/*.blend1
+          key: cgi-render-ch${{ env.CHAPTER }}-${{ env.SIZE }}-s${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: cgi-render-ch${{ env.CHAPTER }}-${{ env.SIZE }}-s${{ matrix.shard }}-
+      - name: This run's voices
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: voices
+          path: media/cgi
+      - name: Render shard ${{ matrix.shard }} of ${{ env.SHARDS }}
+        run: |
+          export BLENDER="$(which python)"
+          python -m pipeline cgi auto --chapter "$CHAPTER" --stage render --shard "${{ matrix.shard }}/$SHARDS" \
+            --size "$SIZE" --prune $FORCE ${SHOTS:+--shots "$SHOTS"}
+      - name: Keep this shard's log
+        if: always()
+        run: |
+          mkdir -p media/cgi/logs
+          if [ -f media/cgi/logs/cgi.jsonl ]; then cp media/cgi/logs/cgi.jsonl "media/cgi/logs/shard-${{ matrix.shard }}.jsonl"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: render-${{ matrix.shard }}
+          path: |
+            media/cgi/*/*.mp4
+            media/cgi/*/render-*.json
+            media/cgi/*/plan-*.json
+            media/cgi/*/frames-*/*.png
+            media/cgi/logs/shard-*.jsonl
+          if-no-files-found: ignore
+          retention-days: 7
+
+  finish:
+    needs: [voices, render]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg fonts-dejavu-core zip
+      - name: The voices
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: voices
+          path: media/cgi
+      - name: The renders
+        uses: actions/download-artifact@v4
+        with:
+          pattern: render-*
+          path: media/cgi
+          merge-multiple: true
+      - name: Board, cut with dialogue and subtitles, review sheet
+        run: python -m pipeline cgi auto --chapter "$CHAPTER" --stage finish
+      - name: Publish to the release cgi-ch${{ env.CHAPTER }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="cgi-ch$CHAPTER"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --prerelease \
+            --title "CG chapter $CHAPTER" \
+            --notes "The 3D CG pipeline's latest round for chapter $CHAPTER: the storyboard, the cut with its dialogue (English and Japanese tracks) and subtitles, the review sheet and the frames it names. Made by .github/workflows/cgi.yml; each run replaces the files."
+          python .github/scripts/cgi_publish.py "$CHAPTER" > files.txt
+          cat files.txt
+          xargs -a files.txt gh release upload "$tag" --clobber
+      - name: Summary
+        if: always()
+        run: python .github/scripts/cgi_publish.py "$CHAPTER" --summary >> "$GITHUB_STEP_SUMMARY" || true

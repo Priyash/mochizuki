@@ -18,7 +18,13 @@ sheets, colour keys and storyboards. See **[docs/cgi-pipeline.md](docs/cgi-pipel
 python -m pipeline cgi check
 python -m pipeline cgi render 1-02 --preview          # the mallet falls into the mortar
 python -m pipeline cgi render --chapter 1 --board     # chapter 1 as a storyboard from the real sets
+python -m pipeline cgi auto --chapter 1               # unattended: voices, renders, board, cut with dialogue
 ```
+
+The characters are made from code (anime bodies, faces and hair for each age, `pipeline/cgi/figure.py` and
+`pipeline/cgi/blender/anime.py`), so no modelling is needed. The dialogue is automated too: every line is voiced in English and Japanese (Kokoro-82M), fitted into its shot, lip-synced
+and subtitled, and the cut carries one audio track per language. GitHub's runners make each chapter
+(`.github/workflows/cgi.yml`) whenever the sheets or lines change.
 
 ## How a shot is made (the generative pipeline)
 

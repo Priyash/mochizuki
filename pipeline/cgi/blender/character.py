@@ -1,9 +1,9 @@
 """Characters in a shot. Runs inside Blender.
 
 With a model file (a VRM from VRoid Studio, through the VRM add-on), the model is placed on
-its mark and its face shape keys play the plan's face channels. Without one, a stand-in
-maquette takes its place: the right height and posture, and a simple face whose eyes, brows
-and mouth still play the same channels, so an animatic shows the acting before the models exist.
+its mark and its face shape keys play the plan's face channels. Without one, the character is
+made from code (blender/anime.py): an anime body, face and hair for its age, playing the same
+channels. The old maquette (a simple stand-in) remains for "stand_in": "maquette".
 Akari is a lantern that acts with its light.
 """
 from __future__ import annotations
@@ -13,32 +13,11 @@ import math
 import bpy
 from mathutils import Vector
 
-from . import props
+from . import anime, props
+from .keys import ch as _ch
+from .keys import key_curve as _key_curve
 
 PROXY_HEAD = {"standing": 0.9, "walking": 0.9, "kneeling": 0.54, "seiza": 0.52}   # the same as plan.POSTURE_HEAD
-
-
-def _key_curve(datablock, path: str, values: list, index: int = -1, frame0: int = 1, step_tol: float = 1e-4):
-    """Keyframe `values` on a property, one key per change (constant interpolation is set by the caller)."""
-    last = None
-    for f, v in enumerate(values):
-        if last is not None and abs(v - last) < step_tol and f + 1 < len(values):
-            continue
-        if index >= 0:
-            getattr(datablock, path)[index] = v
-            datablock.keyframe_insert(path, index=index, frame=frame0 + f)
-        else:
-            if path.startswith('["'):
-                datablock[path[2:-2]] = v
-            else:
-                setattr(datablock, path, v)
-            datablock.keyframe_insert(path, frame=frame0 + f)
-        last = v
-
-
-def _ch(face: dict, name: str, frames: int) -> list:
-    v = face.get(name)
-    return list(v) if isinstance(v, list) else [0.0] * frames
 
 
 # ---------------------------------------------------------------- stand-in
@@ -321,17 +300,24 @@ def vrm(c: dict, frames: int):
     return root
 
 
+def stand_in(kit: props.Kit, c: dict, frames: int):
+    """Without a model: the procedural anime character when the plan has its figure, else the maquette."""
+    if c.get("figure") and c.get("stand_in", "anime") == "anime":
+        return anime.figure(kit, c, frames)
+    return maquette(kit, c, frames)
+
+
 def build(kit: props.Kit, c: dict, frames: int):
     if c.get("procedural") == "lantern":
         root = akari(kit, c, frames)
     elif c.get("model"):
-        root = vrm(c, frames) or maquette(kit, c, frames)
+        root = vrm(c, frames) or stand_in(kit, c, frames)
     else:
-        root = maquette(kit, c, frames)
+        root = stand_in(kit, c, frames)
     if c.get("procedural") == "lantern" or not c.get("model") or root.type != "ARMATURE":
         root.location = c["at"]
         root.rotation_euler = (0, 0, math.radians(c["yaw"]))
     return root
 
 
-__all__ = ["build", "maquette", "akari", "vrm", "pose"]
+__all__ = ["build", "maquette", "stand_in", "akari", "vrm", "pose"]

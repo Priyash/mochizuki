@@ -94,5 +94,33 @@ def assemble(p: Project, led: Ledger, chapter: int, four_k: bool = False) -> dic
     listing.write_text("".join(f"file '{x.name}'\n" for x in parts), encoding="utf-8")
     out = p.media / "animatic" / f"chapter_{chapter}{'_4k' if four_k else ''}.mp4"
     _ff(["-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", str(out)])
+    extra = dialogue_tracks(p, chapter, out) if used["cgi"] else {}
     return {"file": str(out), "size": f"{w}x{h}", "shots": len(parts), "from": used,
-            "seconds": sum(s.seconds for s in p.chapter(chapter))}
+            "seconds": sum(s.seconds for s in p.chapter(chapter)), **extra}
+
+
+def dialogue_tracks(p: Project, chapter: int, video: Path) -> dict:
+    """The automated dialogue under the cut: the primary language as the main audio, the others as extra
+    tracks (YouTube can carry several), plus an .srt per language next to the file."""
+    from .cgi import dialogue  # noqa: PLC0415 - only for the 3D pipeline
+    script = dialogue.load(p)
+    langs = script.get("languages", ["en"])
+    primary = script.get("primary", langs[0])
+    order = [primary] + [x for x in langs if x != primary]
+    tracks = [(x, dialogue.chapter_audio(p, chapter, x)) for x in order]
+    tracks = [(x, t) for x, t in tracks if t]
+    if not tracks:
+        return {}
+    args = ["-i", str(video)]
+    for _, t in tracks:
+        args += ["-i", str(t)]
+    maps = ["-map", "0:v"] + [m for i in range(len(tracks)) for m in ("-map", f"{i + 1}:a")]
+    meta = [m for i, (x, _) in enumerate(tracks) for m in (f"-metadata:s:a:{i}", f"language={'jpn' if x == 'ja' else 'eng'}")]
+    tmp = video.with_suffix(".tmp.mp4")
+    _ff([*args, *maps, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", *meta, "-shortest", str(tmp)])
+    tmp.replace(video)
+    subs = {x: str(dialogue.subtitles(p, chapter, x)) for x in order}
+    for x, f in subs.items():
+        Path(f).replace(video.with_suffix(f".{x}.srt"))
+        subs[x] = str(video.with_suffix(f".{x}.srt"))
+    return {"audio": [x for x, _ in tracks], "subtitles": subs}

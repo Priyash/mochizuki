@@ -93,9 +93,97 @@ in minutes.
 | Blender builder: toon shading that keeps light colour, ink lines at constant screen width, sets and props from code, stand-in actors whose faces act, VRM models posed (arms down, kneeling) and driven by the plan | `blender/` | Run in Blender 5.3 here, including a real VRM model through the VRM add-on |
 | Runner: Blender or a bpy Python, structured logs, frame checks, H.264 or ProRes, storyboard | `render.py`, `cli.py` | Tested, plus one real-Blender test |
 | The cut uses CG renders when `cgi.use_in_cut` is on | `assemble.py` | Tested |
+| Characters made from code: anime bodies, faces and hair for each age (Tsumugi at 7, 27 and 87, Sayo, the child), playing the same face channels as a VRoid model | `figure.py`, `blender/anime.py` | Tested, and rendered in Blender 5.3 here |
+| Dialogue: the script in English and Japanese, voices (Kokoro-82M, or any engine by command), lines fitted into their shot, lip sync, one track per language, subtitles | `dialogue.py`, `voice.py`, `lipsync.py` | Tested with the stub voice. Kokoro runs on the GitHub runners |
+| The chapter unattended: voices, sharded renders that skip unchanged shots, board, cut, review sheet | `auto.py`, `.github/workflows/cgi.yml` | Tested |
 
 Sets exist for scenes 1A (porch, Tsukimi night), 1B (snow) and 1C (the hearth). Any other scene renders on a plain
 floor until its set is written.
+
+## Characters made from code
+
+No modelling is needed either. Without a model file, each character is built from code in every shot, so it is the same
+character everywhere:
+
+* **The body** (`figure.py`, pure Python) has anime proportions for the character's age. A child of 7 is about 4.7 heads
+  tall, with her eyes low in a round face. An adult woman is about 6.6 heads. At 80 and over the body is shorter and
+  rounder, with a bowed back. The joints are worked out for the posture: standing, or kneeling in seiza on the heels
+  with the hands on the lap. For a shot of the hands, the hands are held in front. The shot plan reads the eyes and hands
+  from the same numbers, so the camera frames the face the builder makes.
+* **The clothes** are smooth tubes along those joints (Blender's Skin modifier): a work jacket with sleeves, loose
+  trousers, a sash and a white collar. The grandmother's clothes are rounder, with an apron.
+* **The head** is a sphere with a narrowing jaw and a small chin. Its lighting normals are those of a ball eased
+  towards the front, so light falls on the face in one clean shape, as in anime CG.
+* **The face is drawn on the head:** the parts are flat and never outlined, and they are lit with the skin.
+  * One shader draws both eyes: the white with the lid's shadow on it, an iris dark under the lid and warm below, a
+    pupil, and two catchlights. All of it is clipped to the eye's shape, so the gaze moves inside the eye.
+  * The upper lid is a thick line with a flick at the outer corner. Eyes close over the lower lid, and joy turns
+    them into arches.
+  * Brows, a mouth with shapes for A, I, U, E, O, smile and frown, blush and tears complete the face.
+  * Old faces get lines at the eyes and beside the mouth.
+* **Hair** is a cap whose edge follows the hairline, plus clumps: bangs, side locks, and then a bob, long hair, or
+  combed-back strands into a bun with a hairpin.
+* `cgi.characters.<name>.look` in config.json sets each look by chapter (age, hair style, colours). A VRM file in
+  `assets/characters/` still replaces the character, and `"stand_in": "maquette"` brings back the simple stand-in.
+
+Characters take light and shadow from the set but cast no shadow on themselves: a toon face shadowing itself turns to
+grain. Rendering is also cleaner and faster now. Keys hold until the next one, as the plan intends (twos, hit stops,
+blinks); before this fix, Blender eased between them when run as a module. Screen-space GI is off, and light shadows
+are hard.
+
+## Dialogue, automated
+
+No actors are needed. `style_bible/dialogue.json` holds every line of the film, in English and Japanese, with the
+Japanese reading in kana. Each line also says who speaks, when (its earliest start in the shot), the feeling, how it
+is said, and whether the speaker is on screen. The lines the shot sheet only describes (the meal Sayo lays out in
+1-22, Tsumugi teaching the child in 5-04) and the laughs are written out too.
+
+1. **Voices.** Each character has a voice per language and per age: Tsumugi at 7, 27 and 87 sound different.
+   * The default engine is **Kokoro-82M** (Apache 2.0). It has English and Japanese voices and is fast on a CPU, so
+     it runs on GitHub's free runners as well as the Mac.
+   * Any other engine plugs in as a command (`"engine": "command"`), for example Qwen3-TTS through mlx-audio on the
+     Mac, which takes a direction such as "restrained, holding back tears". The acting sheet's emotion, intensity and
+     restraint are passed to it.
+   * Each voice then gets its own treatment: pitch, and for Akari a hollow, shimmering timbre, like a voice from
+     inside paper. Every line is set to the same loudness (-18 LUFS).
+   * Lines are cached, so a change re-voices only the lines that changed.
+2. **Placing lines.** Lines never overlap, and each starts at its cue or after the line before it, plus a breath.
+   If the lines would run past the cut, they first start earlier, then the breaths shorten, then the speech is sped
+   up by at most 15%. Anything still too long is listed in the review sheet, so the line can be rewritten.
+3. **Lip sync** (kuchipaku). The loudness of the voice opens and closes the mouth, and the vowels give its shape
+   (A, I, U, E, O). For Japanese the vowels come from the kana; for English, from the spelling. The mouth moves in
+   anime's few steps and is held on twos, so it reads as drawn mouth flaps. While a character speaks, their smile
+   or grief softens around the words. Akari has no mouth, so its light pulses as it speaks.
+4. **In the cut.** English is the main audio track and Japanese is a second track; YouTube can carry both. Each
+   language gets an `.srt` file next to the video. Laughs are not subtitled.
+
+```bash
+python -m pipeline cgi voices --chapter 1           # voice, place and lip-sync every line of chapter 1
+python -m pipeline cgi voices 1-11 --engine stub    # a dry run with a test tone instead of a model
+python -m pipeline cgi subtitles --chapter 1        # media/cgi/subs/chapter_1.en.srt and .ja.srt
+```
+
+Kokoro needs `pip install "kokoro>=0.9.4" "misaki[ja]" soundfile` and espeak-ng, on Python 3.10 to 3.12. The model
+downloads once from Hugging Face.
+
+## Automated end to end
+
+`python -m pipeline cgi auto --chapter N` makes a chapter with no one at the keyboard:
+
+1. **Voices:** every line voiced, placed and lip-synced.
+2. **Render:** every shot built and rendered (previews, or `--final` for 4K). A shot whose plan has not changed since
+   its last render is skipped. `--shard 2/8` takes one share of the shots, so several machines can work on one chapter.
+3. **Finish:** the storyboard, the chapter cut with its dialogue tracks and subtitles, and `media/cgi/review-chN.json`.
+   For each shot, the review sheet holds the intent from the acting sheet, three frames to judge, the lines placed in
+   it, and any line that runs over.
+
+`.github/workflows/cgi.yml` runs the three stages on GitHub's free runners, splitting the renders across a matrix of
+machines. It runs when acting sheets, sets, lights, dialogue or the CG code change on `main`, or when started by hand.
+The board, the cut, the subtitles and the review sheet are uploaded to the release `cgi-chN`. Claude reviews them,
+edits the sheets, sets and lines, and pushes, which starts the next round.
+
+Nothing waits for a person. A sheet set to `"status": "hold"` is skipped: that is the owner's veto. Anything that
+costs money (Colab units, a paid model, a cloud GPU) still needs the owner.
 
 ## On the Mac: first run
 
@@ -159,7 +247,7 @@ can copy it into `style_bible/acting.json` and edit it.
 **Phase 2: bodies and words.**
 * Body capture from video: SAM 3D Body on a GPU writes BVH files, which are retargeted to the VRM humanoid. MediaPipe pose
   on the Mac is the fallback.
-* Lip sync from the recorded dialogue: Audio2Face-3D, or visemes from phonemes.
+* Lip sync is done (vowels and loudness). Audio2Face-3D is the upgrade for close-ups that need the full face to speak.
 * Sets for chapters 2–5, the lunar colony and Akari's swarm.
 * Spring-bone hair and sleeves.
 * Physics for the chapter 4 action, where Blender's rigid bodies and low gravity do what video models cannot keep consistent.
@@ -177,7 +265,13 @@ can copy it into `style_bible/acting.json` and edit it.
 * **The acting is only as good as the actor.** Capture gives exactly the performance it is given. For the hero shots, you
   or someone you cast acts them. The procedural beats are for the rest.
 * **Kneeling is approximate** until body capture: arms down, thighs forward, shins folded.
-* **Stand-ins are for timing.** Their faces show when a feeling lands, not what it looks like.
+* **Synthetic voices are not actors.** Kokoro is clear and warm but has a narrow emotional range; it will not cry or
+  break on a word. The quiet lines suit it. For the lines that carry the film (Sayo's "So we made it better", Tsumugi's
+  "No. It's finished."), an engine that takes directions (Qwen3-TTS) or a cast actor will be better, and both plug in
+  without changing anything else.
+* **Characters made from code are simple.** They have mitten hands without fingers, clothes without folds, and hair
+  in clumps. They act, and read as anime characters, but a modelled character (VRoid) or the phase-3 finish pass will
+  look richer. They do not yet hold props: in 1-04 the mallet swings in front of Sayo while her arms hang.
 * **Licences checked:**
   * Blender's output is yours.
   * The VRM add-on is MIT/GPL.
@@ -187,6 +281,7 @@ can copy it into `style_bible/acting.json` and edit it.
   * SAM 3D Body's licence allows commercial use.
   * Audio2Face-3D is under the NVIDIA Open Model License.
   * Wan is Apache 2.0.
+  * Kokoro-82M and its voices are Apache 2.0; its Japanese reader (misaki, pyopenjtalk, UniDic) is BSD-licensed.
   * The sample VRM used to test the importer (Seed-san, VRM Public License) is not in the repository.
 
 ## How it fits the rest

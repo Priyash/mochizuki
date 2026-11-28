@@ -43,6 +43,34 @@ def interpolation(kind: str) -> None:
         pass
 
 
+def _fcurves(action):
+    if getattr(action, "layers", None):                  # Blender 4.4+: layered (slotted) actions
+        for layer in action.layers:
+            for strip in layer.strips:
+                for bag in strip.channelbags:
+                    yield from bag.fcurves
+    else:
+        yield from getattr(action, "fcurves", [])
+
+
+def step_keys(skip: set) -> int:
+    """Every key holds until the next one: the plan already says what each frame shows (twos, hit
+    stops, blinks), so nothing may ease in between. The preference for new keys is not honoured
+    everywhere (bpy as a module ignores it), so this sets it on the keys themselves. The camera,
+    keyed on every frame, is left as it is."""
+    cam_actions = {ob.animation_data.action for ob in bpy.data.objects
+                   if ob.name in skip and ob.animation_data and ob.animation_data.action}
+    n = 0
+    for act in bpy.data.actions:
+        if act in cam_actions:
+            continue
+        for fc in _fcurves(act):
+            for kp in fc.keyframe_points:
+                kp.interpolation = "CONSTANT"
+                n += 1
+    return n
+
+
 def render_settings(plan: dict) -> None:
     sc = bpy.context.scene
     try:
@@ -51,6 +79,11 @@ def render_settings(plan: dict) -> None:
         sc.render.engine = "BLENDER_EEVEE_NEXT" if plan["engine"] == "BLENDER_EEVEE" else plan["engine"]
     if sc.render.engine.startswith("BLENDER_EEVEE"):
         sc.eevee.taa_render_samples = int(plan["samples"])
+        # cel shading wants clean, flat light: no screen-space GI or ray tracing (their noise flips pixels
+        # between the toon bands as grain, and they cost time)
+        for attr, val in (("use_fast_gi", False), ("use_raytracing", False), ("use_gtao", False)):
+            if hasattr(sc.eevee, attr):
+                setattr(sc.eevee, attr, val)
     elif sc.render.engine == "CYCLES":
         sc.cycles.samples = int(plan["samples"])
     sc.render.resolution_x, sc.render.resolution_y = plan["resolution"]
@@ -78,10 +111,12 @@ def lights(rig: dict, blackout: bool) -> None:
         data = bpy.data.lights.new(name, kind)
         data.color = spec.get("color", [1, 1, 1])[:3]
         data.energy = float(spec["energy"])
+        # hard shadows: cel shading wants a clean line, and a soft light's shadow is sampled at random,
+        # which few samples turn into grain where the light sits near a toon band
         if kind == "SUN":
-            data.angle = math.radians(1.0)                 # crisp shadow edges: cel shading wants a line
+            data.angle = math.radians(float(spec.get("angle", 0.0)))
         elif kind in ("POINT", "SPOT"):
-            data.shadow_soft_size = float(spec.get("radius", 0.05))
+            data.shadow_soft_size = float(spec.get("soft", 0.0))
         elif kind == "AREA":
             data.size = float(spec.get("size", 1.0))
         ob = bpy.data.objects.new(name, data)
@@ -147,8 +182,8 @@ def outlines(plan: dict, cam, skip: set) -> int:
     n = 0
     bpy.context.view_layer.update()
     for ob in list(bpy.data.objects):
-        if ob.type != "MESH" or ob.name.split(".")[0] in skip:
-            continue
+        if ob.type != "MESH" or ob.name.split(".")[0] in skip or ob.get("no_ink"):
+            continue                                       # drawn face parts have no ink line
         if any(m and m.node_tree and any(nd.type == "EMISSION" for nd in m.node_tree.nodes) and not
                any(nd.type == "BSDF_DIFFUSE" for nd in m.node_tree.nodes) for m in ob.data.materials):
             continue                                       # lamps and the moon have no ink line
@@ -200,6 +235,7 @@ def build(plan: dict) -> dict:
         con.track_axis = "TRACK_Z"
         con.up_axis = "UP_Y"
     made["outlined"] = outlines(plan, cam, {"sea", "moon", "floor"})
+    made["stepped_keys"] = step_keys({"camera", "camera.target"})
     bpy.context.scene.frame_set(plan["frame_range"][0])
     say("build.done", f"{plan['shot']}: built in {time.time() - t0:.1f} s", seconds=round(time.time() - t0, 1), **made)
     return made

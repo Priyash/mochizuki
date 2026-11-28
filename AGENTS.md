@@ -14,7 +14,7 @@ You are the producer for a ten-minute anime short in a full 3D CG anime style, f
 8. On the first real Kaggle run of an engine, run one shot with `--shot` and wait for the person to look.
 9. If a command exits with code 2 or 3, or reports `needs_human` or `cut_off`, stop and report. Do not work around it.
 10. Do not name a studio, a director or an existing film in any prompt.
-11. The 3D pipeline (docs/cgi-pipeline.md): you may draft and edit acting sheets in `style_bible/acting.json`, sets and light rigs, and run `cgi sheets`, `cgi sheet` and `cgi plan`. Only the owner sets a sheet's `"status"` to `"approved"`, and only the owner runs `cgi render` and `cgi capture` on the Mac. Never commit character models (`.vrm`, `.blend`): the repository is public.
+11. The 3D pipeline (docs/cgi-pipeline.md) runs unattended, and you run it. You may write and edit acting sheets (`style_bible/acting.json`), sets, light rigs and the dialogue script (`style_bible/dialogue.json`), run any `cgi` command except `cgi capture`, and start `.github/workflows/cgi.yml`. Sheets in `"draft"` render like approved ones. A sheet in `"hold"` is the owner's veto: never render it and never change its status. Only the owner sets `"approved"`, and only the owner records a performance (`cgi capture`). Never spend money for it: no paid voice, model or GPU. Never commit character models (`.vrm`, `.blend`) or anyone's recorded voice: the repository is public.
 
 ## The loop for one chapter
 
@@ -44,6 +44,16 @@ When the producer runs on GitHub Actions, you are the reviewer. You never run Ka
 6. Start the producer: `gh api -X POST repos/<owner>/<repo>/actions/workflows/produce.yml/dispatches -f ref=main`. If that is refused, leave it: the producer runs every two hours anyway.
 
 Never write anything else to the state branch, and never comment `/approve` on the issue.
+
+## CG review (the cgi workflow)
+
+Each run of `.github/workflows/cgi.yml` replaces the files on the release `cgi-chN`: `review-chN.json`, `board-chN.png`, `cgi-review-frames-chN.zip`, the cut `chapter_N.mp4` and its `.srt` files. One review round:
+
+1. Download them with `gh api` (the release's assets), and unzip the frames.
+2. For each shot in `review-chN.json`, look at its three frames beside its description, camera and beats. Judge it by "How to review" below, and also: the subject is framed as the sheet says, nothing hides the face that is acting, eyelines meet, light and time of day match the scene, and the feeling of the beat reads in the frame.
+3. Fix what fails at its source, never in the render: the acting sheet, the set, the light rig, or the line. A line listed in `overruns` gets shorter, or its `at` moves earlier. Keep a sheet's `"status"` as it is.
+4. Commit with one line per shot changed and why, and push to `main`. The push starts the next run.
+5. At most three rounds per chapter per day. If a shot still fails after three rounds, stop changing it and list it for the owner with the reason.
 
 ## How to review
 

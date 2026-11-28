@@ -46,6 +46,25 @@ def add_arguments(a: argparse.ArgumentParser) -> None:
     s.add_argument("--size", default="", help="render at this size instead, e.g. 640x360")
     s.add_argument("--board", action="store_true", help="one frame from the middle of each shot, tiled into "
                                                         "a storyboard sheet (with --chapter)")
+    s = sub.add_parser("voices", help="voice the dialogue of a shot or a chapter (text to speech, lip sync, tracks)")
+    s.add_argument("shot", nargs="?")
+    s.add_argument("--chapter", type=int)
+    s.add_argument("--engine", default="", help="override every voice's engine (stub: no model, for tests)")
+    s.add_argument("--languages", default="", help="e.g. en or en,ja (default: dialogue.json languages)")
+    s.add_argument("--python", default="", help="the Python that has kokoro installed (default: this one)")
+    s = sub.add_parser("subtitles", help="write the chapter's .srt files from the voiced lines")
+    s.add_argument("--chapter", type=int, required=True)
+    s = sub.add_parser("auto", help="the whole chapter, unattended: voices, renders, board, cut with sound")
+    s.add_argument("--chapter", type=int, required=True)
+    s.add_argument("--final", action="store_true", help="final 4K frames instead of previews")
+    s.add_argument("--shard", default="0/1", help="this machine's share of the shots, e.g. 2/8")
+    s.add_argument("--stage", default="all", choices=["voices", "render", "finish", "all"])
+    s.add_argument("--engine", default="", help="voice engine override (stub for a dry run)")
+    s.add_argument("--size", default="", help="render size override, e.g. 640x360")
+    s.add_argument("--force", action="store_true", help="re-render shots even if nothing changed")
+    s.add_argument("--shots", default="", help="only these shots, e.g. 1-02,1-11")
+    s.add_argument("--prune", action="store_true",
+                   help="keep only the first, middle and last frame of each render (for runners and caches)")
     s = sub.add_parser("capture", help="a face performance for a shot")
     s.add_argument("shot")
     s.add_argument("source", help="Live Link Face .csv, a saved .json track, or a video")
@@ -156,6 +175,30 @@ def run(p, args) -> int:
         return 0
     if cmd == "capture":
         return capture_cmd(p, args)
+    if cmd == "voices":
+        from . import dialogue  # noqa: PLC0415
+        shots = [args.shot] if args.shot else [s.id for s in p.chapter(args.chapter)] if args.chapter else []
+        if not shots:
+            print("give a shot id, or --chapter N")
+            return 2
+        langs = [x for x in args.languages.split(",") if x] or None
+        done = [dialogue.voice_shot(p, sid, langs, args.engine or None, args.python or None) for sid in shots]
+        print(json.dumps([d for d in done if d.get("lines")], indent=1))
+        return 0
+    if cmd == "subtitles":
+        from . import dialogue  # noqa: PLC0415
+        print(json.dumps({x: str(dialogue.subtitles(p, args.chapter, x))
+                          for x in dialogue.load(p).get("languages", ["en"])}, indent=1))
+        return 0
+    if cmd == "auto":
+        from . import auto  # noqa: PLC0415
+        size = tuple(int(x) for x in args.size.lower().split("x")) if args.size else None
+        a, _, b = args.shard.partition("/")
+        r = auto.run(p, args.chapter, stage=args.stage, final=args.final, shard=(int(a), int(b or 1)),
+                     engine=args.engine or None, size=size, force=args.force,
+                     only=[x.strip() for x in args.shots.split(",") if x.strip()] or None, prune=args.prune)
+        print(json.dumps(r, indent=1, default=str))
+        return 3 if r.get("failed") else 0
     if cmd == "render":
         shots = [args.shot] if args.shot else [s.id for s in p.chapter(args.chapter)] if args.chapter else []
         if not shots:

@@ -109,6 +109,16 @@ def encode(folder: Path, first: int, fps: int, out: Path, crf: int, codec: str =
     return out
 
 
+def mux_audio(clip: Path, wav: Path, offset_s: float = 0.0) -> Path:
+    """Put the shot's dialogue track under its picture (AAC), starting where the frames start."""
+    tmp = clip.with_suffix(".tmp.mp4")
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(clip), "-ss", f"{offset_s:.3f}", "-i", str(wav),
+                    "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest",
+                    str(tmp)], check=True)
+    tmp.replace(clip)
+    return clip
+
+
 def render_shot(p, shot_id: str, preview: bool = False, frames: tuple[int, int] | None = None,
                 no_render: bool = False, codec: str | None = None, timeout: float = 6 * 3600,
                 size: tuple[int, int] | None = None) -> dict:
@@ -141,6 +151,9 @@ def render_shot(p, shot_id: str, preview: bool = False, frames: tuple[int, int] 
         name = name.replace(".mp4", f"-f{first}-{last}.mp4")
     clip = encode(folder, first, plan["fps"], Path(plan["output"]["dir"]) / name,
                   enc["preview_crf"] if preview else enc["crf"], codec or enc.get("codec", "libx264"))
+    track = (plan.get("audio") or {}).get("en") or next(iter((plan.get("audio") or {}).values()), None)
+    if track and Path(track).exists() and clip.suffix == ".mp4":
+        clip = mux_audio(clip, Path(track), (first - 1) / plan["fps"])
     secs = time.time() - t0
     per = [e.get("seconds", 0) for e in events if e.get("event") == "render.frame"]
     result.update({"clip": str(clip), "frames": last - first + 1, "seconds": round(secs, 1),
@@ -156,9 +169,11 @@ def board(p, shots: list[str], chapter: int, cols: int = 4, width: int = 480) ->
     work = Path(cfg["work"]) if Path(cfg["work"]).is_absolute() else p.root / cfg["work"]
     tiles = []
     for sid in shots:
-        pngs = sorted((work / sid).glob("frames-*/*.png"), key=lambda f: f.stat().st_mtime)
-        if pngs:
-            tiles.append((sid, pngs[-1]))                  # the frame rendered last: the board's own
+        folders = sorted((d for d in (work / sid).glob("frames-*") if any(d.glob("*.png"))),
+                         key=lambda d: max(f.stat().st_mtime for f in d.glob("*.png")))
+        if folders:                                        # the newest render; its middle frame
+            pngs = sorted(folders[-1].glob("*.png"))
+            tiles.append((sid, pngs[len(pngs) // 2]))
     if not tiles:
         raise RuntimeError("no frames to put on the board")
     out = work / (f"board-ch{chapter}.png" if chapter else "board.png")

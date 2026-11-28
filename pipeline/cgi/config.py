@@ -22,6 +22,7 @@ DEFAULTS: dict = {
     "encode": {"crf": 12, "preview_crf": 20, "codec": "libx264"},
     "work": "media/cgi",                 # plans, .blend files, frames and clips per shot
     "use_in_cut": False,                 # assemble: prefer a shot's CG render over takes and keyframes
+    "stand_in": "anime",                 # without a model file: "anime" (made from code) or "maquette"
     # Who is who. A missing model file is not an error: the shot uses a stand-in (a maquette
     # with a face that still acts), so layout, timing and emotion can be judged before modelling.
     "characters": {
@@ -29,14 +30,24 @@ DEFAULTS: dict = {
                               "3": "assets/characters/tsumugi-27.vrm", "4": "assets/characters/tsumugi-87.vrm",
                               "5": "assets/characters/tsumugi-87.vrm"},
                     "height_m": {"1": 1.20, "2": 1.26, "3": 1.58, "4": 1.46, "5": 1.46},
-                    "colour": [0.24, 0.30, 0.55], "hair": [0.07, 0.06, 0.09]},
+                    "colour": [0.24, 0.30, 0.55], "hair": [0.07, 0.06, 0.09],
+                    # how the procedural character looks when there is no model (blender/anime.py)
+                    "look": {"1": {"age": 7, "hair_style": "bob", "eyes": [0.36, 0.2, 0.1]},
+                             "2": {"age": 8, "hair_style": "bob", "eyes": [0.36, 0.2, 0.1]},
+                             "3": {"age": 27, "hair_style": "long", "eyes": [0.36, 0.2, 0.1]},
+                             "4": {"age": 87, "hair_style": "bun", "hair_colour": [0.86, 0.86, 0.9],
+                                   "eyes": [0.36, 0.2, 0.1]}}},
         "sayo": {"model": {"1": "assets/characters/sayo.vrm", "2": "assets/characters/sayo.vrm",
                            "3": "assets/characters/sayo-very-old.vrm"},
                  "height_m": {"1": 1.45, "2": 1.45, "3": 1.40},
-                 "colour": [0.42, 0.36, 0.40], "hair": [0.9, 0.9, 0.92]},
+                 "colour": [0.42, 0.36, 0.40], "hair": [0.9, 0.9, 0.92],
+                 "look": {"1": {"age": 78, "hair_style": "bun", "eyes": [0.24, 0.16, 0.12], "sash": [0.3, 0.2, 0.16],
+                                "apron": [0.17, 0.2, 0.33]},
+                          "3": {"age": 90, "hair_style": "bun", "eyes": [0.24, 0.16, 0.12], "sash": [0.3, 0.2, 0.16],
+                                "apron": [0.17, 0.2, 0.33]}}},
         "akari": {"procedural": "lantern", "height_m": {"4": 0.42, "5": 0.42}, "colour": [1.0, 0.72, 0.38]},
         "child": {"model": {}, "height_m": {"4": 1.15, "5": 1.15}, "colour": [0.35, 0.45, 0.40],
-                  "hair": [0.1, 0.08, 0.07]},
+                  "hair": [0.1, 0.08, 0.07], "look": {"4": {"age": 8, "hair_style": "short", "eyes": [0.2, 0.24, 0.3]}}},
     },
     # Continuity that is data, not a drawing: the bowl has one gold seam until 3-06 mends
     # the second crack. Per-shot exceptions go in style_bible/acting.json ("props_state").
