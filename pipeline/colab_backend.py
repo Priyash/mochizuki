@@ -80,13 +80,23 @@ print(f"[job] installing {len(pkgs)} packages", flush=True)
 subprocess.run([sys.executable, "-m", "pip", "install", "-q", *pkgs], check=False)
 cmd = [sys.executable, "/content/in/worker.py", "--manifest", "/content/in/manifest.json", "--inputs", "/content/in",
        "--out", "/content/out", "--engine-set", os.environ.get("MOCHI_ENGINE_SET", "gpu"), "--expect-batch", batch]
+
+def pack():
+    # What the worker has made so far, ready to download at any moment: if the runner loses this
+    # job, it still fetches every finished output. Written aside, then swapped in whole.
+    with tarfile.open("/content/out.tar.part", "w") as t:   # outputs are PNG/MP4: compressing gains nothing
+        if os.path.isdir("/content/out"):
+            t.add("/content/out", arcname="out")
+    os.replace("/content/out.tar.part", "/content/out.tar.gz")
+
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
 for line in p.stdout:                       # streaming keeps the CLI's exec alive and shows progress
     print(line.rstrip(), flush=True)
+    if " ok in " in line or " failed: " in line:
+        pack()
 code = p.wait()
 print(f"[job] worker exit code {code}", flush=True)
-with tarfile.open("/content/out.tar.gz", "w:gz") as t:
-    t.add("/content/out", arcname="out")
+pack()
 print("[job] MOCHI-DONE", flush=True)
 # If the runner never collects and stops us, give the VM back anyway.
 threading.Timer(release_after, release_vm, ["results not collected"]).start()
@@ -234,13 +244,14 @@ class ColabCLI:
             return False
 
 
-def stop_gpu_vms(cli, keep: set | None = None, why: str = "left behind") -> int:
+def stop_gpu_vms(cli, keep: set | None = None, why: str = "left behind") -> int | None:
     """Stop every GPU VM on the account except `keep`: a GPU VM nobody is using still bills units.
-    The account's Colab GPUs belong to this pipeline (docs/colab.md)."""
+    The account's Colab GPUs belong to this pipeline (docs/colab.md). How many it stopped, or None
+    if the account's VMs could not be listed (so nobody can say whether one is running)."""
     found = cli.assignments()
     if found is None:
         _log("could not list the account's Colab VMs", event="vms.list_failed", level="warn")
-        return 0
+        return None
     n = 0
     for a in found:
         acc = str(a.get("accelerator", "")).upper()
@@ -258,9 +269,14 @@ def _wait_cap(cfg: dict) -> float:
 
 def run_remote(cli: ColabCLI, cfg: dict, session: str, inputs_tgz: Path, batch_id: str, out_tgz: Path,
                packages: list[str], engine_set: str = "gpu", beat=None) -> dict:
-    """One VM: open it (first GPU that is granted), run the job, fetch the results, always stop it."""
+    """One VM: open it (first GPU that is granted), run the job, fetch the results, always stop it.
+
+    The result says what really happened, including GPU VMs that came up after their request had
+    given up ("late_vms": they are stopped, but they ran and may have billed) and whether the
+    account's VMs could be checked at all ("vms_unchecked")."""
     gpu = None
     tried = []
+    late, unchecked = 0, False
     before = {a["endpoint"] for a in (cli.assignments() or [])}
     for g in cfg["gpus"]:
         hm = ["--high-mem"] if g in cfg.get("high_mem_gpus", []) else []
@@ -269,15 +285,19 @@ def run_remote(cli: ColabCLI, cfg: dict, session: str, inputs_tgz: Path, batch_i
             gpu = g
             break
         tried.append(_redact(f"{g}: {out.strip().splitlines()[-1] if out.strip() else code}")[:200])
-        stop_gpu_vms(cli, keep=before, why=f"that came up after the {g} request gave up")
+        n = stop_gpu_vms(cli, keep=before, why=f"that came up after the {g} request gave up")
+        late, unchecked = late + (n or 0), unchecked or n is None
     if gpu is None:
-        return {"ok": False, "gpu": None, "error": "no GPU granted: " + "; ".join(tried)}
+        error = "no GPU granted in time: " + "; ".join(tried)
+        if late:
+            error += f" ({late} GPU VM(s) came up late and were stopped)"
+        return {"ok": False, "gpu": None, "late_vms": late, "vms_unchecked": unchecked, "error": error}
     t0 = time.time()
     _log(f"session {session} on {gpu}", event="vm.granted", session=session, gpu=gpu)
     try:
         code, out = cli.run(["upload", "-s", session, str(inputs_tgz), "/content/in.tar.gz"], timeout=1800)
         if code != 0:
-            return {"ok": False, "gpu": gpu, "error": f"upload failed: {out[-300:]}"}
+            return {"ok": False, "gpu": gpu, "late_vms": late, "error": f"upload failed: {out[-300:]}"}
         job = inputs_tgz.parent / "colab_job.py"
         job.write_text(JOB)
         deadline = time.time() + _wait_cap(cfg)
@@ -297,19 +317,42 @@ def run_remote(cli: ColabCLI, cfg: dict, session: str, inputs_tgz: Path, batch_i
 
         code, tail = cli.stream(args, deadline, on_line)
         if "MOCHI-DONE" not in tail:
-            return {"ok": False, "gpu": gpu, "error": f"job did not finish (exit {code}): {tail[-600:]}",
+            # The job re-packs its outputs after every finished job: fetch what it made so far.
+            partial = salvage(cli, session, out_tgz)
+            return {"ok": False, "partial": partial, "gpu": gpu, "late_vms": late,
+                    "error": f"job did not finish (exit {code}): {tail[-600:]}", "seconds": time.time() - t0}
+        if not _download(cli, session, out_tgz):
+            return {"ok": False, "gpu": gpu, "late_vms": late, "error": "download failed twice",
                     "seconds": time.time() - t0}
-        code, out = cli.run(["download", "-s", session, "/content/out.tar.gz", str(out_tgz)], timeout=3600)
-        if code != 0 or not out_tgz.exists():
-            return {"ok": False, "gpu": gpu, "error": f"download failed: {out[-300:]}", "seconds": time.time() - t0}
-        return {"ok": True, "gpu": gpu, "seconds": time.time() - t0}
+        return {"ok": True, "gpu": gpu, "late_vms": late, "seconds": time.time() - t0}
     finally:
         code, out = cli.run(["stop", "-s", session], timeout=300)
         _log(f"session {session} stopped" if code == 0 else f"session {session} stop said: {out.strip()[-200:]}", event="vm.stopped" if code == 0 else "vm.stop_failed", level="info" if code == 0 else "error", session=session)
+        # Anything still up now bills for nothing: a GPU granted late while this one ran, or this
+        # one if `stop` failed.
+        stop_gpu_vms(cli, keep=before, why="still running after the batch")
+
+
+def _download(cli, session: str, out_tgz: Path, tries: int = 2, timeout: int = 3600) -> bool:
+    for _ in range(tries):
+        code, _out = cli.run(["download", "-s", session, "/content/out.tar.gz", str(out_tgz)], timeout=timeout)
+        if code == 0 and out_tgz.exists():
+            return True
+    return False
+
+
+def salvage(cli, session: str, out_tgz: Path) -> bool:
+    """After a run that did not finish, fetch the outputs the job packed so far, before the VM is
+    stopped. False if there was nothing to fetch (the job made nothing, or the VM is gone)."""
+    ok = _download(cli, session, out_tgz, tries=1, timeout=900)
+    _log(f"session {session}: " + ("fetched what the worker had made" if ok else "nothing could be fetched"),
+         event="salvage.done" if ok else "salvage.none", level="info" if ok else "warn")
+    return ok
 
 
 def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[str]) -> str | None:
     """Claim the oldest waiting Colab batch and run it. The batch id, or None if nothing ran."""
+    stop_gpu_vms(cli)            # first, whatever happens: a VM left behind by a run that died still bills
     a = rel.assets()
     waiting = sorted((x for x in a.values() if x["name"].startswith(f"{NAME}-") and x["name"].endswith(".tar.gz")
                       and not x["name"].endswith(".results.tar.gz")), key=lambda x: x.get("created_at", ""))
@@ -317,7 +360,6 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
     if not waiting:
         _log("no Colab batch is waiting", event="batch.none")
         return None
-    stop_gpu_vms(cli)                             # a VM left behind by a run that died still bills: stop it
     bal = cli.balance()
     if bal is not None and bal < float(cfg["min_balance_units"]):
         _log(f"only {bal:.1f} compute units left (minimum {cfg['min_balance_units']}); not starting a VM", event="balance.low", level="warn", balance=bal, minimum=cfg["min_balance_units"])
@@ -386,8 +428,19 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
         r = run_remote(cli, cfg, f"mochi-{batch_id[-11:]}", full, batch_id, out_tgz, packages, beat=beat)
     finally:
         stop.set()
-    if r.get("gpu") is None:                       # no VM opened, nothing billed: the batch waits for the next run
-        _log(f"{batch_id}: {r['error']}; left waiting, nothing billed", event="gpu.none", level="warn", batch=batch_id, billed=0)
+    if r.get("gpu") is None:                       # no GPU in time: the batch waits for the next run
+        if r.get("late_vms"):                      # ... but a VM did come up late: it ran, and may have billed
+            after = cli.balance()
+            used = round(bal - after, 2) if bal is not None and after is not None else None
+            _log(f"{batch_id}: {r['error']}; left waiting. The late VM(s) ran until stopped: "
+                 f"{used if used is not None else 'an unknown number of'} units used",
+                 event="gpu.late", level="warn", batch=batch_id, vms=r["late_vms"], units=used, balance=after)
+        elif r.get("vms_unchecked"):
+            _log(f"{batch_id}: {r['error']}; left waiting. The account's VMs could not be listed, so a late VM "
+                 "can't be ruled out: check the Colab console", event="gpu.unchecked", level="warn", batch=batch_id)
+        else:
+            _log(f"{batch_id}: {r['error']}; left waiting, no VM came up, nothing billed",
+                 event="gpu.none", level="warn", batch=batch_id, billed=0)
         for k in ("claim", "progress"):
             rel.delete(n[k])
         return None
@@ -397,27 +450,54 @@ def take_one(rel: Release, work: Path, cli: ColabCLI, cfg: dict, packages: list[
     _log(f"{batch_id}: {usage['units_used']} units used, balance now {after}", event="units.used", batch=batch_id, units=usage["units_used"], balance=after, gpu=usage["gpu"])
     res_tgz = d / n["results"]
     (d / "out").mkdir(exist_ok=True)
-    if r["ok"]:
-        with tarfile.open(out_tgz) as t:
-            try:
-                t.extractall(d / "res", filter="data")
-            except TypeError:
-                t.extractall(d / "res")
-        found = list((d / "res").rglob("results.json"))
-        rj = json.loads(found[0].read_text(encoding="utf-8")) if found else {"batch_id": batch_id, "jobs": {},
-                                                                              "error": "the worker wrote no results"}
-        base = found[0].parent if found else d / "res"
-    else:                                          # an error result frees the jobs; they do not count against shots
-        _log(f"{batch_id}: {r['error']}", event="batch.failed", level="error", batch=batch_id, gpu=r.get("gpu"))
-        rj, base = {"batch_id": batch_id, "jobs": {}, "error": f"colab: {r['error']}"[:1500]}, d / "out"
+    rj, base = _read_results(out_tgz, d / "res") if (r["ok"] or r.get("partial")) else (None, None)
+    if not r["ok"]:                                # jobs it did not finish are freed; they do not count against shots
+        _log(f"{batch_id}: {r['error']}" + (f"; kept the {len(rj['jobs'])} job(s) it finished" if rj else ""),
+             event="batch.failed", level="error", batch=batch_id, gpu=r.get("gpu"))
+        if rj:                                     # the run's log tail stays out of "error", where a word
+            rj["runner_error"] = r["error"][:1500]  # like "stale" would make the producer drop every output
+            rj["error"] = rj.get("error") or "colab: the run did not finish; the outputs it made were kept"
+    if rj is None:
+        why = r.get("error") or "the worker wrote no results"
+        rj, base = {"batch_id": batch_id, "jobs": {}, "error": f"colab: {why}"[:1500]}, d / "out"
     rj.update(usage)
     (base / "results.json").write_text(json.dumps(rj))
     with tarfile.open(res_tgz, "w:gz") as t:
         t.add(base, arcname="out")
-    rel.upload(res_tgz)
+    _retry(lambda: rel.upload(res_tgz), what=f"upload of {res_tgz.name}")
     _log(f"{batch_id}: results uploaded ({'ok' if r['ok'] else 'failed'}, GPU {r.get('gpu')}, "
          f"{r.get('seconds', 0) / 60:.0f} min on the VM)", event="batch.done", batch=batch_id, ok=r["ok"], gpu=r.get("gpu"), vm_min=round(r.get("seconds", 0) / 60))
     return batch_id
+
+
+def _read_results(out_tgz: Path, dest: Path) -> tuple[dict | None, Path | None]:
+    """The worker's results.json and its folder from a downloaded archive; (None, None) if the
+    archive is missing, broken, or holds no readable results."""
+    try:
+        with tarfile.open(out_tgz) as t:
+            try:
+                t.extractall(dest, filter="data")
+            except TypeError:
+                t.extractall(dest)
+        found = list(dest.rglob("results.json"))
+        if not found:
+            return None, None
+        return json.loads(found[0].read_text(encoding="utf-8")), found[0].parent
+    except (OSError, tarfile.TarError, ValueError) as e:
+        _log(f"could not read the results in {out_tgz.name}: {e}", event="results.unreadable", level="warn")
+        return None, None
+
+
+def _retry(fn, what: str, tries: int = 3, wait: float = 10.0):
+    """GitHub's API fails now and then; results that cost units are worth a second and third try."""
+    for i in range(tries):
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001
+            if i == tries - 1:
+                raise
+            _log(f"{what} failed ({e}); trying again", event="retry", level="warn")
+            time.sleep(wait * (i + 1))
 
 
 def test_still(p, cli: ColabCLI, cfg: dict, packages: list[str], out_dir: Path, ref: str = "style") -> dict:

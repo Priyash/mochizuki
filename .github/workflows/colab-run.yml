@@ -78,6 +78,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh api -X POST "repos/${{ github.repository }}/actions/workflows/produce.yml/dispatches" -f ref=main || true
+      - name: Stop any GPU VM left running
+        # Runs even when the run failed or was cancelled: a VM nobody watches still bills units.
+        if: always() && steps.gate.outputs.go == '1'
+        env:
+          COLAB_AUTH: adc
+        run: python -m pipeline colab-sweep
       - name: Forget the sign-in
         if: always()
         run: rm -f "$HOME/.config/gcloud/application_default_credentials.json"

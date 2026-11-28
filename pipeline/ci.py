@@ -96,6 +96,11 @@ def notice(p: Project, led: Ledger, chapter: int, state: Path, out: dict) -> dic
     if running:
         parts = [f"{b['backend'].title()} batch {b['id']} ({b['stage']}) is {b['status']}" for b in running]
         tail = "".join(f" {e.get('backend', '').title()} hit a problem: {e['error'][:200]}" for e in errors)
+        tail += "".join(f" {a.get('backend', '').title()} batch {a['batch']}: {a['error'][:200]}"
+                        for a in acts if a.get("status") == "collecting")
+        tail += "".join(f" {a.get('backend', '').title()} batch {a['batch']} was handed over, but its queued run "
+                        "could not be cancelled there and may still start."
+                        for a in acts if a.get("action") == "handed_over" and not a.get("cancelled"))
         return {"kind": "running", "text": f"Chapter {chapter}: " + "; ".join(parts) + "." + tail}
     rs = {r["name"]: steps.ref_state(p, led, r) for r in p.refs_missing(chapter)
           if steps.ref_state(p, led, r) != "waiting_source"}

@@ -67,6 +67,7 @@ def main(argv=None) -> int:
     sub.add_parser("colab-gpus", help="which Colab GPUs this account gets now, and their units per hour")
     a = sub.add_parser("colab-smoke", help="the Colab round trip on a free CPU VM: no GPU, no units")
     a.add_argument("--work", default="colab-smoke")
+    sub.add_parser("colab-sweep", help="stop any Colab GPU VM left running (the colab-run workflow's last step)")
     a = sub.add_parser("kaggle-probe", help="test the stills engine on a Kaggle T4 outside the ledger")
     a.add_argument("--variants", default="fp16,fp32", help="precisions to try, in order (fp16, fp32, bf16, config)")
     a.add_argument("--minutes", type=int, default=60)
@@ -127,11 +128,16 @@ def main(argv=None) -> int:
     if args.cmd == "cgi":
         from .cgi import cli as cgi_cli  # noqa: PLC0415
         return cgi_cli.run(p, args)
-    if args.cmd in ("colab-runner", "colab-test", "colab-smoke", "colab-gpus"):
+    if args.cmd in ("colab-runner", "colab-test", "colab-smoke", "colab-gpus", "colab-sweep"):
         from . import colab_backend as cb  # noqa: PLC0415
         from .log import set_file  # noqa: PLC0415
         set_file(os.environ.get("MOCHI_LOG_FILE") or "colab-logs/colab.jsonl")
         cfg, cli = cb.settings(p), cb.ColabCLI()
+        if args.cmd == "colab-sweep":
+            n = cb.stop_gpu_vms(cli, why="found by the end-of-run sweep")
+            print("could not list the account's Colab VMs: check the Colab console" if n is None
+                  else f"stopped {n} GPU VM(s)")
+            return 0 if n is not None else 3
         if args.cmd == "colab-gpus":
             r = cb.gpu_probe(cli)
             print(json.dumps(r, indent=1, default=str))

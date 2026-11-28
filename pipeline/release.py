@@ -152,18 +152,19 @@ class ReleaseBackend:
         return "queued"
 
     def output(self, ref: str, dest: Path, handle: str | None = None) -> None:
+        """Download and unpack the results, then delete the batch's files from the release. If the
+        release can't be read or the download fails, nothing is deleted: the next run tries again."""
         n, a = names(handle or "", self.name), self.rel.assets()
-        try:
-            if n["results"] in a:
-                tgz = Path(dest) / n["results"]
-                self.rel.download(a[n["results"]], tgz)
-                with tarfile.open(tgz) as t:
-                    try:
-                        t.extractall(dest, filter="data")
-                    except TypeError:
-                        t.extractall(dest)
-        finally:
-            if a:
-                for name in n.values():
-                    if name in a:
-                        self.rel.delete(name)
+        if not a:
+            raise RuntimeError(f"could not read the {RELEASE} release")
+        if n["results"] in a:
+            tgz = Path(dest) / n["results"]
+            self.rel.download(a[n["results"]], tgz)
+            with tarfile.open(tgz) as t:
+                try:
+                    t.extractall(dest, filter="data")
+                except TypeError:
+                    t.extractall(dest)
+        for name in n.values():
+            if name in a:
+                self.rel.delete(name)

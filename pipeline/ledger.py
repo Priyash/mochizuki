@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS batches (
 );
 """
 
-NOT_A_FAILURE = ("cut off", "stale inputs", "not reached")   # notes that do not count against a shot
+MISSING = "missing from the download"   # the worker made it, but the file did not come back
+NOT_A_FAILURE = ("cut off", "stale inputs", "not reached", MISSING)   # notes that do not count against a shot
 
 
 def not_a_failure(note: str | None) -> bool:
@@ -72,7 +73,8 @@ class Ledger:
             if col not in cols:
                 self.db.execute(f"ALTER TABLE jobs ADD COLUMN {col} {ddl}")
         bcols = {r[1] for r in self.db.execute("PRAGMA table_info(batches)")}
-        for col, ddl in (("backend", "TEXT NOT NULL DEFAULT 'kaggle'"), ("handle", "TEXT")):
+        for col, ddl in (("backend", "TEXT NOT NULL DEFAULT 'kaggle'"), ("handle", "TEXT"),
+                         ("collect_tries", "INTEGER NOT NULL DEFAULT 0")):   # failed downloads of a finished run
             if col not in bcols:
                 self.db.execute(f"ALTER TABLE batches ADD COLUMN {col} {ddl}")
         self.db.commit()

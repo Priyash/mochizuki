@@ -270,3 +270,103 @@ def test_a_gpu_that_comes_up_after_the_request_gave_up_is_stopped(tmp_path):
     assert r["gpu"] is None
     assert ["unassign", "late-A100"] in fc.calls and ["unassign", "late-L4"] in fc.calls
     assert fc.orphans == []
+    assert r["late_vms"] == 2 and "came up late" in r["error"]    # it never says "no GPU" alone after one ran
+
+
+class _Late(FakeColab):
+    """Every GPU request times out, and the VM appears anyway (it bills until stopped)."""
+    def run(self, args, timeout=None):
+        if args[0] == "new":
+            self.calls.append(args)
+            gpu = args[args.index("--gpu") + 1]
+            self.orphans.append({"endpoint": "late-" + gpu, "accelerator": gpu})
+            self.bal -= 0.5
+            return 1, "Read timed out."
+        return super().run(args, timeout)
+
+
+def test_a_late_gpu_is_reported_as_run_not_as_nothing_billed(tmp_path, capsys):
+    proj, led, fr, colab = _setup(tmp_path)
+    kg.tick(proj, led, colab, 1, engine_set="stub")
+    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", _Late(tmp_path / "vms"), cb.settings(proj), []) is None
+    said = capsys.readouterr().out
+    assert "gpu.late" in said and "1.0 units used" in said and "nothing billed" not in said
+    assert not any(n.endswith(".claim.json") for n in fr.names())    # the batch waits for the next run
+
+
+def test_no_gpu_and_no_late_vm_is_reported_as_nothing_billed(tmp_path, capsys):
+    proj, led, fr, colab = _setup(tmp_path)
+    kg.tick(proj, led, colab, 1, engine_set="stub")
+    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", FakeColab(tmp_path / "vms", grant=()),
+                       cb.settings(proj), []) is None
+    said = capsys.readouterr().out
+    assert "gpu.none" in said and "no VM came up, nothing billed" in said
+
+
+def test_unlisted_vms_are_never_reported_as_nothing_billed(tmp_path, capsys):
+    proj, led, fr, colab = _setup(tmp_path)
+    kg.tick(proj, led, colab, 1, engine_set="stub")
+    blind = FakeColab(tmp_path / "vms", grant=())
+    blind.assignments = lambda: None                    # the CLI could not list the account's VMs
+    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", blind, cb.settings(proj), []) is None
+    said = capsys.readouterr().out
+    assert "gpu.unchecked" in said and "nothing billed" not in said
+
+
+def test_a_leftover_vm_is_stopped_even_when_no_batch_waits(tmp_path):
+    proj, led, fr, colab = _setup(tmp_path)
+    fake = FakeColab(tmp_path / "vms")
+    fake.orphans = [{"endpoint": "dead-run-a100", "accelerator": "A100"}]
+    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", fake, cb.settings(proj), []) is None
+    assert ["unassign", "dead-run-a100"] in fake.calls
+
+
+def test_a_gpu_granted_late_while_another_runs_is_stopped_after_the_batch(tmp_path):
+    proj, led, fr, colab = _setup(tmp_path)
+    kg.tick(proj, led, colab, 1, engine_set="stub")
+
+    class LateA100(FakeColab):                           # A100 times out but comes up; L4 is granted
+        def run(self, args, timeout=None):
+            if args[0] == "new" and "A100" in args:
+                self.calls.append(args)
+                return 1, "Read timed out."
+            if args[0] == "upload":                      # ... the A100 appears while the L4 is busy
+                self.orphans.append({"endpoint": "late-A100", "accelerator": "A100"})
+            return super().run(args, timeout)
+    fake = LateA100(tmp_path / "vms", grant=("L4",))
+    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", fake, cb.settings(proj), [])
+    assert ["unassign", "late-A100"] in fake.calls and fake.orphans == []
+
+
+def test_a_run_that_does_not_finish_keeps_what_it_made(tmp_path):
+    proj, led, fr, colab = _setup(tmp_path)
+    kg.tick(proj, led, colab, 1, engine_set="stub")
+    bid = led.active_batch("colab")["id"]
+
+    class Dropped(FakeColab):                            # the stream drops before MOCHI-DONE; the job had
+        def stream(self, args, deadline, on_line=None):  # packed its outputs as it went
+            code, tail = super().stream(args, deadline, on_line)
+            return 255, tail.replace("[job] MOCHI-DONE", "connection went stale")
+    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", Dropped(tmp_path / "vms"), cb.settings(proj), []) == bid
+    r = kg.tick(proj, led, colab, 1, engine_set="stub")
+    assert r["action"] == "collected" and r["made"] > 0 and not r["stale"], r   # "stale" in the log drops nothing
+
+
+def test_a_failed_results_download_keeps_them_in_the_release(tmp_path):
+    proj, led, fr, colab = _setup(tmp_path)
+    kg.tick(proj, led, colab, 1, engine_set="stub")
+    bid = led.active_batch("colab")["id"]
+    assert cb.take_one(mb.Release("o/r", gh=fr.gh), tmp_path / "w", FakeColab(tmp_path / "vms"), cb.settings(proj), []) == bid
+    fails = {"n": 1}
+    def flaky(url, dest):
+        if fails["n"]:
+            fails["n"] -= 1
+            raise OSError("connection reset")
+        mb.Release._urllib(url, dest)
+    colab = cb.ColabBackend(proj, "o/r", gh=fr.gh, fetch=flaky)
+    r = kg.tick(proj, led, colab, 1, engine_set="stub")
+    assert r["action"] == "waiting" and r["status"] == "collecting", r
+    assert f"colab-{bid}.results.tar.gz" in fr.names()            # nothing deleted after a failed download
+    r = kg.tick(proj, led, colab, 1, engine_set="stub")
+    assert r["action"] == "collected" and r["made"] > 0, r
+    assert fr.names() == []
